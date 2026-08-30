@@ -675,8 +675,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Google Sign In Error:', err);
-      if (err.code !== 'auth/popup-closed-by-user') {
+      const isPopupClosed = err.code === 'auth/popup-closed-by-user' || 
+                            err.message?.includes('popup-closed-by-user') ||
+                            err.toString()?.includes('popup-closed-by-user');
+      if (!isPopupClosed) {
         setAuthError(err.message || 'Google authentication failed.');
+      } else {
+        setAuthError('Sign-in cancelled. The Google login window was closed.');
       }
     } finally {
       setIsAuthLoading(false);

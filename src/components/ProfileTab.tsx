@@ -670,11 +670,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
       setDiscordId(finalId);
       setDiscordUsername(finalTag);
       setDiscordConnected(true);
-      setDiscordNotice({ type: 'success', msg: 'Discord account linked successfully! Server management features unlocked.' });
+      setDiscordNotice({ type: 'success', msg: 'Discord account linked successfully! Syncing server roles automatically...' });
+      
+      // Auto-trigger sync instantly
+      handleSyncDiscordRoles(finalId);
+
       setTimeout(() => {
         setShowDiscordLinkModal(false);
         setDiscordNotice(null);
-      }, 1200);
+      }, 1500);
     } catch (err: any) {
       console.error('Error linking Discord account:', err);
       setDiscordNotice({ type: 'error', msg: err?.message || 'Failed to save Discord account link.' });
@@ -710,8 +714,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     }
   };
 
-  const handleSyncDiscordRoles = async () => {
-    if (!currentUser || !activeDiscordId || isSyncingDiscordRoles) return;
+  const handleSyncDiscordRoles = async (overrideDiscordId?: string) => {
+    const targetDiscordId = overrideDiscordId || activeDiscordId;
+    if (!currentUser || !targetDiscordId || isSyncingDiscordRoles) return;
     setIsSyncingDiscordRoles(true);
     setRoleSyncFeedback(null);
     try {
@@ -720,7 +725,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           uid: currentUser.uid,
-          discordUserId: activeDiscordId
+          discordUserId: targetDiscordId
         })
       });
       const data = await res.json();
@@ -934,6 +939,31 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
       };
 
       loadProfileData();
+
+      // Listen for popup OAuth messages for instant, no-reload state sync in iframe environments
+      const handlePopupMessage = (event: MessageEvent) => {
+        const origin = event.origin;
+        if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('viceintel.app')) {
+          return;
+        }
+
+        if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+          const data = event.data;
+          setDiscordId(data.discordId);
+          setDiscordUsername(data.discordUsername);
+          setDiscordConnected(true);
+          setDiscordNotice({ type: 'success', msg: `Discord account ${data.discordUsername} linked successfully!` });
+          fetchDiscordAuthStatus(currentUser.uid).then(status => setDiscordAuthStatus(status));
+        } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+          setDiscordNotice({ type: 'error', msg: `Discord connection notice: ${event.data.error}` });
+          setShowDiscordLinkModal(true);
+        }
+      };
+
+      window.addEventListener('message', handlePopupMessage);
+      return () => {
+        window.removeEventListener('message', handlePopupMessage);
+      };
     }
   }, [currentUser]);
 
@@ -1805,57 +1835,12 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                         </span>
                       </div>
                       <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                        @{activeDiscordUsername || 'DiscordUser'} <span className="text-zinc-600">•</span> ID: <span className="text-zinc-300">{activeDiscordId}</span>
+                        @{activeDiscordUsername ? activeDiscordUsername.replace(/^@+/, '') : 'DiscordUser'} <span className="text-zinc-600">•</span> ID: <span className="text-zinc-300">{activeDiscordId}</span>
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* Token Refresh CTA if OAuth token is stored */}
-                    {discordAuthStatus?.hasPersistentTokens && (
-                      <button
-                        type="button"
-                        onClick={handleRefreshDiscordToken}
-                        disabled={isRefreshingToken}
-                        className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm border ${
-                          discordAuthStatus.isExpired
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                            : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
-                        }`}
-                        title="Renew encrypted OAuth access token using persistent refresh token"
-                      >
-                        <Clock className={`w-3.5 h-3.5 ${isRefreshingToken ? 'animate-spin text-amber-400' : 'text-zinc-400'}`} />
-                        <span>{isRefreshingToken ? 'Refreshing Token...' : discordAuthStatus.isExpired ? 'Renew Expired Token' : 'Refresh Token'}</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleSyncDiscordRoles}
-                      disabled={isSyncingDiscordRoles}
-                      className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-md ${
-                        isSyncingDiscordRoles
-                          ? 'bg-indigo-900/50 text-indigo-300 border border-indigo-500/30 cursor-wait'
-                          : 'bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400/40 shadow-indigo-600/20'
-                      }`}
-                      title="Trigger real-time Discord role synchronization with your active subscription tier"
-                    >
-                      <Zap className={`w-3.5 h-3.5 ${isSyncingDiscordRoles ? 'animate-spin' : ''}`} />
-                      <span>{isSyncingDiscordRoles ? 'Syncing Roles...' : 'Sync Discord Roles'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setManualDiscordIdInput(activeDiscordId);
-                        setManualDiscordTagInput(activeDiscordUsername);
-                        setShowDiscordLinkModal(true);
-                      }}
-                      className="px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs font-bold rounded-xl transition cursor-pointer"
-                    >
-                      Update Discord ID
-                    </button>
-
                     <button
                       type="button"
                       onClick={handleUnlinkDiscordAccount}
@@ -1865,38 +1850,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                     </button>
                   </div>
                 </div>
-
-                {/* Persistent OAuth Integration Token Status Strip */}
-                {discordAuthStatus?.hasPersistentTokens && (
-                  <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between gap-3 flex-wrap text-[11px]">
-                    <div className="flex items-center gap-2 text-zinc-400">
-                      <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      <span>Encrypted OAuth Integration:</span>
-                      <span className={`font-bold font-mono px-1.5 py-0.5 rounded ${
-                        discordAuthStatus.isExpired
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      }`}>
-                        {discordAuthStatus.isExpired ? 'Token Expired' : 'Active (AES-256)'}
-                      </span>
-                      {discordAuthStatus.expiresAt && (
-                        <span className="text-zinc-500">
-                          (Expires: {new Date(discordAuthStatus.expiresAt).toLocaleDateString()})
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleConnectDiscordOAuth}
-                        className="text-indigo-400 hover:text-indigo-300 underline font-semibold flex items-center gap-1 cursor-pointer"
-                      >
-                        <ExternalLink className="w-3 h-3" /> Reconnect OAuth2
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {/* Token Refresh Feedback */}
                 {tokenRefreshFeedback && (
@@ -3629,32 +3582,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               </div>
             </div>
 
-            {/* Sub-tab selection */}
-            <div className="flex items-center gap-2 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
-              <button
-                type="button"
-                onClick={() => setDiscordLinkTab('oauth')}
-                className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  discordLinkTab === 'oauth'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <span>⚡ 1-Click Discord OAuth</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDiscordLinkTab('manual')}
-                className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  discordLinkTab === 'manual'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <span>Manual Snowflake ID</span>
-              </button>
-            </div>
-
             {discordNotice && (
               discordNotice.type === 'success' ? (
                 <div className="p-3.5 rounded-xl border text-xs font-bold flex items-start gap-2 bg-emerald-500/10 border-emerald-500/30 text-emerald-300">
@@ -3664,158 +3591,72 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               ) : (
                 <DiscordAuthErrorHandler
                   error={discordNotice.msg}
-                  onRetry={() => {
-                    if (discordLinkTab === 'oauth') {
-                      handleSaveAndStartOAuth();
-                    } else {
-                      handleConnectDiscordOAuth();
-                    }
-                  }}
+                  onRetry={() => setDiscordNotice(null)}
                   onDismiss={() => setDiscordNotice(null)}
                 />
               )
             )}
 
-            {discordLinkTab === 'oauth' ? (
-              <form onSubmit={handleSaveAndStartOAuth} className="space-y-4">
-                <div className="p-3.5 bg-indigo-950/30 border border-indigo-500/30 rounded-2xl space-y-2">
-                  <div className="flex items-center gap-2 text-indigo-300 text-xs font-bold">
-                    <Info className="w-4 h-4 text-indigo-400 shrink-0" />
-                    <span>Discord Developer Portal Setup (Tab 2)</span>
-                  </div>
-                  <ol className="text-[11px] text-zinc-300 space-y-1.5 list-decimal list-inside leading-relaxed pl-1">
-                    <li>Switch to your open <strong>Discord Developer Portal</strong> tab.</li>
-                    <li>Under <strong>General Information</strong>, copy your <strong>Application ID</strong> and paste below.</li>
-                    <li>Under <strong>OAuth2 → Redirects</strong>, add your Redirect URI and click <em>Save Changes</em>.</li>
-                  </ol>
-                </div>
+            <form onSubmit={handleSaveManualDiscordLink} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
+                  <span>Discord Snowflake ID:</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">17-20 Digits</span>
+                </label>
+                <input
+                  type="text"
+                  value={manualDiscordIdInput}
+                  onChange={(e) => setManualDiscordIdInput(e.target.value)}
+                  placeholder="e.g. 849204918294028190"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                />
+                <p className="text-[11px] text-zinc-500">
+                  In Discord: User Settings → Advanced → Developer Mode ON → Right-click profile → Copy User ID.
+                </p>
+              </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
-                    <span>Discord Application ID (Client ID):</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">17-20 Digits</span>
-                  </label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-300">
+                  Discord Username / GamerTag:
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 font-mono font-bold text-sm">
+                    @
+                  </span>
                   <input
                     type="text"
-                    value={discordClientIdInput}
-                    onChange={(e) => setDiscordClientIdInput(e.target.value)}
-                    placeholder="e.g. 123456789012345678"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    value={manualDiscordTagInput}
+                    onChange={(e) => setManualDiscordTagInput(e.target.value)}
+                    placeholder="e.g. ViceLeader_Lucia"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-8 pr-4 py-2.5 text-sm text-white font-bold placeholder-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
+              </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
-                    <span>OAuth2 Redirect URI (Add to Discord Developer Portal → OAuth2 → Redirects):</span>
-                    {copiedRedirectUri && (
-                      <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Copied!
-                      </span>
-                    )}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={typeof window !== 'undefined' ? `${window.location.origin}/api/auth/discord/callback` : 'https://viceintel.app/api/auth/discord/callback'}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-zinc-300 font-mono select-all focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof window !== 'undefined') {
-                          navigator.clipboard.writeText(`${window.location.origin}/api/auth/discord/callback`);
-                          setCopiedRedirectUri(true);
-                          setTimeout(() => setCopiedRedirectUri(false), 2000);
-                        }
-                      }}
-                      className="px-3.5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowDiscordLinkModal(false)}
-                    className="w-1/3 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs rounded-xl transition cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="w-2/3 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Authorize on Discord</span>
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <form onSubmit={handleSaveManualDiscordLink} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
-                    <span>Discord Snowflake ID:</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">17-20 Digits</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={manualDiscordIdInput}
-                    onChange={(e) => setManualDiscordIdInput(e.target.value)}
-                    placeholder="e.g. 849204918294028190"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
-                  <p className="text-[11px] text-zinc-500">
-                    In Discord: User Settings → Advanced → Developer Mode ON → Right-click profile → Copy User ID.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-zinc-300">
-                    Discord Username / GamerTag:
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 font-mono font-bold text-sm">
-                      @
-                    </span>
-                    <input
-                      type="text"
-                      value={manualDiscordTagInput}
-                      onChange={(e) => setManualDiscordTagInput(e.target.value)}
-                      placeholder="e.g. ViceLeader_Lucia"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-8 pr-4 py-2.5 text-sm text-white font-bold placeholder-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowDiscordLinkModal(false)}
-                    className="w-1/3 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs rounded-xl transition cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={linkingDiscord}
-                    className="w-2/3 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {linkingDiscord ? (
-                      <span>Linking Account...</span>
-                    ) : (
-                      <>
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Save & Link Discord</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            )}
+              <div className="pt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDiscordLinkModal(false)}
+                  className="w-1/3 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={linkingDiscord}
+                  className="w-2/3 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {linkingDiscord ? (
+                    <span>Linking Account...</span>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Save & Link Discord</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

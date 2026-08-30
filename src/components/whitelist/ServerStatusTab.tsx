@@ -22,12 +22,13 @@ import {
   BellRing,
   X
 } from 'lucide-react';
-import { WhitelistApplication, WhitelistFormConfig } from '../../types';
+import { WhitelistApplication, WhitelistFormConfig, UserProfile } from '../../types';
 import { 
   getUserApplicationForServer, 
   getFormConfigBySlug,
   normalizeServerSlug,
-  sendWhitelistEmailNotification
+  sendWhitelistEmailNotification,
+  getUserProfile
 } from '../../lib/whitelist-service';
 import { copyToClipboard } from '../../lib/copyUtils';
 import { RP_SERVERS_DATA } from '../../data/rpServers';
@@ -51,6 +52,15 @@ export const ServerStatusTab: React.FC<ServerStatusTabProps> = ({
 }) => {
   const [config, setConfig] = useState<WhitelistFormConfig | null>(null);
   const [application, setApplication] = useState<WhitelistApplication | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  
+  const isDiscordMismatch = Boolean(
+    application &&
+    application.status === 'approved' &&
+    application.discordId &&
+    (!userProfile?.discordConnected || !userProfile?.discordId || String(userProfile.discordId).trim() !== String(application.discordId).trim())
+  );
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedConnect, setCopiedConnect] = useState(false);
@@ -145,6 +155,13 @@ export const ServerStatusTab: React.FC<ServerStatusTabProps> = ({
       setConfig(resolvedConfig);
 
       if (currentUser?.uid) {
+        try {
+          const profile = await getUserProfile(currentUser.uid);
+          setUserProfile(profile);
+        } catch (profileErr) {
+          console.warn('Error fetching profile in ServerStatusTab:', profileErr);
+        }
+
         const targetServerId = resolvedConfig.serverId || serverSlug;
         const app = await getUserApplicationForServer(targetServerId, currentUser.uid, serverSlug);
         
@@ -508,57 +525,102 @@ export const ServerStatusTab: React.FC<ServerStatusTabProps> = ({
             </div>
           </div>
 
-          {/* Connect Command Box */}
-          <div className="bg-zinc-950 border border-emerald-500/30 rounded-xl p-4 space-y-3">
-            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-              <Terminal className="w-4 h-4" /> Server Direct Connect Command
-            </span>
-            <div className="flex items-center gap-2">
-              <code className="text-xs text-indigo-300 font-mono bg-zinc-900 px-3 py-2 rounded-lg border border-zinc-800 truncate flex-1">
-                connect {rpServer?.connectUrl || 'cfx.re/join/vclife1'}
-              </code>
-              <button
-                onClick={handleCopyConnect}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-md shadow-emerald-600/20"
-              >
-                {copiedConnect ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedConnect ? 'Copied!' : 'Copy Command'}</span>
-              </button>
-            </div>
-            <p className="text-[11px] text-zinc-400">
-              Launch FiveM &gt; Press F8 on your keyboard &gt; Paste the connect command and press Enter.
-            </p>
-          </div>
+          {isDiscordMismatch ? (
+            <div className="bg-zinc-950/90 border border-amber-500/40 rounded-xl p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="text-sm font-extrabold text-amber-400 block">⚠️ DISCORD IDENTITY MISMATCH DETECTED</span>
+                  <p className="text-xs text-zinc-300 leading-relaxed">
+                    To protect server integrity and prevent whitelist bypass/spoofing, server connection commands and community invite links are strictly locked. You can only view these details when logged in with the matching Discord account that submitted this application.
+                  </p>
+                </div>
+              </div>
 
-          {/* Official Discord Channel Join Box */}
-          <div className="bg-zinc-950 border border-indigo-500/40 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="text-xs font-bold text-indigo-400 flex items-center gap-1.5">
-                <MessageSquare className="w-4 h-4 text-indigo-400" /> Official Discord Server & Community Channels
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold font-mono">
-                Role Granted: @{application.discordTag || 'Citizen'}
-              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-zinc-900/60 rounded-lg border border-zinc-800 text-xs">
+                <div className="space-y-1">
+                  <span className="text-zinc-500 text-[10px] uppercase font-bold block">Whitelisted Discord Account</span>
+                  <div className="font-bold text-white font-mono flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>@{application.discordTag}</span>
+                  </div>
+                  <span className="text-zinc-500 text-[10px] block font-mono">ID: {application.discordId}</span>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-zinc-500 text-[10px] uppercase font-bold block">Your Connected Discord Account</span>
+                  <div className={`font-bold font-mono flex items-center gap-1.5 ${userProfile?.discordConnected ? 'text-rose-400' : 'text-zinc-400'}`}>
+                    <span className={`w-2 h-2 rounded-full ${userProfile?.discordConnected ? 'bg-rose-500' : 'bg-zinc-500'}`} />
+                    <span>{userProfile?.discordConnected ? `@${userProfile?.discordUsername}` : 'Not Connected'}</span>
+                  </div>
+                  <span className="text-zinc-500 text-[10px] block font-mono">ID: {userProfile?.discordId || 'N/A'}</span>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => onNavigate?.('/profile')}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg transition flex items-center gap-1.5 shadow-md shadow-amber-600/20 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Connect / Switch Discord Account</span>
+                </button>
+              </div>
             </div>
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              Click below to join the official <strong>{config?.serverName || rpServer?.name || 'FiveM RP'}</strong> Discord community, verify your Whitelisted Citizen role in-game, and access private voice comms.
-            </p>
-            <div>
-              <a
-                href={config?.discordInviteUrl || config?.customBranding?.discordInviteUrl || rpServer?.officialDiscordUrl || 'https://discord.gg/vicecity'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs rounded-xl transition shadow-lg shadow-indigo-900/30 cursor-pointer"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>Join Official {config?.serverName || rpServer?.name || 'Community'} Discord</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-              <span className="block text-[11px] font-mono text-indigo-400 mt-2 truncate">
-                🔗 {config?.discordInviteUrl || config?.customBranding?.discordInviteUrl || rpServer?.officialDiscordUrl || 'https://discord.gg/vicecity'}
-              </span>
-            </div>
-          </div>
+          ) : (
+            <>
+              {/* Connect Command Box */}
+              <div className="bg-zinc-950 border border-emerald-500/30 rounded-xl p-4 space-y-3">
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                  <Terminal className="w-4 h-4" /> Server Direct Connect Command
+                </span>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs text-indigo-300 font-mono bg-zinc-900 px-3 py-2 rounded-lg border border-zinc-800 truncate flex-1">
+                    connect {rpServer?.connectUrl || 'cfx.re/join/vclife1'}
+                  </code>
+                  <button
+                    onClick={handleCopyConnect}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-md shadow-emerald-600/20"
+                  >
+                    {copiedConnect ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedConnect ? 'Copied!' : 'Copy Command'}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-zinc-400">
+                  Launch FiveM &gt; Press F8 on your keyboard &gt; Paste the connect command and press Enter.
+                </p>
+              </div>
+
+              {/* Official Discord Channel Join Box */}
+              <div className="bg-zinc-950 border border-indigo-500/40 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-bold text-indigo-400 flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-indigo-400" /> Official Discord Server & Community Channels
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold font-mono">
+                    Role Granted: @{application.discordTag || 'Citizen'}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  Click below to join the official <strong>{config?.serverName || rpServer?.name || 'FiveM RP'}</strong> Discord community, verify your Whitelisted Citizen role in-game, and access private voice comms.
+                </p>
+                <div>
+                  <a
+                    href={config?.discordInviteUrl || config?.customBranding?.discordInviteUrl || rpServer?.officialDiscordUrl || 'https://discord.gg/vicecity'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs rounded-xl transition shadow-lg shadow-indigo-900/30 cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Join Official {config?.serverName || rpServer?.name || 'Community'} Discord</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <span className="block text-[11px] font-mono text-indigo-400 mt-2 truncate">
+                    🔗 {config?.discordInviteUrl || config?.customBranding?.discordInviteUrl || rpServer?.officialDiscordUrl || 'https://discord.gg/vicecity'}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
 
           {application.reviewerNotes && (
             <div className="bg-zinc-950/60 border border-zinc-800 rounded-xl p-3.5 space-y-1 text-xs">

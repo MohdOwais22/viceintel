@@ -317,7 +317,7 @@ export const ServerBillingPaywall: React.FC<ServerBillingPaywallProps> = ({
           {/* Verified Discord Admin Tag */}
           <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-zinc-400 pt-1">
             <div>
-              Verified Discord Lead: <strong className="text-white">@{discordUsername}</strong> (<code className="text-zinc-400">{discordId}</code>)
+              Verified Discord Lead: <strong className="text-white">@{discordUsername ? discordUsername.replace(/^@+/, '') : ''}</strong> (<code className="text-zinc-400">{discordId}</code>)
             </div>
             <div>
               Server ID: <code className="text-zinc-300">{serverId}</code>

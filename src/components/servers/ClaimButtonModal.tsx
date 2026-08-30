@@ -419,7 +419,7 @@ export const ClaimButtonModal: React.FC<ClaimButtonModalProps> = ({
                       Discord Administrator Verified
                     </div>
                     <div className="text-[11px] text-zinc-300">
-                      10-Minute Reservation Lock active for <strong className="text-white">@{manualDiscordUsername || userProfile?.discordUsername || 'VerifiedOwner'}</strong>
+                      10-Minute Reservation Lock active for <strong className="text-white">@{String(manualDiscordUsername || userProfile?.discordUsername || 'VerifiedOwner').replace(/^@+/, '')}</strong>
                     </div>
                   </div>
                 </div>
@@ -602,7 +602,7 @@ export const ClaimButtonModal: React.FC<ClaimButtonModalProps> = ({
                     </div>
                     <div>
                       <div className="text-white font-bold flex items-center gap-1.5">
-                        <span>@{manualDiscordUsername || userProfile?.discordUsername || 'DiscordUser'}</span>
+                        <span>@{String(manualDiscordUsername || userProfile?.discordUsername || 'DiscordUser').replace(/^@+/, '')}</span>
                         <span className="px-1.5 py-0.2 rounded bg-indigo-500/30 text-indigo-300 text-[9px] font-mono">
                           LINKED
                         </span>

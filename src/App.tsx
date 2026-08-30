@@ -60,6 +60,7 @@ import { ServerOnboardingWizard } from './components/ServerOnboardingWizard';
 import { AdminBusinessDashboard } from './components/AdminBusinessDashboard';
 import { Footer } from './components/Footer';
 import { registerServiceWorker, preloadAllCriticalData } from './lib/offlineStorage';
+import { syncDiscordConfigFromServer } from './lib/discordOAuthHelper';
 import { getTabFromPath, updatePageSeoMeta, TAB_TO_PATH } from './lib/seoRouting';
 import { initSeoRealtimeSync } from './lib/seoStore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -146,6 +147,7 @@ export default function App() {
   // Sync Initial URL Route on Mount, Hydrate Session State from localStorage & Register SW
   useEffect(() => {
     registerServiceWorker();
+    syncDiscordConfigFromServer();
     const unsubSeo = initSeoRealtimeSync();
     preloadAllCriticalData().catch((err) => {
       console.warn('Initial offline cache preload notice:', err);
@@ -579,7 +581,24 @@ export default function App() {
         snapshot.forEach((docSnap) => {
           list.push({ id: docSnap.id, ...docSnap.data() } as UserNotification);
         });
-        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        // Sort: descending order of creation time
+        list.sort((a, b) => {
+          const timeA = a.createdAt || (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+          const timeB = b.createdAt || (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+          return timeB - timeA;
+        });
+
+        // Deduplicate: only keep the most recent notification with a unique combination of title and message
+        const seenKeys = new Set<string>();
+        const uniqueList: UserNotification[] = [];
+        for (const item of list) {
+          const key = `${item.title.trim().toLowerCase()}_${item.message.trim().toLowerCase()}`;
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            uniqueList.push(item);
+          }
+        }
 
         if (isInitialNotificationsLoadRef.current) {
           isInitialNotificationsLoadRef.current = false;
@@ -595,7 +614,7 @@ export default function App() {
           }
         }
 
-        setNotifications(list);
+        setNotifications(uniqueList);
       }, (err) => {
         handleFirestoreError(err, OperationType.LIST, 'userNotifications');
       });
@@ -1097,6 +1116,7 @@ export default function App() {
                   else if (path.includes('/apply')) handleTabChange('server-apply', slug || currentServerSlug);
                   else if (path.includes('/manage')) handleTabChange('server-manage', slug || currentServerSlug);
                   else if (path.includes('/review')) handleTabChange('server-review', slug || currentServerSlug);
+                  else if (path.includes('/profile')) handleTabChange('profile');
                   else handleTabChange('rp-servers');
                 }}
                 currentUser={currentUser ? {

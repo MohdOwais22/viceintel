@@ -121,6 +121,29 @@ export const ServerApplyTab: React.FC<ServerApplyTabProps> = ({
         }
       });
     }
+
+    // Listen for popup OAuth messages for instant state sync inside iframe environments
+    const handlePopupMessage = (event: MessageEvent) => {
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('viceintel.app')) {
+        return;
+      }
+
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        const data = event.data;
+        setDiscordNotice({ type: 'success', message: `Discord account ${data.discordUsername} connected successfully!` });
+        if (currentUser?.uid) {
+          getUserProfile(currentUser.uid).then(p => setUserProfile(p));
+        }
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        setDiscordNotice({ type: 'error', message: `Discord connection notice: ${event.data.error}` });
+      }
+    };
+
+    window.addEventListener('message', handlePopupMessage);
+    return () => {
+      window.removeEventListener('message', handlePopupMessage);
+    };
   }, [currentUser?.uid, serverSlug]);
 
   // Load Form Configuration & User State on Mount
@@ -1214,7 +1237,7 @@ export const ServerApplyTab: React.FC<ServerApplyTabProps> = ({
               </span>
             ) : (
               <span className="text-emerald-400 flex items-center gap-1 font-medium">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Ready to submit as @{userProfile?.discordUsername}
+                <CheckCircle2 className="w-3.5 h-3.5" /> Ready to submit as @{userProfile?.discordUsername ? userProfile.discordUsername.replace(/^@+/, '') : ''}
               </span>
             )}
           </div>

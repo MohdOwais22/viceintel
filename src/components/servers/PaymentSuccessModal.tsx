@@ -167,7 +167,7 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
                 <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
                 Verified Owner:
               </span>
-              <span className="font-bold text-white font-mono">@{discordUsername}</span>
+              <span className="font-bold text-white font-mono">@{discordUsername ? discordUsername.replace(/^@+/, '') : ''}</span>
             </div>
 
             <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex items-center justify-between">

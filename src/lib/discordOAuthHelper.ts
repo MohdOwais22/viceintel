@@ -25,6 +25,27 @@ export function setCustomDiscordClientId(id: string): void {
   }
 }
 
+/**
+ * Dynamically synchronizes the configured Discord Client ID from the server.
+ * This guarantees the frontend uses the exact client ID specified in the admin/settings.
+ */
+export async function syncDiscordConfigFromServer(): Promise<string> {
+  if (typeof window === 'undefined') return '';
+  try {
+    const res = await fetch('/api/auth/discord/config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.clientId && /^\d{17,20}$/.test(data.clientId)) {
+        setCustomDiscordClientId(data.clientId);
+        return data.clientId;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to sync Discord config from server:', err);
+  }
+  return '';
+}
+
 export function getEffectiveDiscordClientId(): string {
   const custom = getCustomDiscordClientId();
   if (custom && /^\d{17,20}$/.test(custom)) return custom;
@@ -76,7 +97,26 @@ export function startDiscordOAuth(options: DiscordOAuthOptions = {}): { initiate
     clientId
   });
 
-  window.location.href = `/api/auth/discord?${params.toString()}`;
+  const authUrl = `/api/auth/discord?${params.toString()}`;
+  const width = 600;
+  const height = 750;
+  const left = window.screen.width / 2 - width / 2;
+  const top = window.screen.height / 2 - height / 2;
+
+  try {
+    const authWindow = window.open(
+      authUrl,
+      'discord_oauth_popup',
+      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+    );
+    if (!authWindow) {
+      // Fallback if popup blocker denies popup creation
+      window.location.href = authUrl;
+    }
+  } catch (err) {
+    window.location.href = authUrl;
+  }
+  
   return { initiated: true, needsClientId: false };
 }
 

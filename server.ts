@@ -123,6 +123,29 @@ export const aiTelemetryState = {
   }>
 };
 
+// Global state to track Firestore Quota Exceeded status on the server
+export let isFirestoreQuotaExceededServer = false;
+
+export function handleServerFirestoreError(err: any, context: string) {
+  const errStr = err?.message || String(err);
+  const isQuota = errStr.includes('RESOURCE_EXHAUSTED') || 
+                  errStr.includes('Quota limit exceeded') || 
+                  errStr.includes('Quota exceeded') ||
+                  errStr.includes('code=resource-exhausted') ||
+                  errStr.includes('8 RESOURCE_EXHAUSTED');
+
+  if (isQuota) {
+    if (!isFirestoreQuotaExceededServer) {
+      isFirestoreQuotaExceededServer = true;
+      console.warn(`⚠️ [Firestore Server Sentinel] Firestore daily read/write quota limit has been exceeded. Pausing automated background Firestore operations until quota resets.`);
+    } else {
+      console.log(`[Firestore Server Sentinel] Quietly skipping background ${context} (Quota limit exceeded, background sync paused)`);
+    }
+  } else {
+    console.error(`[${context} Error]:`, err);
+  }
+}
+
 /**
  * Robust Multi-Tier Gemini Content Generator with Automatic Rate-Limit & Quota Downgrade
  * Waterfall:
@@ -611,6 +634,10 @@ async function loadPseoPagesFromFirestore(): Promise<any[]> {
  */
 async function savePseoPageToFirestore(page: any) {
   if (!page || !page.id) return;
+  if (isFirestoreQuotaExceededServer) {
+    console.log(`[pSEO Storage] Skipped persisting article "${page.id}" because Firestore quota is exceeded.`);
+    return;
+  }
   try {
     const { doc, setDoc } = await import('firebase/firestore');
     const sanitizedPage = sanitizeNestedArraysForFirestore(page);
@@ -620,7 +647,7 @@ async function savePseoPageToFirestore(page: any) {
     }, { merge: true });
     console.log(`[pSEO Storage] Article "${page.id}" persisted to Firestore.`);
   } catch (err) {
-    console.log(`[pSEO Storage] Could not persist article "${page.id}" to Firestore:`, err);
+    handleServerFirestoreError(err, 'pSEO Storage Save');
   }
 }
 
@@ -1702,7 +1729,7 @@ async function runFivemTrafficSyncJob() {
   lastFivemSyncTimestamp = Date.now();
 
   // Persist updated server rankings & traffic to Firestore if enabled
-  if (process.env.SYNC_FIVEM_TO_FIRESTORE === 'true') {
+  if (process.env.SYNC_FIVEM_TO_FIRESTORE === 'true' && !isFirestoreQuotaExceededServer) {
     try {
       const { doc, setDoc } = await import('firebase/firestore');
       for (const server of updatedServers) {
@@ -1713,6 +1740,7 @@ async function runFivemTrafficSyncJob() {
       }
       console.log(`[FiveM Cron Job] Successfully synced & ranked ${updatedServers.length} FiveM servers by active traffic.`);
     } catch (err) {
+      handleServerFirestoreError(err, 'FiveM Traffic Sync Job');
       console.log('[FiveM Cron Job] Updated server traffic in memory (Firestore sync skipped or offline).');
     }
   } else {
@@ -4000,6 +4028,17 @@ Showing top entries for "${query || 'All'}":
     const nowIso = new Date().toISOString();
     const todayStr = nowIso.split('T')[0];
 
+    if (isFirestoreQuotaExceededServer) {
+      return {
+        executedAt: nowIso,
+        scannedCount: 0,
+        alertsDispatched: 0,
+        alertLogs: [],
+        forceBypassUsed: forceBypassSentCheck,
+        error: 'Firestore quota limit exceeded'
+      };
+    }
+
     try {
       const { collection, getDocs, addDoc, doc, updateDoc } = await import('firebase/firestore');
       const userProfilesSnap = await getDocs(collection(db, 'userProfiles'));
@@ -4120,7 +4159,7 @@ Showing top entries for "${query || 'All'}":
         }
       }
     } catch (err) {
-      console.error('[VIP Expiry Server Cron] Firestore error:', err);
+      handleServerFirestoreError(err, 'VIP Expiry Server Cron');
     }
 
     const logResult = {
@@ -4539,21 +4578,27 @@ Showing top entries for "${query || 'All'}":
     trigger = 'interval',
     targetUid?: string
   ): Promise<DiscordRoleSyncSummary> {
+    const emptySummary = {
+      executedAt: new Date().toISOString(),
+      trigger,
+      totalProfilesChecked: 0,
+      totalDiscordLinked: 0,
+      syncedCount: 0,
+      unmodifiedCount: 0,
+      notInGuildCount: 0,
+      errorCount: 0,
+      roleChanges: [],
+      durationMs: 0
+    };
+
+    if (isFirestoreQuotaExceededServer) {
+      return emptySummary;
+    }
+
     if (isDiscordRoleSyncRunning && !targetUid) {
       console.log('[Discord Role Sync] Sync already in progress, skipping concurrent run');
       return (
-        state.discordRoleSyncLogs[0] || {
-          executedAt: new Date().toISOString(),
-          trigger,
-          totalProfilesChecked: 0,
-          totalDiscordLinked: 0,
-          syncedCount: 0,
-          unmodifiedCount: 0,
-          notInGuildCount: 0,
-          errorCount: 0,
-          roleChanges: [],
-          durationMs: 0
-        }
+        state.discordRoleSyncLogs[0] || emptySummary
       );
     }
 
@@ -4570,7 +4615,7 @@ Showing top entries for "${query || 'All'}":
     const roleChanges: any[] = [];
 
     try {
-      const { collection, getDocs, doc, setDoc, addDoc } = await import('firebase/firestore');
+      const { collection, getDocs, doc, setDoc, addDoc, query, where, limit } = await import('firebase/firestore');
 
       // 1. Fetch server ownership & subscriptions mapping
       const ownedServersMap = new Map<string, { tier: string; active: boolean }>();
@@ -4668,16 +4713,32 @@ Showing top entries for "${query || 'All'}":
           // In-App Notification on role change
           if (syncResult.rolesAdded.length > 0) {
             try {
-              await addDoc(collection(db, 'userNotifications'), {
-                targetUserId: uid,
-                targetUsername: username,
-                type: 'VIP_EXPIRY_ALERT',
-                title: '✨ Discord VIP Server Roles Synchronized!',
-                message: `Your Discord account (<@${discordUserId}>) has been granted ${syncResult.rolesAdded.map((r: any) => r.roleName).join(', ')} in the official Vice City Discord server.`,
-                timestamp: nowIso,
-                read: false,
-                targetTab: 'profile'
-              });
+              const notifMsg = `Your Discord account (<@${discordUserId}>) has been granted ${syncResult.rolesAdded.map((r: any) => r.roleName).join(', ')} in the official Vice City Discord server.`;
+              
+              // Query to check if notification already exists to avoid spamming
+              const notifQuery = query(
+                collection(db, 'userNotifications'),
+                where('targetUserId', '==', uid),
+                where('title', '==', '✨ Discord VIP Server Roles Synchronized!'),
+                where('message', '==', notifMsg),
+                limit(1)
+              );
+              const notifSnap = await getDocs(notifQuery);
+
+              if (notifSnap.empty) {
+                await addDoc(collection(db, 'userNotifications'), {
+                  targetUserId: uid,
+                  targetUsername: username,
+                  type: 'VIP_EXPIRY_ALERT',
+                  title: '✨ Discord VIP Server Roles Synchronized!',
+                  message: notifMsg,
+                  timestamp: nowIso,
+                  read: false,
+                  targetTab: 'profile'
+                });
+              } else {
+                console.log(`[Discord Role Sync] Skipping duplicate notification for ${username}`);
+              }
             } catch (notifErr) {
               console.warn('[Discord Role Sync] In-app notification creation warning:', notifErr);
             }
@@ -4713,7 +4774,7 @@ Showing top entries for "${query || 'All'}":
         }
       }
     } catch (err: any) {
-      console.error('[Discord Role Sync Background Service Error]:', err);
+      handleServerFirestoreError(err, 'Discord Role Sync Background Service');
     } finally {
       if (!targetUid) isDiscordRoleSyncRunning = false;
     }
@@ -5753,6 +5814,10 @@ Showing top entries for "${query || 'All'}":
   };
 
   const runChallengesPayoutCheckServer = async () => {
+    if (isFirestoreQuotaExceededServer) {
+      return;
+    }
+
     try {
       const activeRef = doc(db, 'tuning_challenges', 'weekly_tuning_challenge_active');
       const activeSnap = await getDoc(activeRef);
@@ -5765,7 +5830,7 @@ Showing top entries for "${query || 'All'}":
         console.log('[Challenges Payout Checker] Automated payout completed:', result);
       }
     } catch (err) {
-      console.error('[Challenges Payout Checker] Failed during background checking:', err);
+      handleServerFirestoreError(err, 'Challenges Payout Checker');
     }
   };
 
@@ -5907,6 +5972,18 @@ Showing top entries for "${query || 'All'}":
     const errors: string[] = [];
     let totalChecked = 0;
 
+    if (isFirestoreQuotaExceededServer) {
+      return {
+        timestamp: new Date().toISOString(),
+        trigger,
+        durationMs: 0,
+        totalChecked: 0,
+        staleCount: 0,
+        clearedRooms: [],
+        errors: ['Firestore quota limit exceeded']
+      };
+    }
+
     try {
       const { collection, getDocs, doc, deleteDoc, updateDoc } = await import('firebase/firestore');
       const roomsSnap = await getDocs(collection(db, 'squad_rooms'));
@@ -5958,7 +6035,7 @@ Showing top entries for "${query || 'All'}":
         }
       }
     } catch (err: any) {
-      console.error('[Squad Cleanup Error]:', err);
+      handleServerFirestoreError(err, 'Squad Cleanup');
       errors.push(err?.message || String(err));
     }
 
@@ -6096,6 +6173,9 @@ Showing top entries for "${query || 'All'}":
 
   // Automated Background Firestore Write-Behind Buffer Flusher (runs every 60 seconds)
   setInterval(() => {
+    if (isFirestoreQuotaExceededServer) {
+      return;
+    }
     try {
       const adminDb = getAdminFirestore();
       flushTelemetryWriteBuffer(adminDb)
@@ -6105,7 +6185,7 @@ Showing top entries for "${query || 'All'}":
           }
         })
         .catch((err) => {
-          console.error('[Write-Behind Worker] Flush background process failed:', err);
+          handleServerFirestoreError(err, 'Write-Behind Worker');
         });
     } catch (err) {
       console.error('[Write-Behind Worker] Failed to load Admin Firestore for flush:', err);
@@ -6164,6 +6244,13 @@ Showing top entries for "${query || 'All'}":
   // -------------------------------------------------------------
   // B2B SAAS NO-CODE WHITELIST & DISCORD OAUTH INTEGRATION ENDPOINTS
   // -------------------------------------------------------------
+
+  // Endpoint to return the configured Discord Client ID to the client-side dynamically
+  app.get('/api/auth/discord/config', (_req: Request, res: Response) => {
+    return res.json({
+      clientId: process.env.DISCORD_CLIENT_ID || ''
+    });
+  });
 
   // 1. Discord OAuth Initiation Endpoint
   app.get('/api/auth/discord', async (req: Request, res: Response) => {
@@ -6393,18 +6480,156 @@ Showing top entries for "${query || 'All'}":
         }
       }
 
-      return res.redirect(
-        appendRedirectParams(returnUrl, {
+      // Support popup communication with iframe parent window
+      return res.status(200).send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Discord Authentication Successful</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0c0a09;
+      color: #f5f5f4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+    }
+    .card {
+      background: #1c1917;
+      border: 1px solid #292524;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 400px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .spinner {
+      border: 3px solid #292524;
+      border-top: 3px solid #6366f1;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      margin: 16px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    h2 { margin: 0 0 8px 0; color: #fff; font-size: 20px; }
+    p { margin: 0; color: #a8a29e; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Linking Account...</h2>
+    <div class="spinner"></div>
+    <p>Please wait while we sync your Discord profile. This window will close automatically.</p>
+  </div>
+  <script>
+    const payload = {
+      type: 'OAUTH_AUTH_SUCCESS',
+      success: true,
+      discordId: ${JSON.stringify(discordUser.id)},
+      discordUsername: ${JSON.stringify(discordTag)},
+      discordAvatar: ${JSON.stringify(avatarUrl)},
+      uid: ${JSON.stringify(targetUid || uid)}
+    };
+
+    if (window.opener && window.opener !== window) {
+      try {
+        window.opener.postMessage(payload, '*');
+        setTimeout(() => {
+          window.close();
+        }, 800);
+      } catch (e) {
+        console.error("Failed to postMessage, redirecting instead:", e);
+        window.location.href = ${JSON.stringify(appendRedirectParams(returnUrl, {
           discordLinked: 'true',
           discordId: discordUser.id,
           discordUsername: discordTag,
           discordAvatar: avatarUrl,
           uid: targetUid || uid
-        })
-      );
+        }))};
+      }
+    } else {
+      window.location.href = ${JSON.stringify(appendRedirectParams(returnUrl, {
+        discordLinked: 'true',
+        discordId: discordUser.id,
+        discordUsername: discordTag,
+        discordAvatar: avatarUrl,
+        uid: targetUid || uid
+      }))};
+    }
+  </script>
+</body>
+</html>
+      `);
     } catch (err: any) {
       console.error('[Discord OAuth] Server error during callback processing:', err);
-      return res.redirect(appendRedirectParams(returnUrl, { discordError: err?.message || 'Discord OAuth processing error' }));
+      const errMsg = err?.message || 'Discord OAuth processing error';
+      return res.status(200).send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Discord Authentication Failed</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0c0a09;
+      color: #f5f5f4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+    }
+    .card {
+      background: #1c1917;
+      border: 1px solid #7f1d1d;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 400px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    h2 { margin: 0 0 8px 0; color: #ef4444; font-size: 20px; }
+    p { margin: 0; color: #a8a29e; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Connection Failed</h2>
+    <p>${errMsg}</p>
+  </div>
+  <script>
+    const payload = {
+      type: 'OAUTH_AUTH_ERROR',
+      success: false,
+      error: ${JSON.stringify(errMsg)}
+    };
+
+    if (window.opener && window.opener !== window) {
+      try {
+        window.opener.postMessage(payload, '*');
+        setTimeout(() => {
+          window.close();
+        }, 2000);
+      } catch (e) {
+        window.location.href = ${JSON.stringify(appendRedirectParams(returnUrl, { discordError: errMsg }))};
+      }
+    } else {
+      window.location.href = ${JSON.stringify(appendRedirectParams(returnUrl, { discordError: errMsg }))};
+    }
+  </script>
+</body>
+</html>
+      `);
     }
   });
 
