@@ -1,0 +1,560 @@
+{
+  "entities": {
+    "chatMessages": {
+      "title": "Chat Messages",
+      "description": "Community chat messages posted in Vice City channels.",
+      "type": "object",
+      "properties": {
+        "channel": { "type": "string" },
+        "username": { "type": "string" },
+        "avatar": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "isVip": { "type": "boolean" },
+        "attachment": { "type": "object" },
+        "reactions": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["channel", "username", "text"]
+    },
+    "userProfiles": {
+      "title": "User Profiles",
+      "description": "Registered player profiles, GamerTags, VIP status, and persistent OAuth integrations.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "usernameLower": { "type": "string" },
+        "email": { "type": "string" },
+        "avatar": { "type": "string" },
+        "role": { "type": "string" },
+        "isAdmin": { "type": "boolean" },
+        "isStaff": { "type": "boolean" },
+        "isVip": { "type": "boolean" },
+        "vcBalance": { "type": "number" },
+        "lastLogin": { "type": "number" },
+        "dailyStreak": { "type": "number" },
+        "vipExpires": { "type": "string" },
+        "status": { "type": "string" },
+        "changeHistory": { "type": "array" },
+        "discordConnected": { "type": "boolean" },
+        "discordId": { "type": "string" },
+        "discordUsername": { "type": "string" },
+        "discordAvatar": { "type": "string" },
+        "claimedByDiscordId": { "type": "string" },
+        "claimedByDiscordUsername": { "type": "string" },
+        "discordAuth": {
+          "type": "object",
+          "description": "Secure server-encrypted Discord OAuth credentials and token metadata for persistent API integrations.",
+          "properties": {
+            "encryptedAccessToken": { "type": "string", "description": "AES-256-GCM encrypted Discord OAuth access token" },
+            "encryptedRefreshToken": { "type": "string", "description": "AES-256-GCM encrypted Discord OAuth refresh token" },
+            "tokenType": { "type": "string" },
+            "scope": { "type": "string" },
+            "expiresAt": { "type": "number", "description": "Timestamp in milliseconds when the access token expires" },
+            "discordId": { "type": "string" },
+            "discordUsername": { "type": "string" },
+            "discordAvatar": { "type": "string" },
+            "linkedAt": { "type": "string", "format": "date-time" },
+            "lastRefreshedAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["username"]
+    },
+    "pendingApprovals": {
+      "title": "Pending Moderation Submissions",
+      "description": "RP servers and custom vehicle builds pending staff review.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "submittedBy": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "detail": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "title"]
+    },
+    "customChannels": {
+      "title": "VIP Custom Community Channels",
+      "description": "Private and public community hubs created by VIP players.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "isPrivate": { "type": "boolean" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "creatorAvatar": { "type": "string" },
+        "inviteCode": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "members": { "type": "array" },
+        "pendingRequests": { "type": "array" },
+        "deletionRequested": { "type": "boolean" }
+      },
+      "required": ["name", "creatorId"]
+    },
+    "communityPolls": {
+      "title": "Community Polls",
+      "description": "Live community voting polls for GTA VI topics.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "totalVotes": { "type": "number" },
+        "options": { "type": "object" },
+        "voters": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title"]
+    },
+    "marketing_campaigns": {
+      "title": "Sentinel Marketing & Growth Campaigns",
+      "description": "Internal platform growth assets, viral video scripts, pSEO matrices, and B2B client server marketing kits.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "scope": { "type": "string", "enum": ["internal_platform", "client_server"] },
+        "serverId": { "type": "string" },
+        "ownerDiscordId": { "type": "string" },
+        "targetDomain": { "type": "string" },
+        "niche": { "type": "string", "enum": ["gtavi_portal", "fivem_rp", "gaming_tools", "creator_hub"] },
+        "keywords": { "type": "array" },
+        "generatedAssets": { "type": "object" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "scope", "ownerDiscordId", "targetDomain", "niche", "keywords", "createdAt"]
+    },
+    "giftCards": {
+      "title": "Gift Cards & Vouchers",
+      "description": "Vice City Shark Cards, In-Game Credit Vouchers, and VIP Passes.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "tier": { "type": "string" },
+        "cashValue": { "type": "number" },
+        "vipDaysGranted": { "type": "number" },
+        "isRedeemed": { "type": "boolean" },
+        "redeemedByUid": { "type": "string" },
+        "redeemedByUsername": { "type": "string" },
+        "redeemedAt": { "type": "string" },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "recipientGamerTag": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "cashValue"]
+    },
+    "userNotifications": {
+      "title": "User Notifications & Alerts",
+      "description": "Automated system notifications for VIP expiration warnings and channel events.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "daysRemaining": { "type": "number" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title"]
+    },
+    "mail": {
+      "title": "Firebase Trigger Email Queue",
+      "description": "Outbound automated email document queue processed by Firebase Trigger Email extension.",
+      "type": "object",
+      "properties": {
+        "to": { "type": "array" },
+        "message": { "type": "object" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["to", "message"]
+    },
+    "squad_rooms": {
+      "title": "Squad Radar & Co-Op Party Rooms",
+      "description": "Real-time party squad map coordination, player position telemetry, shared waypoints, and collectible progress.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "hostUid": { "type": "string" },
+        "isVipRoom": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "members": { "type": "object" },
+        "waypoints": { "type": "array" },
+        "checkedCollectibles": { "type": "array" }
+      },
+      "required": ["roomId", "hostUid"]
+    },
+    "vehicle_tuning_builds": {
+      "title": "Community Vehicle Tuning Builds",
+      "description": "Custom handling.meta tuning presets, telemetry specs, and community upvoted vehicle setups.",
+      "type": "object",
+      "properties": {
+        "buildId": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "vehicleModel": { "type": "string" },
+        "buildTitle": { "type": "string" },
+        "tags": { "type": "array" },
+        "upvotesCount": { "type": "number" },
+        "upvotedBy": { "type": "array" },
+        "dislikesCount": { "type": "number" },
+        "dislikedBy": { "type": "array" },
+        "isVerifiedPreset": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "handlingData": { "type": "object" }
+      },
+      "required": ["buildId", "authorUid", "vehicleModel", "buildTitle", "handlingData"]
+    },
+    "economy_presets": {
+      "title": "RP Server Economy Presets",
+      "description": "Custom RP server economy configurations, inflation settings, wage matrices, and asset price presets for QBCore, ESX, and QBX.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "framework": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "likesCount": { "type": "number" },
+        "dislikesCount": { "type": "number" },
+        "state": { "type": "object" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["authorUid", "title", "framework", "state"]
+    },
+    "whitelist_forms": {
+      "title": "No-Code RP Whitelist Form Configurations",
+      "description": "Server owner custom whitelist question schemas, Discord role ID, and Discord webhook configurations.",
+      "type": "object",
+      "properties": {
+        "serverId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "serverName": { "type": "string" },
+        "serverSlug": { "type": "string" },
+        "discordGuildId": { "type": "string" },
+        "discordRoleId": { "type": "string" },
+        "discordWebhookUrl": { "type": "string" },
+        "isSubscriptionActive": { "type": "boolean" },
+        "customQuestions": { "type": "array" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["serverId", "ownerUid", "serverName", "serverSlug"]
+    },
+    "whitelist_applications": {
+      "title": "RP Server Whitelist Applications",
+      "description": "Applicant submissions with verified Discord identity, answers, and staff review status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "serverId": { "type": "string" },
+        "applicantUid": { "type": "string" },
+        "discordId": { "type": "string" },
+        "discordTag": { "type": "string" },
+        "discordAvatar": { "type": "string" },
+        "answers": { "type": "object" },
+        "status": { "type": "string" },
+        "reviewerNotes": { "type": "string" },
+        "reviewedBy": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "reviewedAt": { "type": "number" }
+      },
+      "required": ["id", "serverId", "applicantUid", "discordId", "discordTag", "status", "createdAt"]
+    },
+    "issueReports": {
+      "title": "Issue & Bug Reports",
+      "description": "User submitted issue reports, diagnostics telemetry, and attached screenshots.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reportRefNumber": { "type": "string" },
+        "category": { "type": "string" },
+        "severity": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "screenshotUrl": { "type": "string" },
+        "reporterUid": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "reporterEmail": { "type": "string" },
+        "reporterRole": { "type": "string" },
+        "isVip": { "type": "boolean" },
+        "activeTab": { "type": "string" },
+        "currentUrl": { "type": "string" },
+        "browser": { "type": "string" },
+        "os": { "type": "string" },
+        "screenResolution": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "createdAtMs": { "type": "number" }
+      },
+      "required": ["title", "description", "category", "severity"]
+    },
+    "bugReports": {
+      "title": "Bug Reports Direct Collection",
+      "description": "Player and staff submitted bug reports logged with pending status for admin HQ triage.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reportRefNumber": { "type": "string" },
+        "category": { "type": "string" },
+        "severity": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "stepsToReproduce": { "type": "string" },
+        "screenshotUrl": { "type": "string" },
+        "reporterUid": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "reporterEmail": { "type": "string" },
+        "reporterRole": { "type": "string" },
+        "isVip": { "type": "boolean" },
+        "activeTab": { "type": "string" },
+        "currentUrl": { "type": "string" },
+        "browser": { "type": "string" },
+        "os": { "type": "string" },
+        "screenResolution": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "status": { "type": "string" },
+        "adminNotes": { "type": "string" },
+        "resolvedAt": { "type": "string" },
+        "resolvedBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "createdAtMs": { "type": "number" }
+      },
+      "required": ["title", "description", "category", "severity", "status"]
+    },
+    "tuning_challenges": {
+      "title": "Tuning Championship Events",
+      "description": "Admin configured weekly physics and tuning championship events.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "baseVehicle": { "type": "string" },
+        "vehicleSlug": { "type": "string" },
+        "targetMetric": { "type": "string" },
+        "metricLabel": { "type": "string" },
+        "metricUnit": { "type": "string" },
+        "rewardVc": { "type": "number" },
+        "prizeDescription": { "type": "string" },
+        "constraints": { "type": "object" },
+        "isActive": { "type": "boolean" },
+        "totalSubmissions": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "expiresAt": { "type": "number" }
+      },
+      "required": ["id", "title", "baseVehicle", "targetMetric"]
+    },
+    "challenge_entries": {
+      "title": "Challenge Submissions & Leaderboard",
+      "description": "Player vehicle builds submitted to championship competitions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "challengeId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "avatar": { "type": "string" },
+        "isVip": { "type": "boolean" },
+        "buildTitle": { "type": "string" },
+        "metricValue": { "type": "number" },
+        "metricDisplay": { "type": "string" },
+        "calculatedScore": { "type": "number" },
+        "handlingData": { "type": "object" },
+        "telemetry": { "type": "object" },
+        "submittedAt": { "type": "number" }
+      },
+      "required": ["id", "challengeId", "userId", "userName", "metricValue"]
+    },
+    "past_challenges": {
+      "title": "Archived Championship Events",
+      "description": "Historical championship winners and archived leaderboards.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "challenge": { "type": "object" },
+        "winner": { "type": "object" },
+        "totalSubmissions": { "type": "number" },
+        "completedAt": { "type": "number" }
+      },
+      "required": ["id", "challenge", "completedAt"]
+    },
+    "staff_activity_logs": {
+      "title": "Staff Activity & Modifications Audit Ledger",
+      "description": "Tamper-evident audit ledger monitoring actions, profile edits, and moderations performed by L3 staff, accessible exclusively by L4 administrators.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "timestampMs": { "type": "number" },
+        "actorId": { "type": "string" },
+        "actorEmail": { "type": "string" },
+        "actorUsername": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "actorClearance": { "type": "string" },
+        "actionType": { "type": "string" },
+        "actionCategory": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetName": { "type": "string" },
+        "targetType": { "type": "string" },
+        "severity": { "type": "string" },
+        "details": { "type": "string" },
+        "changes": { "type": "array" },
+        "metadata": { "type": "object" },
+        "isReviewedByL4": { "type": "boolean" },
+        "reviewedAt": { "type": "string" },
+        "reviewedBy": { "type": "string" },
+        "l4ReviewNote": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "actorUsername", "actionType", "actionCategory", "details"]
+    },
+    "bot_guild_configs": {
+      "title": "B2B Discord Bot Configurations",
+      "description": "Multi-tenant Discord server configurations for auto-whitelist automated role bindings.",
+      "type": "object",
+      "properties": {
+        "guildId": { "type": "string" },
+        "serverId": { "type": "string" },
+        "ownerDiscordId": { "type": "string" },
+        "whitelistRoleId": { "type": "string" },
+        "reviewChannelId": { "type": "string" },
+        "logsChannelId": { "type": "string" },
+        "minAccountAgeDays": { "type": "number" },
+        "reapplyCooldownDays": { "type": "number" },
+        "autoRoleEnabled": { "type": "boolean" },
+        "isSubscriptionActive": { "type": "boolean" },
+        "tier": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["guildId", "serverId", "whitelistRoleId", "reviewChannelId"]
+    },
+    "ad_impressions": {
+      "title": "Ad Placement Visibility & Telemetry Impressions",
+      "description": "Logged viewable ad unit impressions with intersection observer duration, route telemetry, and placement metadata for monetization optimization.",
+      "type": "object",
+      "properties": {
+        "slotDomId": { "type": "string" },
+        "slotType": { "type": "string" },
+        "position": { "type": "string" },
+        "adSlotId": { "type": "string" },
+        "pathname": { "type": "string" },
+        "viewportWidth": { "type": "number" },
+        "isViewable": { "type": "boolean" },
+        "intersectionRatio": { "type": "number" },
+        "viewableDurationMs": { "type": "number" },
+        "deviceType": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "timestampMs": { "type": "number" }
+      },
+      "required": ["slotDomId", "slotType", "position", "pathname", "isViewable"]
+    },
+    "seo_meta_overrides": {
+      "title": "SEO & Social Open Graph Metadata Overrides",
+      "description": "Real-time, zero-redeploy SEO title, meta descriptions, Open Graph, Twitter Cards, and JSON-LD schema configurations for all site sections.",
+      "type": "object",
+      "properties": {
+        "sectionId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "keywords": { "type": "array" },
+        "canonicalUrl": { "type": "string" },
+        "ogTitle": { "type": "string" },
+        "ogDescription": { "type": "string" },
+        "ogImage": { "type": "string" },
+        "ogType": { "type": "string" },
+        "ogSiteName": { "type": "string" },
+        "twitterCard": { "type": "string" },
+        "twitterTitle": { "type": "string" },
+        "twitterDescription": { "type": "string" },
+        "twitterImage": { "type": "string" },
+        "twitterSite": { "type": "string" },
+        "twitterCreator": { "type": "string" },
+        "robots": { "type": "string" },
+        "schemaType": { "type": "string" },
+        "customJsonLd": { "type": "object" },
+        "isCustomOverride": { "type": "boolean" },
+        "lastUpdatedBy": { "type": "string" },
+        "lastUpdatedAt": { "type": "string" },
+        "version": { "type": "number" }
+      },
+      "required": ["sectionId", "title", "description"]
+    },
+    "contentStudioArticles": {
+      "title": "Content Studio SEO Blog Articles",
+      "description": "AI-generated and user-created long-form blog drafts and published articles with full metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "metaTitle": { "type": "string" },
+        "metaDescription": { "type": "string" },
+        "targetKeywords": { "type": "array" },
+        "tone": { "type": "string" },
+        "estimatedReadTime": { "type": "string" },
+        "outline": { "type": "array" },
+        "contentMarkdown": { "type": "string" },
+        "faqItems": { "type": "array" },
+        "keyTakeaways": { "type": "array" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "slug", "contentMarkdown"]
+    },
+    "squad_referrals": {
+      "title": "Squad Invite & Viral Referral Campaigns",
+      "description": "Squad and gang referral codes with anti-Sybil verification, click tracking, and conversions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "squadName": { "type": "string" },
+        "code": { "type": "string" },
+        "clicks": { "type": "number" },
+        "conversions": { "type": "number" },
+        "rewardVc": { "type": "number" },
+        "sybilRisk": { "type": "boolean" },
+        "accountAgeDays": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "ownerUid": { "type": "string" },
+        "ownerName": { "type": "string" }
+      },
+      "required": ["squadName", "code"]
+    },
+    "creator_priority_passes": {
+      "title": "Creator CRM Priority Connect Passes",
+      "description": "Priority queue connect passes for VIP creators and streamers with weight and framework Lua snippets.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "token": { "type": "string" },
+        "weight": { "type": "number" },
+        "tierRank": { "type": "string" },
+        "monthlyImpressions": { "type": "number" },
+        "projectedInstalls": { "type": "number" },
+        "projectedRevenue": { "type": "number" },
+        "txAdminLua": { "type": "string" },
+        "qbCoreLua": { "type": "string" },
+        "esxLua": { "type": "string" },
+        "vmpCs": { "type": "string" },
+        "discordJson": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "token"]
+    }
+  }
+}
+

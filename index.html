@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var r of registrations) { r.unregister(); }
+        }).catch(function() {});
+      }
+    </script>
+    
+    <!-- Primary Meta Tags -->
+    <title>ViceIntel — Vice City Master Database, Interactive Map & Utility Suite</title>
+    <meta name="title" content="ViceIntel — Vice City Master Database, Interactive Map & Utility Suite" />
+    <meta name="description" content="The ultimate fan portal for Leonida & Vice City. Interactive map, 500+ vehicle performance specs, weapon TTK damage matrix, tuning mod cost builder, business ROI calculator, and FiveM RP directory." />
+    <meta name="keywords" content="ViceIntel, Vice City, Leonida, GTA 6 Vehicles, GTA 6 Interactive Map, GTA 6 Weapons, Mod Cost Calculator, Business ROI, FiveM RP Servers, GTA 6 Cheats, Vice City Auto" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://viceintel.app/" />
+    <meta property="og:title" content="ViceIntel — Vice City Master Database & Utility Suite" />
+    <meta property="og:description" content="Explore verified vehicle top speeds, weapon damage specs, Vice City POI interactive maps, mod calculators, and live RP server directory." />
+    <meta property="og:image" content="https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1200&q=80" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://viceintel.app/" />
+    <meta property="twitter:title" content="ViceIntel — Vice City Master Database & Utility Suite" />
+    <meta property="twitter:description" content="Interactive Vice City Map, Vehicle Specs, Weapon Matrix, and Business ROI Calculators." />
+    <meta property="twitter:image" content="https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1200&q=80" />
+
+    <link rel="canonical" href="https://viceintel.app/" />
+
+    <!-- Google Analytics (GA4) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VICE2026INTEL" id="ga-gtag-script"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-VICE2026INTEL', {
+        'cookie_flags': 'SameSite=None;Secure'
+      });
+    </script>
+
+    <!-- Schema.org Structured Data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "ViceIntel",
+        "url": "https://viceintel.app/",
+        "description": "Interactive Vice City & Leonida database portal providing vehicle stats, weapon TTK matrices, interactive maps, and profit calculators.",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "All",
+        "author": {
+          "@type": "Organization",
+          "name": "Vice City Media Network"
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-zinc-950 text-zinc-100 antialiased selection:bg-rose-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

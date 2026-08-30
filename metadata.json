@@ -1,0 +1,6 @@
+{
+  "name": "ViceIntel — Vice City Database & Utility Suite",
+  "description": "The definitive production gaming database for GTA 6. Compare vehicles & weapons, calculate mod costs & business ROI, explore Vice City POIs, and find FiveM RP servers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

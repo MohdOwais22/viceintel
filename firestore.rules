@@ -1,0 +1,214 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is signed in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Helper function to check if user is Super Admin (L4)
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token != null && 'email' in request.auth.token && (
+          request.auth.token.email == 'admin@vicecity.app' ||
+          request.auth.token.email == 'lucia.vice@outlook.com' ||
+          request.auth.token.email == 'l4_admin@vicecity.app' ||
+          request.auth.token.email == 'MohdOwais762@gmail.com' ||
+          request.auth.token.email == 'mohdowais762@gmail.com'
+        )) ||
+        (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'Admin' ||
+          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.isAdmin == true ||
+          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.level == 4))
+      );
+    }
+
+    // Helper function to check if user is Staff Moderator (L3 or L4)
+    function isStaff() {
+      return isAdmin() || (
+        isSignedIn() && (
+          (request.auth.token != null && 'email' in request.auth.token && request.auth.token.email == 'l3_staff@vicecity.app') ||
+          (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'Staff' ||
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.isStaff == true ||
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.level >= 3))
+        )
+      );
+    }
+
+    // 1. User Profiles & Accounts
+    match /userProfiles/{userId} {
+      allow read, write: if true;
+    }
+
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // 2. Squad Radar & Co-Op Tactical Party Sync
+    match /squad_rooms/{roomId} {
+      allow read, write: if true;
+    }
+
+    // 3. Vehicle Handling Builds & Tuning Presets
+    match /vehicle_tuning_builds/{buildId} {
+      allow read, write: if true;
+    }
+
+    match /tuning_challenges/{challengeId} {
+      allow read, write: if true;
+    }
+
+    match /challenge_entries/{entryId} {
+      allow read, write: if true;
+    }
+
+    match /past_challenges/{challengeId} {
+      allow read, write: if true;
+    }
+
+    // 4. RP Server Economy Balancer Presets
+    match /economy_presets/{presetId} {
+      allow read, write: if true;
+    }
+
+    // 5. Whitelist Forms (RP Server Whitelist SaaS)
+    match /whitelist_forms/{serverId} {
+      allow read, write: if true;
+    }
+
+    // 6. Whitelist Applications (Review Queue & Player Submissions)
+    match /whitelist_applications/{applicationId} {
+      allow read, write: if true;
+    }
+
+    // 7. Community Live Chat & Custom VIP Hubs
+    match /chatMessages/{messageId} {
+      allow read, write: if true;
+    }
+
+    match /customChannels/{channelId} {
+      allow read, write: if true;
+    }
+
+    // 8. Voice Comms & WebRTC Signaling
+    match /voiceComms/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /liveStreams/{streamId} {
+      allow read, write: if true;
+    }
+
+    // 9. Moderation Submissions & Pending Approvals & Issue Reports
+    match /pendingApprovals/{approvalId} {
+      allow read, write: if true;
+    }
+
+    match /issueReports/{reportId} {
+      allow read, write: if true;
+    }
+
+    match /bugReports/{reportId} {
+      allow read, write: if true;
+    }
+
+    // 10. Content Collections (Public Read & Write)
+    match /blogPosts/{id} {
+      allow read, write: if true;
+    }
+    match /contentStudioArticles/{id} {
+      allow read, write: if true;
+    }
+    match /marketing_social_posts/{id} {
+      allow read, write: if true;
+    }
+    match /vehicles/{id} {
+      allow read, write: if true;
+    }
+    match /weapons/{id} {
+      allow read, write: if true;
+    }
+    match /mapLocations/{id} {
+      allow read, write: if true;
+    }
+    match /rpServers/{id} {
+      allow read, write: if true;
+    }
+    match /chatChannels/{id} {
+      allow read, write: if true;
+    }
+    match /pseoArticles/{id} {
+      allow read, write: if true;
+    }
+
+    // 11. Community Features (Polls, Builds, Notifications, Gift Cards)
+    match /communityPolls/{pollId} {
+      allow read, write: if true;
+    }
+    match /communityBuilds/{buildId} {
+      allow read, write: if true;
+    }
+    match /giftCards/{cardId} {
+      allow read, write: if true;
+    }
+    match /userNotifications/{id} {
+      allow read, write: if true;
+    }
+    match /mail/{id} {
+      allow read, write: if true;
+    }
+
+    // 12. L3 Staff Activity Logs (Audit Ledger for L4 Admin)
+    match /staff_activity_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // 13. Multi-Tenant Discord Bot Configurations
+    match /bot_guild_configs/{guildId} {
+      allow read, write: if true;
+    }
+
+    // 14. Ad Placement Visibility & Telemetry Impressions
+    match /ad_impressions/{impressionId} {
+      allow read, write: if true;
+    }
+
+    // 15. SEO & Social Open Graph Metadata Overrides (Zero-Redeploy Live Management)
+    match /seo_meta_overrides/{sectionId} {
+      allow read, write: if true;
+    }
+
+    // 16. Sentinel Marketing & Growth Engine Campaigns
+    match /marketing_campaigns/{campaignId} {
+      allow read, write: if true;
+    }
+
+    // 17. Squad Referral Campaigns & Anti-Sybil Engine
+    match /squad_referrals/{referralId} {
+      allow read, write: if true;
+    }
+    match /squadReferrals/{referralId} {
+      allow read, write: if true;
+    }
+
+    // 18. Creator CRM Priority Connect Passes
+    match /creator_priority_passes/{passId} {
+      allow read, write: if true;
+    }
+
+    // Default catch-all for any unmapped collections
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+
+
+
