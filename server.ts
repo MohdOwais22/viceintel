@@ -32,6 +32,9 @@ import {
 } from './src/lib/aiPlatformKnowledge';
 import { doc, runTransaction, setDoc, updateDoc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from './src/lib/firebase';
+import { getAdminFirestore } from './src/lib/firebaseAdmin';
+import { generateFirestoreBundle } from './src/lib/firebase/data-bundles';
+import { flushTelemetryWriteBuffer } from './src/lib/cache/write-buffer';
 import { discordBotService } from './src/lib/discord-bot-service';
 import { startDiscordBot, getBotClient } from './src/bot/client';
 import { syncApplicationWebApproval, dispatchApplicationEmbed } from './src/bot/services/bot-dispatcher';
@@ -1953,6 +1956,26 @@ async function startServer() {
       version: '2.5.0',
       timestamp: new Date().toISOString()
     });
+  });
+
+  // High-performance static-data Firestore Bundle endpoint (CDN cached)
+  app.get('/api/bundles/static-data', async (req: Request, res: Response) => {
+    try {
+      const adminDb = getAdminFirestore();
+      // Generate a bundle containing static / low-frequency datasets (e.g. vehicles, weapons)
+      const bundleBuffer = await generateFirestoreBundle(adminDb, 'static-data-bundle', [
+        'vehicles',
+        'weapons'
+      ]);
+
+      // Set Edge caching headers to cache this binary bundle on CDN nodes for 5 mins
+      res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400');
+      res.setHeader('Content-Type', 'application/octet-stream');
+      return res.status(200).send(bundleBuffer);
+    } catch (error: any) {
+      console.error('[Data Bundle Route] Failed to generate Firestore bundle:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Bundle generation failed' });
+    }
   });
 
   // Vehicles REST API
@@ -6070,6 +6093,24 @@ Showing top entries for "${query || 'All'}":
   setInterval(() => {
     runStaleSquadRoomsCleanupServer('cron').catch(err => console.error('Scheduled squad cleanup failed:', err));
   }, 5 * 60 * 1000);
+
+  // Automated Background Firestore Write-Behind Buffer Flusher (runs every 60 seconds)
+  setInterval(() => {
+    try {
+      const adminDb = getAdminFirestore();
+      flushTelemetryWriteBuffer(adminDb)
+        .then((result) => {
+          if (result.flushedDocs > 0) {
+            console.log(`[Write-Behind Worker] Flushed ${result.flushedDocs} dirty metrics documents in bulk.`);
+          }
+        })
+        .catch((err) => {
+          console.error('[Write-Behind Worker] Flush background process failed:', err);
+        });
+    } catch (err) {
+      console.error('[Write-Behind Worker] Failed to load Admin Firestore for flush:', err);
+    }
+  }, 60 * 1000);
 
   // Automated Background VIP Expiry Timer (runs on server startup + every 6 hours)
   setTimeout(() => {
