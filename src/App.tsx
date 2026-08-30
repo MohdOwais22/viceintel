@@ -70,7 +70,6 @@ import { AdScriptLoader } from './components/ads/AdScriptLoader';
 import { detectSubdomainMode, SubdomainMode } from './lib/subdomainRouter';
 import { SubdomainBanner } from './components/SubdomainBanner';
 import { logStaffActivity } from './lib/staffAuditLogger';
-import { Analytics } from '@vercel/analytics/react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
@@ -1484,8 +1483,7 @@ export default function App() {
         />
       )}
 
-      {/* Vercel Web Analytics */}
-      <Analytics />
+
     </div>
   );
 }
