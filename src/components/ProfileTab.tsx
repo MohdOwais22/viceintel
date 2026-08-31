@@ -46,7 +46,7 @@ import {
 import { User as FirebaseUser, updateProfile, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, getDocs, collection, query, where, deleteField } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { claimDailyReward, getRewardCooldown, claim30DayVipPass, claimStreakMilestone, convertVcToVipPass, checkUserRewardStatus } from '../lib/rewardUtils';
+import { claimDailyReward, getRewardCooldown, claim30DayVipPass, claimStreakMilestone, convertVcToVipPass, checkUserRewardStatus, getTimestampFromClaimDate } from '../lib/rewardUtils';
 import { linkDiscordToUser, unlinkDiscordFromUser, fetchDiscordAuthStatus, refreshDiscordOAuthToken } from '../lib/whitelist-service';
 import {
   startDiscordOAuth,
@@ -1082,13 +1082,14 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
 
   // Daily Reward 24-hour cooldown ticker
   useEffect(() => {
-    if (!lastLogin) {
-      setTimeRemainingMs(0);
-      return;
-    }
-
     const updateCountdown = () => {
-      const elapsed = Date.now() - lastLogin;
+      const lastClaimTimeMs = getTimestampFromClaimDate(lastClaimDate, lastLogin);
+      if (!lastClaimTimeMs || lastClaimTimeMs <= 0) {
+        setTimeRemainingMs(0);
+        return;
+      }
+
+      const elapsed = Date.now() - lastClaimTimeMs;
       const cooldown = 24 * 60 * 60 * 1000; // 24 hours in ms
       if (elapsed >= cooldown) {
         setTimeRemainingMs(0);
@@ -1100,7 +1101,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [lastLogin]);
+  }, [lastLogin, lastClaimDate]);
 
   const formatTimeRemaining = (ms: number) => {
     if (ms <= 0) return '00:00:00';
@@ -1134,6 +1135,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           userLevel: res.userLevel
         });
 
+        // Dispatch globally for App.tsx toast banner dismissal and real-time sync
+        window.dispatchEvent(new CustomEvent('gtavi_reward_claimed', { detail: res }));
+
         if (res.autoUnlockedVip || res.rewardStreak >= 30) {
           onUpgradeToVip?.();
           setClaimedMilestones((prev) => ({ ...prev, day30: true }));
@@ -1145,6 +1149,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         }
       } else {
         setAuthError(res.message);
+        if (res.timeRemainingMs && res.timeRemainingMs > 0) {
+          setTimeRemainingMs(res.timeRemainingMs);
+        }
       }
     } catch (err: any) {
       console.error('Error claiming daily reward:', err);

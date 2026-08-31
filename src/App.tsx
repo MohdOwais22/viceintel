@@ -65,7 +65,7 @@ import { getTabFromPath, updatePageSeoMeta, TAB_TO_PATH } from './lib/seoRouting
 import { initSeoRealtimeSync } from './lib/seoStore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Gift, Bug, Camera, CheckCircle2, AlertTriangle, XCircle, Sparkles, Coins } from 'lucide-react';
-import { getRewardCooldown, claimDailyReward } from './lib/rewardUtils';
+import { getRewardCooldown, claimDailyReward, getTimestampFromClaimDate, checkUserRewardStatus } from './lib/rewardUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { AdScriptLoader } from './components/ads/AdScriptLoader';
 import { detectSubdomainMode, SubdomainMode } from './lib/subdomainRouter';
@@ -452,6 +452,15 @@ export default function App() {
           setIsVipActive(isVip || admin || staff);
           setIsAdmin(admin);
           setIsStaff(staff);
+
+          // Real-time synchronization of Daily Reward readiness from profile snapshot
+          const lastClaimMs = getTimestampFromClaimDate(
+            data.lastClaimDate ? String(data.lastClaimDate) : undefined,
+            typeof data.lastLogin === 'number' ? data.lastLogin : (typeof data.lastClaimedTimestamp === 'number' ? data.lastClaimedTimestamp : undefined)
+          );
+          const cooldownRemaining = getRewardCooldown(lastClaimMs, data.lastClaimDate ? String(data.lastClaimDate) : undefined);
+          const rewardReady = lastClaimMs === 0 || cooldownRemaining === 0;
+          setIsDailyRewardReady(rewardReady);
         }
       }, (err) => {
         handleFirestoreError(err, OperationType.GET, `userProfiles/${currentUser.uid}`);
@@ -464,18 +473,20 @@ export default function App() {
   }, [currentUser]);
 
   // Daily Reward Ready State & Local Toast Notification
-  const [customAlert, setCustomAlert] = useState<{
-    isOpen: boolean;
-    type: 'success' | 'warning' | 'error';
-    title: string;
-    message: string;
-    breakdown?: string;
-  } | null>(null);
-
   const [profileSubTab, setProfileSubTab] = useState<'overview' | 'daily-reward' | 'avatars' | 'vip' | 'notifications' | 'security' | 'staff'>('overview');
   const [isDailyRewardReady, setIsDailyRewardReady] = useState<boolean>(false);
   const [hasDismissedRewardToast, setHasDismissedRewardToast] = useState<boolean>(false);
   const [isClaimingDaily, setIsClaimingDaily] = useState<boolean>(false);
+
+  // Global event listener to dismiss toast when reward is claimed anywhere in the application
+  useEffect(() => {
+    const handleGlobalRewardClaimed = () => {
+      setIsDailyRewardReady(false);
+      setHasDismissedRewardToast(true);
+    };
+    window.addEventListener('gtavi_reward_claimed', handleGlobalRewardClaimed);
+    return () => window.removeEventListener('gtavi_reward_claimed', handleGlobalRewardClaimed);
+  }, []);
 
   const handleDirectClaim = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent the outer click from changing tabs
@@ -484,33 +495,20 @@ export default function App() {
     try {
       const res = await claimDailyReward(currentUser.uid);
       if (res.success) {
-        setCustomAlert({
-          isOpen: true,
-          type: 'success',
-          title: 'Daily Reward Claimed!',
-          message: res.message,
-          breakdown: res.breakdown
-        });
         setIsDailyRewardReady(false);
         setHasDismissedRewardToast(true);
-        // Dispatch event for real-time synchronization
+        // Dispatch event for real-time synchronization across tabs and components
         window.dispatchEvent(new CustomEvent('gtavi_reward_claimed', { detail: res }));
       } else {
-        setCustomAlert({
-          isOpen: true,
-          type: 'warning',
-          title: 'Daily Reward Status',
-          message: res.message
-        });
+        console.warn('Daily Reward Status:', res.message);
+        // Cooldown active or reward already claimed: dismiss toast immediately so popup disappears
+        setIsDailyRewardReady(false);
+        setHasDismissedRewardToast(true);
       }
     } catch (err: any) {
       console.error('Error claiming daily reward directly:', err);
-      setCustomAlert({
-        isOpen: true,
-        type: 'error',
-        title: 'Claim Failed',
-        message: err?.message || 'Could not connect to database.'
-      });
+      setIsDailyRewardReady(false);
+      setHasDismissedRewardToast(true);
     } finally {
       setIsClaimingDaily(false);
     }
@@ -523,58 +521,47 @@ export default function App() {
     }
 
     const checkRewardExpiry = async () => {
-      let lastLogin = 0;
       try {
-        const snap = await getDoc(doc(db, 'userProfiles', currentUser.uid));
-        if (snap.exists() && typeof snap.data()?.lastLogin === 'number') {
-          lastLogin = snap.data().lastLogin;
-        } else {
-          const cached = localStorage.getItem(`gtavi_lastLogin_${currentUser.uid}`);
-          if (cached) lastLogin = parseInt(cached, 10) || 0;
-        }
-      } catch (e) {
-        console.warn('Could not read lastLogin for daily reward check:', e);
-      }
+        const rewardStatus = await checkUserRewardStatus(currentUser.uid);
+        setIsDailyRewardReady(rewardStatus.canClaim);
 
-      const cooldownRemaining = getRewardCooldown(lastLogin);
-      if (cooldownRemaining === 0) {
-        setIsDailyRewardReady(true);
-
-        // Send browser push notification if permitted
-        if (typeof window !== 'undefined' && 'Notification' in window) {
-          if (Notification.permission === 'granted') {
-            try {
-              new Notification('🎁 Vice City Daily Reward Ready!', {
-                body: 'Your +50 Vice City Credits sign-in bonus is available to claim now!',
-                icon: '/favicon.ico'
-              });
-            } catch (err) {
-              console.warn('Browser push notification error:', err);
-            }
-          } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission().then((permission) => {
-              if (permission === 'granted') {
-                try {
-                  new Notification('🎁 Vice City Daily Reward Ready!', {
-                    body: 'Your +50 Vice City Credits sign-in bonus is available to claim now!',
-                    icon: '/favicon.ico'
-                  });
-                } catch (err) {
-                  console.warn('Browser push notification permission error:', err);
-                }
+        if (rewardStatus.canClaim && !hasDismissedRewardToast) {
+          // Send browser push notification if permitted
+          if (typeof window !== 'undefined' && 'Notification' in window) {
+            if (Notification.permission === 'granted') {
+              try {
+                new Notification('🎁 Vice City Daily Reward Ready!', {
+                  body: 'Your +50 Vice City Credits sign-in bonus is available to claim now!',
+                  icon: '/favicon.ico'
+                });
+              } catch (err) {
+                console.warn('Browser push notification error:', err);
               }
-            });
+            } else if (Notification.permission !== 'denied') {
+              Notification.requestPermission().then((permission) => {
+                if (permission === 'granted') {
+                  try {
+                    new Notification('🎁 Vice City Daily Reward Ready!', {
+                      body: 'Your +50 Vice City Credits sign-in bonus is available to claim now!',
+                      icon: '/favicon.ico'
+                    });
+                  } catch (err) {
+                    console.warn('Browser push notification permission error:', err);
+                  }
+                }
+              });
+            }
           }
         }
-      } else {
-        setIsDailyRewardReady(false);
+      } catch (e) {
+        console.warn('Could not check daily reward status:', e);
       }
     };
 
     checkRewardExpiry();
-    const interval = setInterval(checkRewardExpiry, 60000); // Check every minute
+    const interval = setInterval(checkRewardExpiry, 30000); // Check every 30 seconds
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentUser, hasDismissedRewardToast]);
 
   // Notifications State
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
@@ -1526,119 +1513,6 @@ export default function App() {
           onOpenReportModal={() => setIsReportModalOpen(true)}
         />
       )}
-
-      {/* Beautiful Custom Alert Box / Daily Reward Modal */}
-      <AnimatePresence>
-        {customAlert && customAlert.isOpen && (
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setCustomAlert(null)}
-              className="absolute inset-0 bg-zinc-950/80 backdrop-blur-md"
-            />
-
-            {/* Dialog Container */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              transition={{ type: 'spring', duration: 0.4, bounce: 0.2 }}
-              className="relative w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl shadow-black/80 flex flex-col"
-            >
-              {/* Theme glow header line */}
-              <div className={`h-1.5 w-full bg-gradient-to-r ${
-                customAlert.type === 'success' 
-                  ? 'from-emerald-500 via-teal-400 to-emerald-600' 
-                  : customAlert.type === 'warning'
-                    ? 'from-amber-500 via-orange-400 to-amber-600'
-                    : 'from-rose-500 via-red-500 to-rose-600'
-              }`} />
-
-              <div className="p-6 flex flex-col items-center text-center gap-4">
-                {/* Visual Icon Header with Radial Accent Glow */}
-                <div className="relative">
-                  <div className={`absolute inset-0 rounded-full blur-xl opacity-30 ${
-                    customAlert.type === 'success' 
-                      ? 'bg-emerald-500' 
-                      : customAlert.type === 'warning'
-                        ? 'bg-amber-500'
-                        : 'bg-rose-500'
-                  }`} />
-                  <div className={`relative p-4 rounded-2xl border flex items-center justify-center shrink-0 ${
-                    customAlert.type === 'success' 
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-                      : customAlert.type === 'warning'
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                        : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
-                  }`}>
-                    {customAlert.type === 'success' && <Gift className="w-8 h-8 animate-pulse text-emerald-400" />}
-                    {customAlert.type === 'warning' && <AlertTriangle className="w-8 h-8 text-amber-400" />}
-                    {customAlert.type === 'error' && <XCircle className="w-8 h-8 text-rose-400" />}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <h3 className="text-xl font-black text-white tracking-wide">
-                    {customAlert.title}
-                  </h3>
-                  <p className="text-sm text-zinc-300 leading-relaxed font-medium">
-                    {customAlert.message}
-                  </p>
-                </div>
-
-                {/* Optional breakdown widget */}
-                {customAlert.breakdown && (
-                  <div className="w-full bg-zinc-950/60 rounded-2xl border border-zinc-800/80 p-3.5 flex flex-col gap-2.5 text-left">
-                    <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-400">
-                      <Coins className="w-3.5 h-3.5 shrink-0" />
-                      <span>Credit Breakdown</span>
-                    </div>
-                    
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      {customAlert.breakdown.split('|').map((part, idx) => {
-                        const trimmed = part.trim();
-                        const isPlus = trimmed.includes('+') || trimmed.includes('Granted');
-                        return (
-                          <span 
-                            key={idx} 
-                            className={`px-2.5 py-1.5 rounded-xl font-bold border transition whitespace-nowrap ${
-                              isPlus 
-                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20 font-mono' 
-                                : trimmed.toLowerCase().includes('multiplier')
-                                  ? 'bg-purple-500/10 text-purple-300 border-purple-500/20'
-                                  : 'bg-zinc-900 text-zinc-300 border-zinc-850'
-                            }`}
-                          >
-                            {trimmed}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Confirm Close Button */}
-                <button
-                  type="button"
-                  onClick={() => setCustomAlert(null)}
-                  className={`w-full py-3 px-5 font-black text-sm rounded-2xl shadow-md transition duration-200 cursor-pointer ${
-                    customAlert.type === 'success'
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-emerald-500/10'
-                      : customAlert.type === 'warning'
-                        ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-amber-500/10'
-                        : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/10'
-                  }`}
-                >
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
 
     </div>

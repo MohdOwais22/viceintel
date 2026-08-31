@@ -40,7 +40,7 @@ const VIP_30_DAYS_MS = 30 * 24 * 60 * 60 * 1000; // 30 Days in milliseconds
 /**
   * Helper to parse timestamp from ISO date string or numeric timestamp.
   */
-function getTimestampFromClaimDate(claimDateStr?: string, fallbackTimestamp?: number): number {
+export function getTimestampFromClaimDate(claimDateStr?: string, fallbackTimestamp?: number): number {
   if (claimDateStr) {
     const parsed = Date.parse(claimDateStr);
     if (!isNaN(parsed) && parsed > 0) return parsed;
