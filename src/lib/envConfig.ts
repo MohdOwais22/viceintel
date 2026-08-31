@@ -52,6 +52,12 @@ export const ENV = {
   
   /** Discord Integration OAuth2 Redirect URI */
   DISCORD_REDIRECT_URI: getEnvVar('DISCORD_REDIRECT_URI', ''),
+
+  /** Discord Custom Alert Webhooks */
+  DISCORD_ANNOUNCEMENTS_WEBHOOK_URL: getEnvVar('DISCORD_ANNOUNCEMENTS_WEBHOOK_URL', ''),
+  DISCORD_VERIFIED_NEWS_WEBHOOK_URL: getEnvVar('DISCORD_VERIFIED_NEWS_WEBHOOK_URL', ''),
+  DISCORD_BOT_TOKEN: getEnvVar('DISCORD_BOT_TOKEN', ''),
+  API_BOT_SECRET_KEY: getEnvVar('API_BOT_SECRET_KEY', 'vice_bot_alert_secret_2026'),
   
   /** Default Locale for Number & Date Formatting */
   DEFAULT_LOCALE: getEnvVar('DEFAULT_LOCALE', 'en-US'),

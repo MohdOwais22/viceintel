@@ -41,6 +41,7 @@ import { WebsiteInteractiveModel } from './WebsiteInteractiveModel';
 import { PlatformTreeModel } from './PlatformTreeModel';
 import { WhitelistApiDocs } from './whitelist/WhitelistApiDocs';
 import { SubdomainDeploymentGuide } from './deployment/SubdomainDeploymentGuide';
+import { CustomWebhookBotAdminCms } from './admin/CustomWebhookBotAdminCms';
 
 interface DocumentationTabProps {
   onNavigate?: (tab: ActiveTab, targetId?: string) => void;
@@ -52,7 +53,7 @@ export const DocumentationTab: React.FC<DocumentationTabProps> = ({ onNavigate }
 
   // Sub-navigation within each category
   const [archSubView, setArchSubView] = useState<'tree' | 'routes' | 'overview'>('tree');
-  const [apiSubView, setApiSubView] = useState<'endpoints' | 'whitelist-api' | 'playground'>('endpoints');
+  const [apiSubView, setApiSubView] = useState<'endpoints' | 'whitelist-api' | 'webhook-bot' | 'playground'>('endpoints');
   const [endpointCategoryFilter, setEndpointCategoryFilter] = useState<'ALL' | 'CORE' | 'DATABASE' | 'COMMUNITY' | 'AI_SEO' | 'WHITELIST' | 'PAYMENTS'>('ALL');
   const [endpointSearch, setEndpointSearch] = useState<string>('');
   const [aiSeoSubView, setAiSeoSubView] = useState<'gemini' | 'pseo'>('gemini');
@@ -234,8 +235,15 @@ export const DocumentationTab: React.FC<DocumentationTabProps> = ({ onNavigate }
       category: 'AI_SEO',
       method: 'POST',
       path: '/api/seo/auto-generate',
-      description: 'Trigger autonomous web search & Gemini AI synthesis to crawl latest GTA 6 news and create pSEO pages. Authenticated by CRON_SECRET_KEY.',
+      description: 'Trigger autonomous 15-minute web search & Gemini AI synthesis to crawl latest GTA 6 news and create pSEO pages. Authenticated by CRON_SECRET_KEY.',
       responseExample: '{\n  "success": true,\n  "message": "GTA 6 News Engine executed successfully!",\n  "generatedPage": { "id": "gta6-midnight-news-2026-08-22-x8z2", "slug": "gta-6-vice-city-handling" }\n}'
+    },
+    {
+      category: 'AI_SEO',
+      method: 'POST',
+      path: '/api/cron/merge-prune',
+      description: 'Executes the automated 12-hour pSEO consolidation pass: merges overlapping topics into authoritative guides and prunes stale news articles older than 30 days.',
+      responseExample: '{\n  "success": true,\n  "message": "Successfully executed pSEO Smart Merge & 30-Day Retention Pruning!",\n  "stats": {\n    "mergedCount": 2,\n    "prunedCount": 1,\n    "retainedCount": 24\n  }\n}'
     },
     {
       category: 'WHITELIST',
@@ -764,6 +772,15 @@ export const DocumentationTab: React.FC<DocumentationTabProps> = ({ onNavigate }
               <span>FiveM Whitelist API Gateway</span>
             </button>
             <button
+              onClick={() => setApiSubView('webhook-bot')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                apiSubView === 'webhook-bot' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5 text-cyan-300" />
+              <span>Custom Webhook / API Bot</span>
+            </button>
+            <button
               onClick={() => setApiSubView('playground')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
                 apiSubView === 'playground' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
@@ -777,6 +794,13 @@ export const DocumentationTab: React.FC<DocumentationTabProps> = ({ onNavigate }
           {/* Sub-view: Whitelist API */}
           {apiSubView === 'whitelist-api' && (
             <WhitelistApiDocs onNavigate={onNavigate} />
+          )}
+
+          {/* Sub-view: Custom Webhook / API Bot Integration */}
+          {apiSubView === 'webhook-bot' && (
+            <div className="space-y-4">
+              <CustomWebhookBotAdminCms />
+            </div>
           )}
 
           {/* Sub-view: Registered Endpoints */}

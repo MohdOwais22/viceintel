@@ -682,12 +682,12 @@ export const SEED_AGENT_STATUSES = [
   {
     id: 'agent-scheduler',
     name: 'Autonomous Orchestrator',
-    role: 'Manages cron pipelines, recurring audits, and midnight background crawls.',
-    description: 'Manages cron pipelines, recurring audits, and midnight background crawls.',
+    role: 'Manages cron pipelines, recurring audits, and 15-minute background crawls.',
+    description: 'Manages cron pipelines, recurring audits, and 15-minute background crawls.',
     status: 'active' as const,
     model: 'Gemini 3.7 Flash',
-    lastRun: 'Continuous / 30m',
-    metricsSummary: '4 recurring cron tasks scheduled & running healthy',
+    lastRun: 'Continuous / 15m',
+    metricsSummary: '5 recurring cron tasks scheduled & running healthy',
     metrics: { successRate: 99, tasksCompleted: 120, avgLatencyMs: 250 },
     actionCount: 120
   }

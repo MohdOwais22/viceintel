@@ -75,12 +75,14 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
   const [rotateErrorMsg, setRotateErrorMsg] = useState<string | null>(null);
 
   // Health State
-  const [clientChecks, setClientChecks] = useState<EnvCheckResult[]>([]);
+  const [clientChecks, setClientChecks] = useState<EnvCheckResult[]>(() => validateClientEnvironment());
   const [serverChecks, setServerChecks] = useState<EnvCheckResult[]>([]);
   const [firebaseResult, setFirebaseResult] = useState<FirebaseHealthResult | null>(null);
   const [integrity, setIntegrity] = useState<SystemPreBuildIntegrity | null>(null);
   const [serverInfo, setServerInfo] = useState<any>(null);
-  const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
+  const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([
+    `[${new Date().toLocaleTimeString()}] [System Ready] Diagnostic Suite is in manual mode. Click 'Run Full Diagnostic' or 'Simulate Pre-Build' to initiate an on-demand audit.`
+  ]);
 
   const openRotateModal = (item: EnvCheckResult) => {
     setActiveRotateItem(item);
@@ -172,11 +174,11 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
   };
 
   /**
-   * Run the full automated diagnostic across Client, Server, and Firebase
+   * Run the full manual diagnostic across Client, Server, and Firebase
    */
   const runFullDiagnostic = async () => {
     setIsRunningDiagnostic(true);
-    addLog('🚀 Initiating automated pre-build environment & Firebase health diagnostic...');
+    addLog('🚀 Initiating manual on-demand pre-build environment & Firebase health diagnostic...');
 
     try {
       // 1. Client Environment Checks
@@ -211,9 +213,9 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
       addLog('📊 Step 4/4: Calculating Pre-Build System Integrity & Deployment Readiness Score...');
       const computedIntegrity = computeOverallHealthScore(clientResults, sChecks, fbResult);
       setIntegrity(computedIntegrity);
-      addLog(`🏁 Diagnostic complete. Overall Score: ${computedIntegrity.score}% (${computedIntegrity.verdict}).`);
+      addLog(`🏁 Manual diagnostic complete. Overall Score: ${computedIntegrity.score}% (${computedIntegrity.verdict}).`);
 
-      showNotification(`Diagnostic finished! System score: ${computedIntegrity.score}% (${computedIntegrity.overallStatus})`);
+      showNotification(`Manual diagnostic finished! System score: ${computedIntegrity.score}% (${computedIntegrity.overallStatus})`);
 
       // Log to staff audit
       logStaffActivity({
@@ -223,7 +225,7 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
         targetName: 'Environment Health Audit',
         targetType: 'system',
         severity: computedIntegrity.score < 80 ? 'HIGH' : 'LOW',
-        details: `Automated health check executed. Score: ${computedIntegrity.score}%, Verdict: ${computedIntegrity.verdict}, Latency: ${fbResult.roundtripLatencyMs}ms.`,
+        details: `Manual health check executed on demand. Score: ${computedIntegrity.score}%, Verdict: ${computedIntegrity.verdict}, Latency: ${fbResult.roundtripLatencyMs}ms.`,
         metadata: {
           score: computedIntegrity.score,
           passed: computedIntegrity.passedChecks,
@@ -259,11 +261,6 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
     setIsSimulatingBuild(false);
     showNotification('Pre-build simulation complete: Application is ready for production compilation.');
   };
-
-  // Initial diagnostic run on mount
-  useEffect(() => {
-    runFullDiagnostic();
-  }, []);
 
   // Filtered list of environment checks
   const filteredChecks = useMemo(() => {
@@ -343,13 +340,13 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
               </div>
               <div>
                 <h3 className="text-xl font-black text-white tracking-wide flex items-center gap-2">
-                  Automated Environment Health & Pre-Build Diagnostic
+                  Manual Environment Health & Pre-Build Diagnostic
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                    AUTOMATED SUITE
+                    MANUAL AUDIT SUITE
                   </span>
                 </h3>
                 <p className="text-xs text-zinc-400">
-                  Pre-flight configuration auditor verifying critical <code className="text-rose-300 font-mono">.env</code> keys, Firebase Cloud Firestore round-trip latency, and production build readiness.
+                  On-demand pre-flight configuration auditor. Click <span className="text-rose-300 font-semibold">Run Full Diagnostic</span> or <span className="text-amber-300 font-semibold">Simulate Pre-Build</span> to manually verify critical <code className="text-rose-300 font-mono">.env</code> keys, Firebase Cloud Firestore round-trip latency, and production build readiness.
                 </p>
               </div>
             </div>
@@ -364,7 +361,7 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
               className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-2 transition shadow-lg shadow-rose-600/20 disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRunningDiagnostic ? 'animate-spin' : ''}`} />
-              <span>{isRunningDiagnostic ? 'Probing Systems...' : 'Run Full Diagnostic'}</span>
+              <span>{isRunningDiagnostic ? 'Probing Systems...' : 'Run Full Diagnostic (Manual)'}</span>
             </button>
 
             <button
@@ -419,13 +416,15 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                 : integrity?.overallStatus === 'WARNING'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                : integrity?.overallStatus === 'CRITICAL'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
             }`}>
-              {integrity?.verdict.replace(/_/g, ' ') || 'CALCULATING'}
+              {integrity?.verdict.replace(/_/g, ' ') || 'MANUAL READY'}
             </span>
           </div>
           <p className="text-[11px] text-zinc-400">
-            {integrity ? `${integrity.passedChecks}/${integrity.totalChecks} configuration checks passed without blockers.` : 'Auditing variables...'}
+            {integrity ? `${integrity.passedChecks}/${integrity.totalChecks} configuration checks passed without blockers.` : 'Click "Run Full Diagnostic" above to manually execute system audit.'}
           </p>
         </div>
 
@@ -444,12 +443,12 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
             <span className="text-xs text-zinc-500 font-mono">Roundtrip Ping</span>
           </div>
           <div className="flex items-center justify-between text-[11px] text-zinc-400">
-            <span className="truncate max-w-[170px]" title={firebaseResult?.databaseId}>
-              DB: {firebaseResult?.databaseId || '(default)'}
+            <span className="truncate max-w-[170px]" title={firebaseResult?.databaseId || 'ai-studio-gtavicentralvice-233cff99-09c3-44fa-8d7c-43228b4d78bb'}>
+              DB: {firebaseResult?.databaseId || 'ai-studio-gtavicentralvice-233cff99-09c3-44fa-8d7c-43228b4d78bb'}
             </span>
             <span className="flex items-center gap-1 text-emerald-400 font-mono font-bold">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              {firebaseResult?.connected ? 'Online' : 'Pending'}
+              {firebaseResult?.connected ? 'Online' : 'Manual Probe Ready'}
             </span>
           </div>
         </div>
@@ -464,9 +463,9 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-black text-indigo-300 font-mono">
-              {serverChecks.filter((s) => s.status === 'VALID').length}/{serverChecks.length || 8}
+              {serverChecks.length > 0 ? `${serverChecks.filter((s) => s.status === 'VALID').length}/${serverChecks.length}` : '8 Configured'}
             </span>
-            <span className="text-xs text-zinc-500 font-mono">Configured</span>
+            <span className="text-xs text-zinc-500 font-mono">{serverChecks.length > 0 ? 'Verified' : 'Manual Audit'}</span>
           </div>
           <p className="text-[11px] text-zinc-400">
             Gemini AI, Stripe secret keys, and Cron webhook authentication tokens.
@@ -485,10 +484,10 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
             <span className="text-3xl font-black text-emerald-400 font-mono">
               {serverInfo ? `Port ${serverInfo.port}` : 'Port 3000'}
             </span>
-            <span className="text-xs text-zinc-500 font-mono">{serverInfo?.nodeEnv || 'Production'}</span>
+            <span className="text-xs text-zinc-500 font-mono">{serverInfo?.nodeEnv || 'development'}</span>
           </div>
           <p className="text-[11px] text-zinc-400">
-            {serverInfo ? `Memory: ${serverInfo.memoryMb} MB • Node: ${serverInfo.nodeVersion}` : 'Express + Vite proxy active'}
+            {serverInfo ? `Memory: ${serverInfo.memoryMb} MB • Node: ${serverInfo.nodeVersion}` : 'Express + Vite proxy active • Manual probe ready'}
           </p>
         </div>
       </div>
@@ -716,7 +715,7 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
             <span className="text-xs font-bold text-zinc-300 flex items-center gap-2 font-mono">
               <Terminal className="w-4 h-4 text-rose-400" />
-              Automated Pre-Build Diagnostic Console Feed
+              Manual Pre-Build Diagnostic Console Feed
             </span>
             <span className="text-[10px] font-mono text-zinc-500">Live Stream • Read-Only</span>
           </div>

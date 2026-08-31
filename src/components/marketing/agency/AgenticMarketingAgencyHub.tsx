@@ -131,7 +131,7 @@ export const AgenticMarketingAgencyHub: React.FC<AgenticMarketingAgencyHubProps>
     { id: 'social' as AgencySubTab, label: 'Social Campaign Studio', icon: Share2, count: 'Multi-Channel' },
     { id: 'graphics' as AgencySubTab, label: 'Brand Visual Director', icon: Palette, count: '4 Briefs' },
     { id: 'knowledge' as AgencySubTab, label: 'RAG Knowledge Base', icon: BookOpen, count: '3 Docs' },
-    { id: 'scheduler' as AgencySubTab, label: 'Autonomous Scheduler', icon: Calendar, count: '4 Crons' },
+    { id: 'scheduler' as AgencySubTab, label: 'Autonomous Scheduler', icon: Calendar, count: '5 Crons' },
   ];
 
   return (

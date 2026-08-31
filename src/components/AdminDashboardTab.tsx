@@ -74,6 +74,7 @@ import { CouponGeneratorCms } from './admin/CouponGeneratorCms';
 import { AdToggleAdminCms } from './admin/AdToggleAdminCms';
 import { EnvironmentHealthAdminSection } from './admin/EnvironmentHealthAdminSection';
 import { MarketAgencyAdminCms } from './admin/MarketAgencyAdminCms';
+import { CustomWebhookBotAdminCms } from './admin/CustomWebhookBotAdminCms';
 import { SystemPricingControl } from './SystemPricingControl';
 import { logStaffActivity } from '../lib/staffAuditLogger';
 import { formatVipExpiry, formatDate, formatDateTime, formatShortTimestamp, formatAutoCrawlTime } from '../lib/dateUtils';
@@ -244,16 +245,19 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const [editModerationNote, setEditModerationNote] = useState('');
   const [editRawJson, setEditRawJson] = useState('');
   const [isSavingUserDoc, setIsSavingUserDoc] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency'>(() => {
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot'>(() => {
     if (initialSubTab) return initialSubTab;
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
       const params = new URLSearchParams(window.location.search);
       const sub = params.get('subtab');
+      if (sub === 'webhook-bot' || sub === 'bot' || sub === 'webhook' || sub === 'discord-bot') {
+        return 'webhook-bot';
+      }
       if (sub === 'market-agency' || sub === 'marketagency' || path.includes('marketagency') || path.includes('market-agency') || path.includes('agency')) {
         return 'market-agency';
       }
-      if (sub && ['users', 'approvals', 'reports', 'cms', 'challenge-cms', 'rental-cms', 'analytics', 'pricing-control', 'pseo', 'vip-notifications', 'squad-rooms', 'staff-logs', 'coupon-cms', 'ad-toggles', 'env-health', 'market-agency'].includes(sub)) {
+      if (sub && ['users', 'approvals', 'reports', 'cms', 'challenge-cms', 'rental-cms', 'analytics', 'pricing-control', 'pseo', 'vip-notifications', 'squad-rooms', 'staff-logs', 'coupon-cms', 'ad-toggles', 'env-health', 'market-agency', 'webhook-bot'].includes(sub)) {
         return sub as any;
       }
     }
@@ -2231,7 +2235,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                     <Activity className="w-3.5 h-3.5 text-rose-400" />
                     <span>🛡️ Environment & Firebase Health</span>
                     <span className="px-1 py-0.2 rounded text-[9px] font-mono font-black bg-rose-500/30 text-rose-200">
-                      PRE-BUILD
+                      MANUAL AUDIT
                     </span>
                   </button>
                   <button
@@ -2260,6 +2264,18 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                   >
                     <Layers className="w-3.5 h-3.5 text-amber-400" />
                     <span>System Architecture & SEO Hub</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('webhook-bot')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      activeSubTab === 'webhook-bot'
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    <Bot className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Custom Webhook / API Bot</span>
                   </button>
                 </>
               )}
@@ -4176,6 +4192,13 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       {activeSubTab === 'pseo' && (
         <div className="space-y-4">
           <PseoArchitectureTab />
+        </div>
+      )}
+
+      {/* Tab Content: Custom Webhook / API Bot Control Center */}
+      {activeSubTab === 'webhook-bot' && (
+        <div className="space-y-4 animate-fade-in">
+          <CustomWebhookBotAdminCms />
         </div>
       )}
 

@@ -31,13 +31,23 @@ interface ScheduledJob {
 const SEED_JOBS: ScheduledJob[] = [
   {
     id: 'job-1',
-    name: 'Midnight pSEO News Spider & Indexer',
+    name: 'Autonomous pSEO News Spider & Web Indexer',
     agentType: 'pSEO Spider Agent',
-    schedule: 'Every midnight (00:00 UTC)',
+    schedule: 'Every 15 minutes (:00, :15, :30, :45)',
     status: 'Active',
-    lastRun: 'Today, 00:00 UTC',
-    nextRun: 'Tomorrow, 00:00 UTC',
-    successRate: 99.4
+    lastRun: '12 mins ago',
+    nextRun: 'in 3 mins',
+    successRate: 99.6
+  },
+  {
+    id: 'job-5',
+    name: 'pSEO Topic Smart Merge & 30-Day Retention Pruner',
+    agentType: 'pSEO Spider Agent',
+    schedule: 'Every 12 hours (00:00, 12:00 UTC)',
+    status: 'Active',
+    lastRun: '4 hours ago',
+    nextRun: 'in 8 hours',
+    successRate: 100
   },
   {
     id: 'job-2',
