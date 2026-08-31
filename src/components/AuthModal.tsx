@@ -293,8 +293,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     };
   }, [isOpen, currentUser]);
 
-  if (!isOpen) return null;
-
   const [tagAvailability, setTagAvailability] = useState<{
     checking: boolean;
     available: boolean | null;
@@ -305,6 +303,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   // Debounced check for registration username uniqueness (Meta-Grade Bloom Filter + Radix Trie)
   useEffect(() => {
+    if (!isOpen) return;
     const clean = username.trim().replace(/\s+/g, '_');
     if (!clean || clean.length < 3 || mode !== 'register' || regStep !== 'input') {
       setTagAvailability({ checking: false, available: null });
@@ -334,7 +333,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [username, mode, regStep]);
+  }, [username, mode, regStep, isOpen]);
+
+  if (!isOpen) return null;
 
   const handleSaveGamerTag = async (e: React.FormEvent) => {
     e.preventDefault();
