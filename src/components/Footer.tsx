@@ -81,16 +81,6 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal })
               The ultimate non-commercial fan companion for Grand Theft Auto VI. Features real-time vehicle telemetry, weapon comparison matrices, business ROI calculators, custom vehicle tuning, interactive map waypoints, and low-latency community voice channels.
             </p>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={(e) => handleNav('about', e)}
-                className="px-3.5 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <Info className="w-3.5 h-3.5 text-rose-400" />
-                <span>About Us</span>
-              </button>
-            </div>
-
             {/* LIVE SYSTEM STATUS */}
             <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800/80 flex items-center justify-between gap-3 max-w-md">
               <div className="flex items-center gap-2">
@@ -115,11 +105,11 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal })
             <ul className="space-y-2 text-zinc-400">
               <li>
                 <button
-                  onClick={(e) => handleNav('about', e)}
+                  onClick={(e) => handleNav('seo-hub', e)}
                   className="hover:text-rose-400 transition flex items-center gap-1.5 cursor-pointer text-rose-300 font-semibold"
                 >
-                  <Info className="w-3 h-3 text-rose-400" />
-                  <span>About Us & Platform Overview</span>
+                  <BookOpen className="w-3 h-3 text-rose-400" />
+                  <span>GTA VI Intelligence Hub</span>
                 </button>
               </li>
               <li>
