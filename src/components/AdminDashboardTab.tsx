@@ -75,6 +75,7 @@ import { AdToggleAdminCms } from './admin/AdToggleAdminCms';
 import { EnvironmentHealthAdminSection } from './admin/EnvironmentHealthAdminSection';
 import { MarketAgencyAdminCms } from './admin/MarketAgencyAdminCms';
 import { CustomWebhookBotAdminCms } from './admin/CustomWebhookBotAdminCms';
+import { BloomFilterTelemetryCms } from './admin/BloomFilterTelemetryCms';
 import { SystemPricingControl } from './SystemPricingControl';
 import { logStaffActivity } from '../lib/staffAuditLogger';
 import { formatVipExpiry, formatDate, formatDateTime, formatShortTimestamp, formatAutoCrawlTime } from '../lib/dateUtils';
@@ -245,7 +246,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const [editModerationNote, setEditModerationNote] = useState('');
   const [editRawJson, setEditRawJson] = useState('');
   const [isSavingUserDoc, setIsSavingUserDoc] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot'>(() => {
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot' | 'bloom-telemetry'>(() => {
     if (initialSubTab) return initialSubTab;
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
@@ -254,10 +255,13 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       if (sub === 'webhook-bot' || sub === 'bot' || sub === 'webhook' || sub === 'discord-bot') {
         return 'webhook-bot';
       }
+      if (sub === 'bloom' || sub === 'bloom-filter' || sub === 'bloom-telemetry' || sub === 'gamertag-engine') {
+        return 'bloom-telemetry';
+      }
       if (sub === 'market-agency' || sub === 'marketagency' || path.includes('marketagency') || path.includes('market-agency') || path.includes('agency')) {
         return 'market-agency';
       }
-      if (sub && ['users', 'approvals', 'reports', 'cms', 'challenge-cms', 'rental-cms', 'analytics', 'pricing-control', 'pseo', 'vip-notifications', 'squad-rooms', 'staff-logs', 'coupon-cms', 'ad-toggles', 'env-health', 'market-agency', 'webhook-bot'].includes(sub)) {
+      if (sub && ['users', 'approvals', 'reports', 'cms', 'challenge-cms', 'rental-cms', 'analytics', 'pricing-control', 'pseo', 'vip-notifications', 'squad-rooms', 'staff-logs', 'coupon-cms', 'ad-toggles', 'env-health', 'market-agency', 'webhook-bot', 'bloom-telemetry'].includes(sub)) {
         return sub as any;
       }
     }
@@ -2277,6 +2281,18 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                     <Bot className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Custom Webhook / API Bot</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('bloom-telemetry')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      activeSubTab === 'bloom-telemetry'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5 text-rose-400" />
+                    <span>⚡ Meta Bloom Filter & Trie Engine</span>
+                  </button>
                 </>
               )}
 
@@ -4199,6 +4215,13 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       {activeSubTab === 'webhook-bot' && (
         <div className="space-y-4 animate-fade-in">
           <CustomWebhookBotAdminCms />
+        </div>
+      )}
+
+      {/* Tab Content: Meta-Grade GamerTag Bloom Filter & Trie Telemetry */}
+      {activeSubTab === 'bloom-telemetry' && (
+        <div className="space-y-4 animate-fade-in">
+          <BloomFilterTelemetryCms />
         </div>
       )}
 

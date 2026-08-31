@@ -225,12 +225,14 @@ export function mergeTwoArticles(primary: any, secondary: any): any {
   for (const sec of primarySections) {
     if (!sec || !sec.heading) continue;
     const normH = normalizeHeading(sec.heading);
-    const cloned = {
+    const cloned: any = {
       heading: sec.heading,
       body: Array.isArray(sec.body) ? [...sec.body] : [],
-      bulletPoints: Array.isArray(sec.bulletPoints) ? [...sec.bulletPoints] : [],
-      tableData: sec.tableData || undefined
+      bulletPoints: Array.isArray(sec.bulletPoints) ? [...sec.bulletPoints] : []
     };
+    if (sec.tableData) {
+      cloned.tableData = sec.tableData;
+    }
     mergedSections.push(cloned);
     existingSectionMap.set(normH, cloned);
   }
@@ -261,12 +263,15 @@ export function mergeTwoArticles(primary: any, secondary: any): any {
       }
     } else {
       // Append distinct section
-      mergedSections.push({
+      const distinctSec: any = {
         heading: sec.heading,
         body: Array.isArray(sec.body) ? [...sec.body] : [],
-        bulletPoints: Array.isArray(sec.bulletPoints) ? [...sec.bulletPoints] : [],
-        tableData: sec.tableData || undefined
-      });
+        bulletPoints: Array.isArray(sec.bulletPoints) ? [...sec.bulletPoints] : []
+      };
+      if (sec.tableData) {
+        distinctSec.tableData = sec.tableData;
+      }
+      mergedSections.push(distinctSec);
     }
   }
 

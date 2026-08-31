@@ -65,6 +65,7 @@ import {
   notifyTuningChampionshipDrop,
   webhookDispatchHistory 
 } from './src/lib/discord-alert-service';
+import { globalGamerTagEngine } from './src/lib/bloomFilterGamerTagEngine';
 
 const PORT = 3000;
 
@@ -554,32 +555,49 @@ let lastPseoCrawlTimestamp = 0;
 
 /**
  * Recursively sanitizes data before saving to Firestore.
- * Firestore throws an error if an Array directly contains another Array (nested arrays are not supported).
- * This converts nested arrays (e.g., `rows: [ ['a', 'b'], ['c', 'd'] ]`) into array of objects (e.g. `[ { cells: ['a', 'b'] }, { cells: ['c', 'd'] } ]`).
+ * 1. Strips any `undefined` values and keys from objects to prevent Firestore `Unsupported field value: undefined` errors.
+ * 2. Firestore throws an error if an Array directly contains another Array (nested arrays are not supported).
+ *    This converts nested arrays (e.g., `rows: [ ['a', 'b'], ['c', 'd'] ]`) into array of objects (e.g. `[ { cells: ['a', 'b'] }, { cells: ['c', 'd'] } ]`).
  */
 function sanitizeNestedArraysForFirestore(data: any, parentIsArray = false): any {
-  if (data === null || data === undefined) return data;
+  if (data === null || data === undefined) return undefined;
+
+  if (typeof data !== 'object') {
+    return data;
+  }
 
   if (Array.isArray(data)) {
+    const filtered: any[] = [];
+    for (const item of data) {
+      if (item !== undefined) {
+        const cleanedItem = sanitizeNestedArraysForFirestore(item, parentIsArray ? false : true);
+        if (cleanedItem !== undefined) {
+          filtered.push(cleanedItem);
+        }
+      }
+    }
     if (parentIsArray) {
       // Nested array detected! Wrap elements in an object wrapper so Firestore won't throw
       return {
-        cells: data.map((item) => sanitizeNestedArraysForFirestore(item, false))
+        cells: filtered
       };
     }
     // Top-level or object property array
-    return data.map((item) => sanitizeNestedArraysForFirestore(item, true));
+    return filtered;
   }
 
-  if (typeof data === 'object') {
-    const cleanedObj: Record<string, any> = {};
-    for (const key of Object.keys(data)) {
-      cleanedObj[key] = sanitizeNestedArraysForFirestore(data[key], false);
+  const cleanedObj: Record<string, any> = {};
+  for (const key of Object.keys(data)) {
+    const val = data[key];
+    if (val === undefined) {
+      continue;
     }
-    return cleanedObj;
+    const sanitizedVal = sanitizeNestedArraysForFirestore(val, false);
+    if (sanitizedVal !== undefined) {
+      cleanedObj[key] = sanitizedVal;
+    }
   }
-
-  return data;
+  return cleanedObj;
 }
 
 /**
@@ -1715,8 +1733,9 @@ async function saveBlogPostToFirestore(post: any) {
   if (isFirestoreQuotaExceededServer) return;
   try {
     const { doc, setDoc } = await import('firebase/firestore');
+    const sanitizedPost = sanitizeNestedArraysForFirestore(post) || {};
     await setDoc(doc(db, 'blog_posts', post.id), {
-      ...post,
+      ...sanitizedPost,
       updatedAt: new Date().toISOString()
     }, { merge: true });
     console.log(`[Blog Storage] Blog post "${post.id}" persisted to Firestore.`);
@@ -4581,6 +4600,118 @@ Showing top entries for "${query || 'All'}":
     return { isValid: true, cleanEmail };
   }
 
+  // API: Meta-Grade Bloom Filter GamerTag Uniqueness Verification Endpoint
+  app.get('/api/auth/check-gamertag', async (req: Request, res: Response) => {
+    const startMs = Date.now();
+    try {
+      const tag = String(req.query.tag || '').trim();
+      const currentUid = String(req.query.uid || '').trim();
+
+      if (!tag) {
+        return res.status(400).json({ isUnique: false, error: 'GamerTag is required' });
+      }
+
+      const cleanTag = tag.replace(/\s+/g, '_');
+      if (cleanTag.length < 3 || cleanTag.length > 24) {
+        return res.status(400).json({ isUnique: false, error: 'GamerTag must be 3-24 characters.' });
+      }
+
+      if (!/^[a-zA-Z0-9_-]+$/.test(cleanTag)) {
+        return res.status(400).json({ isUnique: false, error: 'GamerTag contains invalid characters.' });
+      }
+
+      const tagLower = cleanTag.toLowerCase();
+      if (tagLower.includes('admin') || tagLower.includes('staff_hq') || tagLower.includes('moderator')) {
+        return res.status(400).json({ isUnique: false, error: 'Reserved keyword in GamerTag.' });
+      }
+
+      // Step 1: Meta L1 Bloom Filter Check (O(1) in-memory)
+      const instantCheck = globalGamerTagEngine.verifyInstant(cleanTag, currentUid);
+      if (instantCheck.level === 'L2_TRIE' && !instantCheck.isUnique) {
+        return res.json({
+          isUnique: false,
+          cleanTag,
+          level: 'L2_TRIE',
+          latencyMs: instantCheck.latencyMs,
+          error: `⚠️ GamerTag "${cleanTag}" is already taken by another player! GamerTags must be unique.`
+        });
+      }
+
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+
+      // Step 2: Check Firestore usernameLower query
+      const qLower = query(collection(db, 'userProfiles'), where('usernameLower', '==', tagLower));
+      const snapLower = await getDocs(qLower);
+      const duplicateDoc = snapLower.docs.find(d => d.id !== currentUid && d.data()?.uid !== currentUid);
+
+      if (duplicateDoc) {
+        globalGamerTagEngine.registerHandle(cleanTag, duplicateDoc.id);
+        return res.json({
+          isUnique: false,
+          cleanTag,
+          level: 'L3_FIRESTORE',
+          latencyMs: Date.now() - startMs,
+          error: `⚠️ GamerTag "${cleanTag}" is already taken by another player! GamerTags must be unique.`
+        });
+      }
+
+      // Step 3: Check username standard query as fallback
+      const qStandard = query(collection(db, 'userProfiles'), where('username', '==', cleanTag));
+      const snapStandard = await getDocs(qStandard);
+      const duplicateStandard = snapStandard.docs.find(d => d.id !== currentUid && d.data()?.uid !== currentUid);
+
+      if (duplicateStandard) {
+        globalGamerTagEngine.registerHandle(cleanTag, duplicateStandard.id);
+        return res.json({
+          isUnique: false,
+          cleanTag,
+          level: 'L3_FIRESTORE',
+          latencyMs: Date.now() - startMs,
+          error: `⚠️ GamerTag "${cleanTag}" is already taken by another player! GamerTags must be unique.`
+        });
+      }
+
+      return res.json({
+        isUnique: true,
+        cleanTag,
+        level: instantCheck.level === 'L1_BLOOM' ? 'L1_BLOOM' : 'L3_FIRESTORE',
+        latencyMs: Math.max(0.01, Date.now() - startMs)
+      });
+    } catch (err: any) {
+      console.warn('[GamerTag API Check] Warning:', err?.message);
+      return res.json({ isUnique: true });
+    }
+  });
+
+  // API: Meta Bloom Filter & Radix Trie Diagnostics and Benchmarks
+  app.get('/api/auth/gamertag-bloom-stats', (req: Request, res: Response) => {
+    try {
+      const stats = globalGamerTagEngine.getDiagnostics();
+      return res.json({
+        engine: 'Meta-Grade Scalable Bloom Filter & Radix Trie Engine',
+        algorithm: 'Kirsch-Mitzenmacher Double Hashing (MurmurHash3 + FNV-1a)',
+        timeComplexity: 'O(1) Set Membership Lookup, O(L) Radix Trie Autocomplete',
+        zeroFalseNegatives: true,
+        diagnostics: stats,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to retrieve Bloom stats' });
+    }
+  });
+
+  // API: Autocomplete GamerTags via Radix Trie
+  app.get('/api/auth/gamertag-search', (req: Request, res: Response) => {
+    try {
+      const prefix = String(req.query.q || '').trim();
+      const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 8));
+      const matches = globalGamerTagEngine.autocomplete(prefix, limit);
+      return res.json({ query: prefix, count: matches.length, matches });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Search failed' });
+    }
+  });
+
   // API 1: Validate Email Format Endpoint
   app.post('/api/auth/validate-email', (req: Request, res: Response) => {
     const { email } = req.body;
@@ -4614,13 +4745,51 @@ Showing top entries for "${query || 'All'}":
     }
 
     const cleanEmail = validation.cleanEmail;
-    const cleanUsername = username ? String(username).trim() : 'ViceCityPlayer';
+    const cleanUsername = username ? String(username).trim().replace(/\s+/g, '_') : 'ViceCityPlayer';
+
+    if (cleanUsername.length < 3 || cleanUsername.length > 24) {
+      return res.status(400).json({
+        success: false,
+        error: '❌ GamerTag must be between 3 and 24 characters long.'
+      });
+    }
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(cleanUsername)) {
+      return res.status(400).json({
+        success: false,
+        error: '❌ GamerTag can only contain alphanumeric characters, underscores (_), and hyphens (-).'
+      });
+    }
 
     if (cleanUsername.toLowerCase().includes('admin')) {
       return res.status(400).json({
         success: false,
         error: '❌ GamerTag / Username cannot contain the word "admin" for security and authenticity reasons.'
       });
+    }
+
+    // 1.5 Verify GamerTag uniqueness in Firestore
+    try {
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      const qLower = query(collection(db, 'userProfiles'), where('usernameLower', '==', cleanUsername.toLowerCase()));
+      const snapLower = await getDocs(qLower);
+      if (!snapLower.empty) {
+        return res.status(400).json({
+          success: false,
+          error: `⚠️ GamerTag "${cleanUsername}" is already taken by another player! GamerTags must be unique.`
+        });
+      }
+
+      const qStandard = query(collection(db, 'userProfiles'), where('username', '==', cleanUsername));
+      const snapStandard = await getDocs(qStandard);
+      if (!snapStandard.empty) {
+        return res.status(400).json({
+          success: false,
+          error: `⚠️ GamerTag "${cleanUsername}" is already taken by another player! GamerTags must be unique.`
+        });
+      }
+    } catch (err: any) {
+      console.warn('[GamerTag Server Check] Firestore warning:', err?.message);
     }
 
     // Rate limit check: prevent rapid spamming (max 1 code request per 20 seconds)

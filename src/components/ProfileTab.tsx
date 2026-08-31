@@ -58,6 +58,7 @@ import {
 import RewardStreakCard from './RewardStreakCard';
 import { GTA6_AVATARS, DEFAULT_GTA6_AVATAR, getUserHierarchyLevel, checkAvatarAccess, AvatarPreset, getSafePhotoURL } from '../data/avatars';
 import { DiscordAuthErrorHandler } from './DiscordAuthErrorHandler';
+import { checkGamerTagUniqueness, validateGamerTagSyntax } from '../lib/gamertagUtils';
 import { getVipPriceFormatted, getVipPriceText, getVipPriceNumber, usePricingConfig } from '../lib/vipConfig';
 import { PaymentGatewayModal, PaymentItemPackage } from './PaymentGatewayModal';
 import { VipExtensionDialog } from './VipExtensionDialog';
@@ -472,6 +473,47 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [changesUsedThisYear, setChangesUsedThisYear] = useState<number>(0);
+  const [tagAvailability, setTagAvailability] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    message?: string;
+    level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE';
+    latencyMs?: number;
+  }>({ checking: false, available: null });
+
+  // Debounced check for Profile GamerTag uniqueness (Meta-Grade Bloom Filter + Radix Trie)
+  useEffect(() => {
+    const clean = gamerTag.trim().replace(/\s+/g, '_');
+    const currentTag = currentUser?.displayName || '';
+    if (!clean || clean.length < 3 || clean.toLowerCase() === currentTag.toLowerCase()) {
+      setTagAvailability({ checking: false, available: null });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setTagAvailability({ checking: true, available: null });
+      const check = await checkGamerTagUniqueness(clean, currentUser?.uid);
+      if (check.isUnique) {
+        setTagAvailability({
+          checking: false,
+          available: true,
+          message: `✓ "${clean}" is unique & available!`,
+          level: check.level,
+          latencyMs: check.latencyMs
+        });
+      } else {
+        setTagAvailability({
+          checking: false,
+          available: false,
+          message: check.error || `⚠️ "${clean}" is already taken`,
+          level: check.level,
+          latencyMs: check.latencyMs
+        });
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [gamerTag, currentUser?.displayName, currentUser?.uid]);
 
   // Security Subtab state
   const [isUidMasked, setIsUidMasked] = useState<boolean>(true);
@@ -1321,20 +1363,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     e.preventDefault();
     if (!currentUser) return;
 
-    let trimmedTag = gamerTag.trim();
+    let trimmedTag = gamerTag.trim().replace(/\s+/g, '_');
     if (!trimmedTag) {
       setAuthError('GamerTag cannot be empty.');
       return;
     }
 
-    // If tag contains spaces (e.g. from Google displayName), auto-sanitize to underscores
-    if (/\s/.test(trimmedTag)) {
-      trimmedTag = trimmedTag.replace(/\s+/g, '_');
-      setGamerTag(trimmedTag);
-    }
-
-    if (trimmedTag.toLowerCase().includes('admin')) {
-      setAuthError('❌ GamerTag cannot contain the word "admin" for security and authenticity reasons.');
+    const syntaxCheck = validateGamerTagSyntax(trimmedTag);
+    if (!syntaxCheck.isValid) {
+      setAuthError(syntaxCheck.error || 'Invalid GamerTag format.');
       return;
     }
 
@@ -1347,20 +1384,11 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
 
       // 1. Check Uniqueness across userProfiles in Firestore
       if (isTagChanging) {
-        try {
-          const q = query(
-            collection(db, 'userProfiles'),
-            where('usernameLower', '==', trimmedTag.toLowerCase())
-          );
-          const snapshot = await getDocs(q);
-          const duplicateDoc = snapshot.docs.find(d => d.id !== currentUser.uid);
-          if (duplicateDoc) {
-            setAuthError(`⚠️ GamerTag "${trimmedTag}" is already taken by another player! GamerTags must be unique.`);
-            setIsSaving(false);
-            return;
-          }
-        } catch (err) {
-          console.warn('Uniqueness check query warning:', err);
+        const uniqueCheck = await checkGamerTagUniqueness(trimmedTag, currentUser.uid);
+        if (!uniqueCheck.isUnique) {
+          setAuthError(uniqueCheck.error || `⚠️ GamerTag "${trimmedTag}" is already taken by another player! GamerTags must be unique.`);
+          setIsSaving(false);
+          return;
         }
       }
 
@@ -1926,9 +1954,34 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider block">
-                  Vice City GamerTag
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider block">
+                    Vice City GamerTag
+                  </label>
+                  {tagAvailability.checking && (
+                    <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
+                      <Sparkles className="w-3 h-3 animate-spin" /> Checking Meta Bloom Filter...
+                    </span>
+                  )}
+                  {!tagAvailability.checking && tagAvailability.available === true && (
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono font-bold">
+                      <CheckCircle2 className="w-3 h-3" /> Unique & Available
+                      <span className="text-[9px] text-emerald-300/70 bg-emerald-950/80 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono">
+                        ⚡ {tagAvailability.level === 'L1_BLOOM' ? 'O(1) Bloom' : 'Verified'} ({tagAvailability.latencyMs || 0.05}ms)
+                      </span>
+                    </span>
+                  )}
+                  {!tagAvailability.checking && tagAvailability.available === false && (
+                    <span className="text-[10px] text-rose-400 flex items-center gap-1 font-mono font-bold">
+                      <AlertCircle className="w-3 h-3" /> Already Taken
+                      {tagAvailability.latencyMs && (
+                        <span className="text-[9px] text-rose-300/70 bg-rose-950/80 border border-rose-800/40 px-1 py-0.2 rounded font-mono">
+                          {tagAvailability.latencyMs}ms
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 font-mono font-bold text-sm">
                     @
@@ -1936,9 +1989,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                   <input
                     type="text"
                     value={gamerTag}
-                    onChange={(e) => setGamerTag(e.target.value)}
+                    onChange={(e) => setGamerTag(e.target.value.replace(/\s+/g, '_'))}
                     placeholder="e.g. OceanDrive_Lucia"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-8 pr-4 py-3 text-sm text-white font-bold placeholder-zinc-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                    className={`w-full bg-zinc-950 border rounded-xl pl-8 pr-4 py-3 text-sm text-white font-bold placeholder-zinc-600 focus:outline-none transition ${
+                      tagAvailability.available === true
+                        ? 'border-emerald-500/80 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500'
+                        : tagAvailability.available === false
+                        ? 'border-rose-500/80 focus:border-rose-400 focus:ring-1 focus:ring-rose-500'
+                        : 'border-zinc-800 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
+                    }`}
                   />
                 </div>
               </div>

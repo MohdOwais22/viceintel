@@ -45,6 +45,7 @@ import {
 import { doc, getDoc, setDoc, getDocs, collection, query, where } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { GTA6_AVATARS, DEFAULT_GTA6_AVATAR, getSafePhotoURL } from '../data/avatars';
+import { checkGamerTagUniqueness, validateGamerTagSyntax, generateUniqueGamerTag } from '../lib/gamertagUtils';
 import { EmailVerificationStep } from './EmailVerificationStep';
 import { PaymentMaintenanceNotice } from './PaymentMaintenanceNotice';
 import { ENV } from '../lib/envConfig';
@@ -294,23 +295,60 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
+  const [tagAvailability, setTagAvailability] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    message?: string;
+    level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE';
+    latencyMs?: number;
+  }>({ checking: false, available: null });
+
+  // Debounced check for registration username uniqueness (Meta-Grade Bloom Filter + Radix Trie)
+  useEffect(() => {
+    const clean = username.trim().replace(/\s+/g, '_');
+    if (!clean || clean.length < 3 || mode !== 'register' || regStep !== 'input') {
+      setTagAvailability({ checking: false, available: null });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setTagAvailability({ checking: true, available: null });
+      const check = await checkGamerTagUniqueness(clean);
+      if (check.isUnique) {
+        setTagAvailability({
+          checking: false,
+          available: true,
+          message: `✓ "${clean}" is unique & available!`,
+          level: check.level,
+          latencyMs: check.latencyMs
+        });
+      } else {
+        setTagAvailability({
+          checking: false,
+          available: false,
+          message: check.error || `⚠️ "${clean}" is already taken`,
+          level: check.level,
+          latencyMs: check.latencyMs
+        });
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [username, mode, regStep]);
+
   const handleSaveGamerTag = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
-    const trimmedTag = gamerTag.trim();
+    const trimmedTag = gamerTag.trim().replace(/\s+/g, '_');
     if (!trimmedTag) {
       setAuthError('GamerTag cannot be empty.');
       return;
     }
 
-    if (/\s/.test(trimmedTag)) {
-      setAuthError('❌ GamerTag / UserTag cannot contain spaces. Use underscores (_) or hyphens (-) instead.');
-      return;
-    }
-
-    if (trimmedTag.toLowerCase().includes('admin')) {
-      setAuthError('❌ GamerTag cannot contain the word "admin" for security and authenticity reasons.');
+    const syntaxCheck = validateGamerTagSyntax(trimmedTag);
+    if (!syntaxCheck.isValid) {
+      setAuthError(syntaxCheck.error || 'Invalid GamerTag format.');
       return;
     }
 
@@ -323,20 +361,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
       // 1. Check Uniqueness across userProfiles in Firestore
       if (isTagChanging) {
-        try {
-          const q = query(
-            collection(db, 'userProfiles'),
-            where('usernameLower', '==', trimmedTag.toLowerCase())
-          );
-          const snapshot = await getDocs(q);
-          const duplicateDoc = snapshot.docs.find(d => d.id !== currentUser.uid);
-          if (duplicateDoc) {
-            setAuthError(`⚠️ GamerTag "${trimmedTag}" is already taken by another player! GamerTags must be unique.`);
-            setIsAuthLoading(false);
-            return;
-          }
-        } catch (err) {
-          console.warn('Uniqueness check query warning:', err);
+        const uniqueCheck = await checkGamerTagUniqueness(trimmedTag, currentUser.uid);
+        if (!uniqueCheck.isUnique) {
+          setAuthError(uniqueCheck.error || `⚠️ GamerTag "${trimmedTag}" is already taken by another player! GamerTags must be unique.`);
+          setIsAuthLoading(false);
+          return;
         }
       }
 
@@ -486,20 +515,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setAuthError(null);
     setCodeSentNotice(null);
 
-    const cleanUsername = username.trim();
+    const cleanUsername = username.trim().replace(/\s+/g, '_');
     if (!cleanUsername) {
       setAuthError('GamerTag / Username is required.');
       return;
     }
-    if (/\s/.test(cleanUsername)) {
-      setAuthError('❌ GamerTag / UserTag cannot contain spaces. Use underscores (_) or hyphens (-) instead.');
+
+    const syntaxCheck = validateGamerTagSyntax(cleanUsername);
+    if (!syntaxCheck.isValid) {
+      setAuthError(syntaxCheck.error || 'Invalid GamerTag format.');
       return;
     }
 
-    if (cleanUsername.toLowerCase().includes('admin')) {
-      setAuthError('❌ GamerTag / Username cannot contain the word "admin" for security and authenticity reasons.');
-      return;
-    }
     if (!email.trim()) {
       setAuthError('Email Address is required.');
       return;
@@ -512,6 +539,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsSendingCode(true);
 
     try {
+      // 1. Check GamerTag Uniqueness client-side & in Firestore
+      const uniqueCheck = await checkGamerTagUniqueness(cleanUsername);
+      if (!uniqueCheck.isUnique) {
+        setAuthError(uniqueCheck.error || `⚠️ GamerTag "${cleanUsername}" is already taken by another player! GamerTags must be unique.`);
+        setIsSendingCode(false);
+        return;
+      }
+
       const res = await fetch('/api/auth/send-verification-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -576,8 +611,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
 
-      // 2. Email is verified! Proceed with Firebase user creation
-      const cleanUsername = username.trim();
+      // 2. Double-check GamerTag uniqueness before finalizing registration
+      const cleanUsername = username.trim().replace(/\s+/g, '_');
+      const uniqueCheck = await checkGamerTagUniqueness(cleanUsername);
+      if (!uniqueCheck.isUnique) {
+        setAuthError(uniqueCheck.error || `⚠️ GamerTag "${cleanUsername}" is already taken! Please choose a unique GamerTag.`);
+        setIsVerifyingCode(false);
+        return;
+      }
+
+      // 3. Email is verified! Proceed with Firebase user creation
       const userCred = await createUserWithEmailAndPassword(auth, email.trim(), password);
 
       if (cleanUsername && userCred.user) {
@@ -634,18 +677,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (cleanName.toLowerCase().includes('admin')) {
           cleanName = cleanName.replace(/admin/gi, 'player');
         }
-        setGamerTag(cleanName);
 
-        // Ensure userProfile exists and has valid avatar and googlePhotoURL
+        // Ensure userProfile exists and has guaranteed unique GamerTag and valid avatar
         try {
           const userDocRef = doc(db, 'userProfiles', result.user.uid);
           const snap = await getDoc(userDocRef);
           const googlePhoto = result.user.photoURL || null;
           if (!snap.exists()) {
+            // Find guaranteed unique GamerTag for new Google accounts
+            const uniqueTag = await generateUniqueGamerTag(cleanName, result.user.uid);
+            setGamerTag(uniqueTag);
+
             await setDoc(userDocRef, {
               uid: result.user.uid,
-              username: cleanName,
-              usernameLower: cleanName.toLowerCase(),
+              username: uniqueTag,
+              usernameLower: uniqueTag.toLowerCase(),
               email: result.user.email || 'user@vicecity.app',
               avatar: googlePhoto || DEFAULT_GTA6_AVATAR,
               googlePhotoURL: googlePhoto,
@@ -659,7 +705,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             });
+
+            if (result.user.displayName !== uniqueTag) {
+              await updateProfile(result.user, {
+                displayName: uniqueTag
+              }).catch(() => {});
+            }
           } else {
+            setGamerTag(snap.data()?.username || cleanName);
             // If exists, make sure googlePhotoURL is recorded in Firestore
             if (googlePhoto && !snap.data()?.googlePhotoURL) {
               await setDoc(userDocRef, {
@@ -858,7 +911,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {regStep === 'input' && (
                 <form onSubmit={handleRequestVerificationCode} className="space-y-3">
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 block mb-1">Gamer Tag / Username</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-zinc-400">GamerTag / Unique Handle</label>
+                      {tagAvailability.checking && (
+                        <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
+                          <Sparkles className="w-3 h-3 animate-spin" /> Checking Meta Bloom Filter...
+                        </span>
+                      )}
+                      {!tagAvailability.checking && tagAvailability.available === true && (
+                        <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono font-bold">
+                          <CheckCircle2 className="w-3 h-3" /> Unique & Available
+                          <span className="text-[9px] text-emerald-300/70 bg-emerald-950/80 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono">
+                            ⚡ {tagAvailability.level === 'L1_BLOOM' ? 'O(1) Bloom' : 'Verified'} ({tagAvailability.latencyMs || 0.05}ms)
+                          </span>
+                        </span>
+                      )}
+                      {!tagAvailability.checking && tagAvailability.available === false && (
+                        <span className="text-[10px] text-rose-400 flex items-center gap-1 font-mono font-bold">
+                          <AlertCircle className="w-3 h-3" /> Already Taken
+                          {tagAvailability.latencyMs && (
+                            <span className="text-[9px] text-rose-300/70 bg-rose-950/80 border border-rose-800/40 px-1 py-0.2 rounded font-mono">
+                              {tagAvailability.latencyMs}ms
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
                     <div className="relative">
                       <User className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
                       <input
@@ -866,10 +944,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         required
                         placeholder="ViceCityPlayer_2026"
                         value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:border-rose-500 outline-none"
+                        onChange={(e) => setUsername(e.target.value.replace(/\s+/g, '_'))}
+                        className={`w-full bg-zinc-950 border rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none transition ${
+                          tagAvailability.available === true
+                            ? 'border-emerald-500/80 focus:border-emerald-400'
+                            : tagAvailability.available === false
+                            ? 'border-rose-500/80 focus:border-rose-400'
+                            : 'border-zinc-800 focus:border-rose-500'
+                        }`}
                       />
                     </div>
+                    <p className="text-[10px] text-zinc-500 mt-1">Must be unique across all players. Letters, numbers, underscores, and hyphens.</p>
                   </div>
 
                   <div>
