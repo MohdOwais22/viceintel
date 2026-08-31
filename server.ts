@@ -4621,8 +4621,8 @@ Showing top entries for "${query || 'All'}":
       }
 
       const tagLower = cleanTag.toLowerCase();
-      if (tagLower.includes('admin') || tagLower.includes('staff_hq') || tagLower.includes('moderator')) {
-        return res.status(400).json({ isUnique: false, error: 'Reserved keyword in GamerTag.' });
+      if (['null', 'undefined', 'system', 'viceintel_bot'].includes(tagLower)) {
+        return res.status(400).json({ isUnique: false, error: 'Reserved system keyword in GamerTag.' });
       }
 
       // Step 1: Meta L1 Bloom Filter Check (O(1) in-memory)
@@ -4761,10 +4761,10 @@ Showing top entries for "${query || 'All'}":
       });
     }
 
-    if (cleanUsername.toLowerCase().includes('admin')) {
+    if (['null', 'undefined', 'system', 'viceintel_bot'].includes(cleanUsername.toLowerCase())) {
       return res.status(400).json({
         success: false,
-        error: '❌ GamerTag / Username cannot contain the word "admin" for security and authenticity reasons.'
+        error: '❌ GamerTag cannot be a reserved system keyword.'
       });
     }
 

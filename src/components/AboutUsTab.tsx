@@ -14,8 +14,7 @@ import {
   Radio,
   Gamepad2,
   Tv,
-  Database,
-  TrendingUp
+  Database
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { ENV } from '../lib/envConfig';
@@ -53,23 +52,14 @@ export const AboutUsTab: React.FC<AboutUsTabProps> = ({ onNavigate }) => {
 
           <div className="pt-2 flex flex-wrap gap-4">
             {onNavigate && (
-              <>
-                <button
-                  onClick={() => onNavigate('vehicles')}
-                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs sm:text-sm flex items-center gap-2.5 shadow-xl shadow-rose-600/25 transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95"
-                >
-                  <Car className="w-4 h-4" />
-                  <span>Explore Telemetry Catalog</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => onNavigate('pitch')}
-                  className="px-6 py-3.5 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 text-amber-300 border border-amber-500/40 font-bold text-xs sm:text-sm flex items-center gap-2.5 shadow-xl transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95"
-                >
-                  <TrendingUp className="w-4 h-4 text-amber-400" />
-                  <span>Investor Deck & Financial Model</span>
-                </button>
-              </>
+              <button
+                onClick={() => onNavigate('vehicles')}
+                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs sm:text-sm flex items-center gap-2.5 shadow-xl shadow-rose-600/25 transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95"
+              >
+                <Car className="w-4 h-4" />
+                <span>Explore Telemetry Catalog</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             )}
           </div>
         </div>

@@ -673,10 +673,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const result = await signInWithPopup(auth, provider);
       if (result.user) {
         const rawName = result.user.displayName || result.user.email?.split('@')[0] || 'ViceCityPlayer';
-        let cleanName = rawName.replace(/\s+/g, '_');
-        if (cleanName.toLowerCase().includes('admin')) {
-          cleanName = cleanName.replace(/admin/gi, 'player');
-        }
+        const cleanName = rawName.replace(/\s+/g, '_');
 
         // Ensure userProfile exists and has guaranteed unique GamerTag and valid avatar
         try {

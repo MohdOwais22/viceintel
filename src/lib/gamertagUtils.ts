@@ -12,21 +12,12 @@ export interface GamerTagValidationResult {
   suggestions?: string[];
 }
 
-// Words reserved for staff and security
+// Exact words reserved strictly for system internals
 const RESERVED_WORDS = [
-  'admin',
-  'administrator',
-  'moderator',
-  'mod',
-  'staff',
-  'official',
-  'system',
-  'rockstar',
-  'rockstargames',
-  'take2',
-  'viceintel_bot',
   'null',
-  'undefined'
+  'undefined',
+  'system',
+  'viceintel_bot'
 ];
 
 let isSnapshotInitialized = false;
@@ -103,11 +94,11 @@ export function validateGamerTagSyntax(rawTag: string): { isValid: boolean; clea
 
   const lower = cleanTag.toLowerCase();
   for (const word of RESERVED_WORDS) {
-    if (lower === word || lower.includes(word)) {
+    if (lower === word) {
       return {
         isValid: false,
         cleanTag,
-        error: `❌ GamerTag cannot contain reserved keyword "${word}" for security and authenticity.`
+        error: `❌ GamerTag cannot be reserved system keyword "${word}".`
       };
     }
   }
@@ -245,10 +236,7 @@ export function searchGamerTags(prefix: string, max = 8): string[] {
  * Generates guaranteed unique GamerTag candidates if preferred name is already taken.
  */
 export async function generateUniqueGamerTag(baseName: string, currentUid?: string): Promise<string> {
-  let cleanBase = (baseName || 'VicePlayer').trim().replace(/\s+/g, '_');
-  if (cleanBase.toLowerCase().includes('admin')) {
-    cleanBase = cleanBase.replace(/admin/gi, 'player');
-  }
+  const cleanBase = (baseName || 'VicePlayer').trim().replace(/\s+/g, '_');
 
   // Test base first
   const initialCheck = await checkGamerTagUniqueness(cleanBase, currentUid);

@@ -313,24 +313,6 @@ export class MetaGamerTagEngine {
     this.bloom = new MetaBloomFilter(200000, 0.001);
     this.trie = new RadixGamerTagTrie();
     this.knownTakenSet = new Set();
-    this.seedKnownHandles();
-  }
-
-  /**
-   * Seeds standard system reserved handles and presets
-   */
-  private seedKnownHandles() {
-    const systemHandles = [
-      'admin', 'administrator', 'moderator', 'mod', 'staff', 'official',
-      'system', 'rockstar', 'rockstargames', 'take2', 'viceintel_bot',
-      'lucia_caminos', 'jason_duval', 'vice_city_pd', 'ocean_drive_dj',
-      'marabunta_don', 'biscayne_racer', 'everglades_tuner', 'staff_l3_marco',
-      'admin_l4_lucia', 'vicecityplayer_2026'
-    ];
-
-    for (const h of systemHandles) {
-      this.registerHandle(h, 'system');
-    }
   }
 
   /**

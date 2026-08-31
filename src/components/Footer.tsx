@@ -18,8 +18,7 @@ import {
   CheckCircle2,
   BookOpen,
   Bug,
-  Info,
-  TrendingUp
+  Info
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { getDocsNavigationTarget, getAdminNavigationTarget } from '../lib/subdomainRouter';
@@ -89,13 +88,6 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal })
               >
                 <Info className="w-3.5 h-3.5 text-rose-400" />
                 <span>About Us</span>
-              </button>
-              <button
-                onClick={(e) => handleNav('pitch', e)}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                <span>Investor Deck</span>
               </button>
             </div>
 
@@ -308,14 +300,6 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal })
               >
                 <Info className="w-3.5 h-3.5 text-rose-400" />
                 <span>About Us</span>
-              </button>
-              <span>•</span>
-              <button
-                onClick={(e) => handleNav('pitch', e)}
-                className="text-amber-300 hover:text-amber-200 font-bold transition cursor-pointer flex items-center gap-1.5"
-              >
-                <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                <span>Investor Deck</span>
               </button>
               <span>•</span>
               <button
