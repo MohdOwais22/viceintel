@@ -40,6 +40,8 @@ import {
   OAuthProvider,
   signOut,
   updateProfile,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   User as FirebaseUser
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, getDocs, collection, query, where } from 'firebase/firestore';
@@ -85,6 +87,7 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   isVipActive: boolean;
+  initialMode?: 'login' | 'register' | 'checkout';
   onUpgradeToVip: () => void;
   onDowngradeVip?: () => void;
   currentUser: FirebaseUser | null;
@@ -101,6 +104,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   isVipActive,
+  initialMode,
   onUpgradeToVip,
   onDowngradeVip,
   currentUser,
@@ -112,7 +116,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onDeclineJoinRequest,
   onNavigate
 }) => {
-  const [mode, setMode] = useState<'login' | 'register' | 'checkout'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'checkout'>(initialMode || 'login');
   const [profileTab, setProfileTab] = useState<'settings' | 'notifications'>('settings');
   const [notificationFilter, setNotificationFilter] = useState<'all' | NotificationType>('all');
   const [isSoundMuted, setIsSoundMuted] = useState<boolean>(() => isNotificationSoundMuted());
@@ -140,13 +144,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
 
-  // Email format validation & 2-Step verification states
+  // Email format validation & Firebase verification states
   const [regStep, setRegStep] = useState<'input' | 'code'>('input');
-  const [verificationCodeInput, setVerificationCodeInput] = useState('');
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [codeSentNotice, setCodeSentNotice] = useState<string | null>(null);
-  const [devCodePreview, setDevCodePreview] = useState<string | null>(null);
+  const [resetEmailSent, setResetEmailSent] = useState<string | null>(null);
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setAuthError('Please enter your email address above, then click "Forgot Password?".');
+      return;
+    }
+    setAuthError(null);
+    setResetEmailSent(null);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setResetEmailSent(`Password reset link sent to ${email.trim()}! Check your email inbox.`);
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      if (err.code === 'auth/user-not-found') {
+        setAuthError('No account found with this email address.');
+      } else if (err.code === 'auth/invalid-email') {
+        setAuthError('Please enter a valid email address.');
+      } else {
+        setAuthError(err.message || 'Failed to send password reset email.');
+      }
+    }
+  };
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
@@ -246,27 +271,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   useEffect(() => {
     if (currentUser) {
-      if (mode === 'login' || mode === 'register') {
-        setMode('checkout');
-      }
       setGamerTag(currentUser.displayName || '');
       if (currentUser.photoURL) {
         setSelectedAvatar(currentUser.photoURL);
       } else {
         setSelectedAvatar(DEFAULT_GTA6_AVATAR);
       }
-    } else {
-      setMode('login');
     }
   }, [currentUser]);
 
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
-      if (currentUser) {
-        setMode('checkout');
+      if (initialMode) {
+        setMode(initialMode);
+        if (initialMode === 'register' && currentUser && !currentUser.emailVerified) {
+          setRegStep('code');
+          if (currentUser.email) setEmail(currentUser.email);
+          if (currentUser.displayName) setUsername(currentUser.displayName);
+        }
+      } else if (currentUser) {
+        if (!currentUser.emailVerified) {
+          setMode('register');
+          setRegStep('code');
+          if (currentUser.email) setEmail(currentUser.email);
+          if (currentUser.displayName) setUsername(currentUser.displayName);
+        } else {
+          setMode('checkout');
+        }
       } else {
         setMode('login');
+        setRegStep('input');
       }
 
       // URL cleanup if any oauth params present
@@ -511,158 +546,69 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleRequestVerificationCode = async (e?: React.FormEvent) => {
+  const handleRegisterWithFirebase = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    setAuthError(null);
-    setCodeSentNotice(null);
-
-    const cleanUsername = username.trim().replace(/\s+/g, '_');
-    if (!cleanUsername) {
-      setAuthError('GamerTag / Username is required.');
-      return;
-    }
-
-    const syntaxCheck = validateGamerTagSyntax(cleanUsername);
-    if (!syntaxCheck.isValid) {
-      setAuthError(syntaxCheck.error || 'Invalid GamerTag format.');
-      return;
-    }
-
-    if (!email.trim()) {
-      setAuthError('Email Address is required.');
-      return;
-    }
-    if (!password || password.length < 6) {
-      setAuthError('Password must be at least 6 characters long.');
-      return;
-    }
-
-    setIsSendingCode(true);
-
-    try {
-      // 1. Check GamerTag Uniqueness client-side & in Firestore
-      const uniqueCheck = await checkGamerTagUniqueness(cleanUsername);
-      if (!uniqueCheck.isUnique) {
-        setAuthError(uniqueCheck.error || `⚠️ GamerTag "${cleanUsername}" is already taken by another player! GamerTags must be unique.`);
-        setIsSendingCode(false);
-        return;
-      }
-
-      const res = await fetch('/api/auth/send-verification-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          username: cleanUsername
-        })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        setAuthError(data.error || 'Failed to validate email format or send verification code.');
-        setIsSendingCode(false);
-        return;
-      }
-
-      setCodeSentNotice(data.message || `🔑 A 6-digit verification code has been dispatched to ${email.trim()}`);
-      if (data.code) {
-        setDevCodePreview(data.code);
-      }
-      setRegStep('code');
-    } catch (err: any) {
-      console.error('Request Verification Code Error:', err);
-      setAuthError('Network error while validating email format or dispatching verification code.');
-    } finally {
-      setIsSendingCode(false);
-    }
+    setAuthError('Signup with email is disabled for now. Please use Google login.');
   };
 
-  const handleVerifyCodeAndRegister = async (codeOrEvent?: string | React.FormEvent) => {
-    if (codeOrEvent && typeof codeOrEvent === 'object' && 'preventDefault' in codeOrEvent) {
-      codeOrEvent.preventDefault();
-    }
+  const handleCheckVerificationStatus = async () => {
     setAuthError(null);
-
-    const codeToVerify = typeof codeOrEvent === 'string' ? codeOrEvent : verificationCodeInput;
-
-    if (!codeToVerify || codeToVerify.trim().length !== 6) {
-      setAuthError('Please enter the complete 6-digit numeric verification code sent to your email.');
-      return;
-    }
-
     setIsVerifyingCode(true);
 
     try {
-      // 1. Verify code on server
-      const res = await fetch('/api/auth/verify-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          code: codeToVerify.trim()
-        })
-      });
+      if (auth.currentUser) {
+        await auth.currentUser.reload();
+        if (auth.currentUser.emailVerified) {
+          // Update Firestore user profile
+          try {
+            const userDocRef = doc(db, 'userProfiles', auth.currentUser.uid);
+            await setDoc(userDocRef, {
+              emailVerified: true,
+              verifiedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          } catch (e) {
+            console.warn('Firestore profile update warning:', e);
+          }
 
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        setAuthError(data.error || 'Invalid 6-digit verification code. Please check your email and try again.');
-        setIsVerifyingCode(false);
-        return;
-      }
-
-      // 2. Double-check GamerTag uniqueness before finalizing registration
-      const cleanUsername = username.trim().replace(/\s+/g, '_');
-      const uniqueCheck = await checkGamerTagUniqueness(cleanUsername);
-      if (!uniqueCheck.isUnique) {
-        setAuthError(uniqueCheck.error || `⚠️ GamerTag "${cleanUsername}" is already taken! Please choose a unique GamerTag.`);
-        setIsVerifyingCode(false);
-        return;
-      }
-
-      // 3. Email is verified! Proceed with Firebase user creation
-      const userCred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-
-      if (cleanUsername && userCred.user) {
-        await updateProfile(userCred.user, {
-          displayName: cleanUsername,
-          photoURL: getSafePhotoURL(DEFAULT_GTA6_AVATAR, cleanUsername)
-        });
-
-        // Sync verified profile document to Firestore userProfiles
-        try {
-          const userDocRef = doc(db, 'userProfiles', userCred.user.uid);
-          await setDoc(userDocRef, {
-            uid: userCred.user.uid,
-            username: cleanUsername,
-            usernameLower: cleanUsername.toLowerCase(),
-            email: email.trim().toLowerCase(),
-            emailVerified: true,
-            verifiedAt: new Date().toISOString(),
-            avatar: DEFAULT_GTA6_AVATAR,
-            role: 'User',
-            isVip: false,
-            status: 'Active',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-        } catch (fsErr) {
-          console.warn('Failed to sync verified user profile to Firestore:', fsErr);
+          setCodeSentNotice('🎉 Email successfully verified! Welcome to Vice City Central.');
+          setTimeout(() => {
+            setRegStep('input');
+            onClose();
+          }, 1000);
+          return;
         }
       }
 
-      // Reset registration state
-      setRegStep('input');
-      setVerificationCodeInput('');
-      setDevCodePreview(null);
-      setCodeSentNotice(null);
-      onClose();
+      setAuthError('Verification link not detected yet. Please open the email sent to your inbox, click the verification link, and click this button again.');
     } catch (err: any) {
-      console.error('Firebase Register Error:', err);
-      setAuthError(err.message || 'Failed to create verified account.');
+      console.error('Check Verification Error:', err);
+      setAuthError(err.message || 'Failed to check verification status.');
     } finally {
       setIsVerifyingCode(false);
+    }
+  };
+
+  const handleResendVerificationLink = async () => {
+    setAuthError(null);
+    setIsSendingCode(true);
+
+    try {
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        setCodeSentNotice(`A fresh verification link was sent to ${auth.currentUser.email || email.trim()}! Check your inbox.`);
+      } else {
+        setAuthError('Session expired. Please sign in or register again.');
+      }
+    } catch (err: any) {
+      console.error('Resend Verification Error:', err);
+      if (err.code === 'auth/too-many-requests') {
+        setAuthError('Too many requests. Please wait a minute before requesting another link.');
+      } else {
+        setAuthError(err.message || 'Failed to resend verification link.');
+      }
+    } finally {
+      setIsSendingCode(false);
     }
   };
 
@@ -798,6 +744,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               )}
 
+              {resetEmailSent && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{resetEmailSent}</span>
+                </div>
+              )}
+
               <form onSubmit={handleEmailSignIn} className="space-y-3">
                 <div>
                   <label className="text-[11px] font-bold text-zinc-400 block mb-1">Email Address</label>
@@ -817,6 +770,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-bold text-zinc-400">Password</label>
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      className="text-[10px] text-zinc-400 hover:text-rose-400 underline transition cursor-pointer"
+                    >
+                      Forgot Password?
+                    </button>
                   </div>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
@@ -878,18 +838,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
 
-          {/* REGISTER FORM WITH 2-STEP EMAIL VERIFICATION */}
+          {/* REGISTER FORM WITH NOTICE */}
           {mode === 'register' && (
             <div className="space-y-4">
-              <div className="p-3 bg-zinc-950/80 border border-rose-500/30 rounded-xl flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-rose-300 font-extrabold text-[11px]">
-                  <ShieldCheck className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>2-Step Server Email Verification Active</span>
+              {regStep === 'input' && (
+                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-3">
+                  <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Signup Notice</span>
+                  </div>
+                  <p className="text-xs text-amber-200/90 leading-relaxed font-medium">
+                    Signup with email is disabled for now. Please use <strong>Google Login</strong> to sign up or sign in.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    disabled={isAuthLoading}
+                    className="w-full py-2.5 px-3 bg-white hover:bg-zinc-100 text-zinc-950 font-extrabold rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                  >
+                    <GoogleIcon />
+                    <span>Continue with Google</span>
+                  </button>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                  Step {regStep === 'input' ? '1 of 2' : '2 of 2'}
-                </span>
-              </div>
+              )}
 
               {authError && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start gap-2">
@@ -898,40 +869,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               )}
 
-              {codeSentNotice && regStep === 'code' && (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">{codeSentNotice}</span>
-                </div>
-              )}
-
               {/* STEP 1: Enter User Info & Request Code */}
               {regStep === 'input' && (
-                <form onSubmit={handleRequestVerificationCode} className="space-y-3">
+                <form onSubmit={handleRegisterWithFirebase} className="space-y-3">
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-[11px] font-bold text-zinc-400">GamerTag / Unique Handle</label>
                       {tagAvailability.checking && (
-                        <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
-                          <Sparkles className="w-3 h-3 animate-spin" /> Checking Meta Bloom Filter...
+                        <span className="text-[10px] text-amber-400 flex items-center gap-1 font-medium">
+                          <Sparkles className="w-3 h-3 animate-spin" /> Checking availability...
                         </span>
                       )}
                       {!tagAvailability.checking && tagAvailability.available === true && (
-                        <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono font-bold">
+                        <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-bold">
                           <CheckCircle2 className="w-3 h-3" /> Unique & Available
-                          <span className="text-[9px] text-emerald-300/70 bg-emerald-950/80 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono">
-                            ⚡ {tagAvailability.level === 'L1_BLOOM' ? 'O(1) Bloom' : 'Verified'} ({tagAvailability.latencyMs || 0.05}ms)
-                          </span>
                         </span>
                       )}
                       {!tagAvailability.checking && tagAvailability.available === false && (
-                        <span className="text-[10px] text-rose-400 flex items-center gap-1 font-mono font-bold">
+                        <span className="text-[10px] text-rose-400 flex items-center gap-1 font-bold">
                           <AlertCircle className="w-3 h-3" /> Already Taken
-                          {tagAvailability.latencyMs && (
-                            <span className="text-[9px] text-rose-300/70 bg-rose-950/80 border border-rose-800/40 px-1 py-0.2 rounded font-mono">
-                              {tagAvailability.latencyMs}ms
-                            </span>
-                          )}
                         </span>
                       )}
                     </div>
@@ -1007,12 +963,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     {isSendingCode ? (
                       <span className="flex items-center gap-2">
                         <Sparkles className="w-4 h-4 animate-spin text-rose-200" />
-                        <span>Validating Email & Generating Code...</span>
+                        <span>Creating Account & Sending Firebase Email...</span>
                       </span>
                     ) : (
                       <>
-                        <Key className="w-4 h-4" />
-                        <span>Send 6-Digit Verification Code</span>
+                        <Mail className="w-4 h-4" />
+                        <span>Create Account & Send Verification Email</span>
                       </>
                     )}
                   </button>
@@ -1024,14 +980,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <EmailVerificationStep
                   email={email}
                   username={username}
-                  devCodePreview={devCodePreview}
                   codeSentNotice={codeSentNotice}
-                  onVerifySuccess={handleVerifyCodeAndRegister}
-                  onResendCode={handleRequestVerificationCode}
+                  onCheckVerified={handleCheckVerificationStatus}
+                  onResendLink={handleResendVerificationLink}
                   onEditEmail={() => {
                     setRegStep('input');
-                    setVerificationCodeInput('');
                     setAuthError(null);
+                  }}
+                  onContinue={() => {
+                    setRegStep('input');
+                    onClose();
                   }}
                   isVerifying={isVerifyingCode}
                   isResending={isSendingCode}

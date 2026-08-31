@@ -1959,26 +1959,18 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                     Vice City GamerTag
                   </label>
                   {tagAvailability.checking && (
-                    <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
-                      <Sparkles className="w-3 h-3 animate-spin" /> Checking Meta Bloom Filter...
+                    <span className="text-[10px] text-amber-400 flex items-center gap-1 font-medium">
+                      <Sparkles className="w-3 h-3 animate-spin" /> Checking availability...
                     </span>
                   )}
                   {!tagAvailability.checking && tagAvailability.available === true && (
-                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono font-bold">
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-bold">
                       <CheckCircle2 className="w-3 h-3" /> Unique & Available
-                      <span className="text-[9px] text-emerald-300/70 bg-emerald-950/80 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono">
-                        ⚡ {tagAvailability.level === 'L1_BLOOM' ? 'O(1) Bloom' : 'Verified'} ({tagAvailability.latencyMs || 0.05}ms)
-                      </span>
                     </span>
                   )}
                   {!tagAvailability.checking && tagAvailability.available === false && (
-                    <span className="text-[10px] text-rose-400 flex items-center gap-1 font-mono font-bold">
+                    <span className="text-[10px] text-rose-400 flex items-center gap-1 font-bold">
                       <AlertCircle className="w-3 h-3" /> Already Taken
-                      {tagAvailability.latencyMs && (
-                        <span className="text-[9px] text-rose-300/70 bg-rose-950/80 border border-rose-800/40 px-1 py-0.2 rounded font-mono">
-                          {tagAvailability.latencyMs}ms
-                        </span>
-                      )}
                     </span>
                   )}
                 </div>

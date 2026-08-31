@@ -91,6 +91,8 @@ export async function checkUserRewardStatus(userId: string): Promise<UserRewardS
   let lastClaimDate = '';
   let isVip = false;
 
+  let createdAtMs = 0;
+
   try {
     const snap = await getDoc(userDocRef);
     if (snap.exists()) {
@@ -103,6 +105,9 @@ export async function checkUserRewardStatus(userId: string): Promise<UserRewardS
       else rewardStreak = dailyStreak;
 
       if (data.lastClaimDate) lastClaimDate = String(data.lastClaimDate);
+      if (data.createdAt) {
+        createdAtMs = typeof data.createdAt === 'number' ? data.createdAt : new Date(data.createdAt).getTime();
+      }
 
       if (data.isVip === true) {
         if (data.vipUntil) {
@@ -118,11 +123,27 @@ export async function checkUserRewardStatus(userId: string): Promise<UserRewardS
   }
 
   const lastClaimTimeMs = getTimestampFromClaimDate(lastClaimDate, lastLogin);
-  const timeSinceLastClaim = lastClaimTimeMs === 0 ? Infinity : now - lastClaimTimeMs;
 
-  const isStreakBroken = lastClaimTimeMs > 0 && timeSinceLastClaim >= STREAK_RESET_WINDOW_MS;
-  const canClaim = lastClaimTimeMs === 0 || timeSinceLastClaim >= COOLDOWN_24H_MS;
-  const timeRemainingMs = canClaim ? 0 : COOLDOWN_24H_MS - timeSinceLastClaim;
+  let canClaim = false;
+  let timeRemainingMs = 0;
+
+  if (lastClaimTimeMs === 0) {
+    // Brand new account: must wait 24 hours from createdAt (or now)
+    const accountAgeMs = createdAtMs > 0 ? now - createdAtMs : 0;
+    if (accountAgeMs < COOLDOWN_24H_MS) {
+      canClaim = false;
+      timeRemainingMs = COOLDOWN_24H_MS - accountAgeMs;
+    } else {
+      canClaim = true;
+      timeRemainingMs = 0;
+    }
+  } else {
+    const timeSinceLastClaim = now - lastClaimTimeMs;
+    canClaim = timeSinceLastClaim >= COOLDOWN_24H_MS;
+    timeRemainingMs = canClaim ? 0 : COOLDOWN_24H_MS - timeSinceLastClaim;
+  }
+
+  const isStreakBroken = lastClaimTimeMs > 0 && (now - lastClaimTimeMs) >= STREAK_RESET_WINDOW_MS;
 
   let effectiveRewardStreak = rewardStreak;
   let effectiveDailyStreak = dailyStreak;
@@ -195,6 +216,8 @@ export async function claimDailyReward(userId: string): Promise<ClaimRewardResul
   let currentVipUntilMs = 0;
   let userLevel = 'L1';
 
+  let createdAtMs = 0;
+
   try {
     const docSnap = await getDoc(userDocRef);
     if (docSnap.exists()) {
@@ -207,6 +230,9 @@ export async function claimDailyReward(userId: string): Promise<ClaimRewardResul
       else rewardStreak = dailyStreak; // fallback
 
       if (data.lastClaimDate) lastClaimDate = String(data.lastClaimDate);
+      if (data.createdAt) {
+        createdAtMs = typeof data.createdAt === 'number' ? data.createdAt : new Date(data.createdAt).getTime();
+      }
 
       if (data.userLevel) userLevel = String(data.userLevel);
       else if (data.clearanceLevel) userLevel = String(data.clearanceLevel);
@@ -230,26 +256,44 @@ export async function claimDailyReward(userId: string): Promise<ClaimRewardResul
 
   // Exact comparison with lastClaimDate / lastLogin server timestamp
   const lastClaimTimeMs = getTimestampFromClaimDate(lastClaimDate, lastLogin);
-  const timeSinceLastClaim = lastClaimTimeMs === 0 ? Infinity : now - lastClaimTimeMs;
 
-  // Check 24-hour cooldown (Delta < 24h)
-  if (timeSinceLastClaim < COOLDOWN_24H_MS) {
-    const timeRemainingMs = COOLDOWN_24H_MS - timeSinceLastClaim;
-    return {
-      success: false,
-      vcBalance: currentVcBalance,
-      rewardAmount: 0,
-      lastLogin,
-      dailyStreak,
-      rewardStreak,
-      lastClaimDate,
-      timeRemainingMs,
-      message: `Reward cooldown active. Available in ${Math.ceil(timeRemainingMs / (1000 * 60))} minutes.`
-    };
+  if (lastClaimTimeMs === 0) {
+    const accountAgeMs = createdAtMs > 0 ? now - createdAtMs : 0;
+    if (accountAgeMs < COOLDOWN_24H_MS) {
+      const timeRemainingMs = COOLDOWN_24H_MS - accountAgeMs;
+      const hoursRemaining = Math.ceil(timeRemainingMs / (1000 * 60 * 60));
+      return {
+        success: false,
+        vcBalance: currentVcBalance,
+        rewardAmount: 0,
+        lastLogin,
+        dailyStreak,
+        rewardStreak,
+        lastClaimDate,
+        timeRemainingMs,
+        message: `Your account was recently created! First daily reward unlocks 24 hours after account creation (~${hoursRemaining}h remaining).`
+      };
+    }
+  } else {
+    const timeSinceLastClaim = now - lastClaimTimeMs;
+    if (timeSinceLastClaim < COOLDOWN_24H_MS) {
+      const timeRemainingMs = COOLDOWN_24H_MS - timeSinceLastClaim;
+      return {
+        success: false,
+        vcBalance: currentVcBalance,
+        rewardAmount: 0,
+        lastLogin,
+        dailyStreak,
+        rewardStreak,
+        lastClaimDate,
+        timeRemainingMs,
+        message: `Reward cooldown active. Available in ${Math.ceil(timeRemainingMs / (1000 * 60))} minutes.`
+      };
+    }
   }
 
   // Check if streak was broken (Delta >= 48h) or consecutive (24h <= Delta < 48h)
-  const isStreakBroken = lastClaimTimeMs !== 0 && timeSinceLastClaim >= STREAK_RESET_WINDOW_MS;
+  const isStreakBroken = lastClaimTimeMs !== 0 && (now - lastClaimTimeMs) >= STREAK_RESET_WINDOW_MS;
   const newStreak = isStreakBroken || rewardStreak === 0 ? 1 : rewardStreak + 1;
   const newClaimDate = new Date(now).toISOString();
 

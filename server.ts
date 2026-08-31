@@ -2786,7 +2786,7 @@ Showing top entries for "${query || 'All'}":
       } else if (lower.startsWith('!stats') || lower.startsWith('!user')) {
         const isSenderAdmin = senderName.toLowerCase().includes('admin') || senderName.toLowerCase().includes('lucia') || senderName === 'ViceCityMod_Tommy';
         const userLevel = userStats?.userLevel || (isSenderAdmin ? 'L4 Admin' : 'L1 Member');
-        const rawBalance = userStats?.vcBalance != null ? userStats.vcBalance : (isSenderAdmin ? 50000 : 1500);
+        const rawBalance = userStats?.vcBalance != null ? userStats.vcBalance : (isSenderAdmin ? 50000 : 0);
         const vcBalanceStr = typeof rawBalance === 'number' ? rawBalance.toLocaleString() : String(rawBalance);
         const dailyStreak = userStats?.dailyStreak != null ? userStats.dailyStreak : (isSenderAdmin ? 14 : 3);
         const badgesArr = Array.isArray(userStats?.badges) && userStats.badges.length > 0 
@@ -4873,16 +4873,36 @@ Showing top entries for "${query || 'All'}":
         sentAt: nowIso,
         isVerification: true
       });
+
+      // 4. Optional webhook/SMTP trigger if outbound email webhook is configured
+      if (process.env.EMAIL_WEBHOOK_URL) {
+        try {
+          await fetch(process.env.EMAIL_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'EMAIL_VERIFICATION_CODE',
+              to: cleanEmail,
+              subject: emailSubject,
+              html: emailHtml,
+              code: randomCode,
+              username: cleanUsername,
+              sentAt: nowIso
+            })
+          });
+        } catch (whErr) {
+          console.warn('[Email Verification Webhook] Dispatch error:', whErr);
+        }
+      }
     } catch (fsErr) {
       console.warn('Firestore code persistence error (continuing with in-memory code):', fsErr);
     }
 
     return res.json({
       success: true,
-      message: `6-digit verification code successfully sent to ${cleanEmail}. Please enter the code to complete registration.`,
+      message: `A 6-digit verification code has been dispatched to ${cleanEmail}. Please check your inbox and spam folder.`,
       email: cleanEmail,
-      expiresAt,
-      code: randomCode
+      expiresAt
     });
   });
 

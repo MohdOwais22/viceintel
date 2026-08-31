@@ -64,7 +64,7 @@ import { syncDiscordConfigFromServer } from './lib/discordOAuthHelper';
 import { getTabFromPath, updatePageSeoMeta, TAB_TO_PATH } from './lib/seoRouting';
 import { initSeoRealtimeSync } from './lib/seoStore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { Gift, Bug, Camera, CheckCircle2, AlertTriangle, XCircle, Sparkles, Coins } from 'lucide-react';
+import { Gift, Bug, Camera, CheckCircle2, AlertTriangle, XCircle, Sparkles, Coins, Mail } from 'lucide-react';
 import { getRewardCooldown, claimDailyReward, getTimestampFromClaimDate, checkUserRewardStatus } from './lib/rewardUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { AdScriptLoader } from './components/ads/AdScriptLoader';
@@ -259,7 +259,7 @@ export default function App() {
             const defaultName = rawName.replace(/\s+/g, '_');
             const initRole = isSystemAdminEmail ? 'Admin' : 'User';
             const initClearance = isSystemAdminEmail ? 'L4' : 'Member';
-            const initVc = isSystemAdminEmail ? 50000 : 2500;
+            const initVc = isSystemAdminEmail ? 50000 : 0;
 
             await setDoc(userDocRef, {
               uid: user.uid,

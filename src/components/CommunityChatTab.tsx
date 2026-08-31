@@ -3456,7 +3456,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     const isSenderStaff = isStaffUser || isSenderAdmin;
 
     const userStatsPayload = {
-      vcBalance: userProfileData?.vcBalance ?? (isSenderAdmin ? 50000 : isVipUser ? 10000 : 1500),
+      vcBalance: userProfileData?.vcBalance ?? (isSenderAdmin ? 50000 : isVipUser ? 10000 : 0),
       dailyStreak: userProfileData?.dailyStreak ?? (isSenderAdmin ? 14 : 3),
       userLevel: userProfileData?.role || (isSenderAdmin ? 'L4 Admin' : isSenderStaff ? 'L3 Staff' : isVipUser ? 'L2 VIP Member' : 'L1 Regular User'),
       vipExpires: userProfileData?.vipExpires || (isSenderAdmin ? 'Lifetime' : isSenderStaff ? 'Staff Account' : isVipUser ? '2027-08-15' : 'Expired'),
