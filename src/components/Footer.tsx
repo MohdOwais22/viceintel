@@ -18,7 +18,8 @@ import {
   CheckCircle2,
   BookOpen,
   Bug,
-  Info
+  Info,
+  RefreshCw
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { getDocsNavigationTarget, getAdminNavigationTarget } from '../lib/subdomainRouter';
@@ -26,9 +27,10 @@ import { getDocsNavigationTarget, getAdminNavigationTarget } from '../lib/subdom
 interface FooterProps {
   onNavigate?: (tab: ActiveTab) => void;
   onOpenReportModal?: () => void;
+  onOpenOfflineSync?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal }) => {
+export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal, onOpenOfflineSync }) => {
   const handleNav = (tab: ActiveTab, e: React.MouseEvent) => {
     e.preventDefault();
     if (tab === 'docs') {
@@ -81,18 +83,31 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal })
               The ultimate non-commercial fan companion for Grand Theft Auto VI. Features real-time vehicle telemetry, weapon comparison matrices, business ROI calculators, custom vehicle tuning, interactive map waypoints, and low-latency community voice channels.
             </p>
 
-            {/* LIVE SYSTEM STATUS */}
-            <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800/80 flex items-center justify-between gap-3 max-w-md">
+            {/* LIVE SYSTEM STATUS & SYNC TRIGGER */}
+            <div 
+              onClick={() => onOpenOfflineSync && onOpenOfflineSync()}
+              className={`p-3 rounded-xl bg-zinc-900/80 border border-zinc-800/80 flex items-center justify-between gap-3 max-w-md ${
+                onOpenOfflineSync ? 'hover:border-rose-500/50 cursor-pointer transition group' : ''
+              }`}
+              title="Click to open Cloud Database & Offline Cache Control Center"
+            >
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </span>
-                <span className="text-xs font-mono font-bold text-zinc-300">Network Status: Operational</span>
+                <span className="text-xs font-mono font-bold text-zinc-300 group-hover:text-white transition">Network & Cloud DB: Live</span>
               </div>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                99.9% Uptime
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  99.9% Uptime
+                </span>
+                {onOpenOfflineSync && (
+                  <span className="text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 hidden sm:inline-block">
+                    Sync DB ⚡
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -103,6 +118,20 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal })
               <span>Databases</span>
             </h4>
             <ul className="space-y-2 text-zinc-400">
+              {onOpenOfflineSync && (
+                <li>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onOpenOfflineSync();
+                    }}
+                    className="hover:text-rose-400 transition flex items-center gap-1.5 cursor-pointer text-cyan-300 font-bold"
+                  >
+                    <RefreshCw className="w-3 h-3 text-cyan-400 animate-spin-slow" />
+                    <span>Sync Live Firestore Catalogs</span>
+                  </button>
+                </li>
+              )}
               <li>
                 <button
                   onClick={(e) => handleNav('seo-hub', e)}

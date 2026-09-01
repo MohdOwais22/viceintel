@@ -1,11 +1,16 @@
 import localforage from 'localforage';
-import { Vehicle, Weapon, MapLocation, Business, RpServer, BlogPost } from '../types';
+import { Vehicle, Weapon, MapLocation, Business, RpServer, BlogPost, Character } from '../types';
 import { VEHICLES_DATA } from '../data/vehicles';
 import { WEAPONS_DATA } from '../data/weapons';
 import { MAP_LOCATIONS_DATA } from '../data/mapLocations';
+import { CHARACTERS_DATA } from '../data/characters';
 import { BUSINESSES_DATA } from '../data/businesses';
 import { RP_SERVERS_DATA } from '../data/rpServers';
 import { BLOG_POSTS as BLOG_POSTS_DATA } from '../data/blogPosts';
+import { getStoredVehicles, vehicleBundleEngine } from './vehicleStore';
+import { getStoredWeapons, weaponBundleEngine } from './weaponStore';
+import { getStoredMapLocations, mapBundleEngine } from './mapStore';
+import { getStoredCharacters, characterBundleEngine } from './characterStore';
 
 // Configure localforage instance for GTA VI Central
 const storage = localforage.createInstance({
@@ -19,6 +24,7 @@ export interface CacheMetadata {
   vehiclesCount: number;
   weaponsCount: number;
   mapLocationsCount: number;
+  charactersCount: number;
   businessesCount: number;
   rpServersCount: number;
   blogPostsCount: number;
@@ -30,6 +36,7 @@ export const STORAGE_KEYS = {
   VEHICLES: 'gtavi_cached_vehicles',
   WEAPONS: 'gtavi_cached_weapons',
   MAP_LOCATIONS: 'gtavi_cached_map_locations',
+  CHARACTERS: 'gtavi_cached_characters_gallery',
   BUSINESSES: 'gtavi_cached_businesses',
   RP_SERVERS: 'gtavi_cached_rp_servers',
   BLOG_POSTS: 'gtavi_cached_blog_posts',
@@ -38,40 +45,54 @@ export const STORAGE_KEYS = {
 };
 
 /**
- * Preloads all critical datasets into localforage IndexedDB.
+ * Preloads and warms critical datasets into localforage IndexedDB without overwriting admin cloud sync.
  * Can be called automatically on app load or manually via the Sync UI.
  */
 export async function preloadAllCriticalData(): Promise<CacheMetadata> {
   try {
-    console.log('[OfflineStorage] Preloading critical datasets into IndexedDB...');
+    console.log('[OfflineStorage] Initializing and preloading critical datasets into IndexedDB...');
+
+    // Retrieve active items through the bundle engines (which preserve live Firestore updates)
+    const [vehicles, weapons, mapLocations, characters, businesses, rpServers, blogPosts] = await Promise.all([
+      getStoredVehicles(),
+      getStoredWeapons(),
+      getStoredMapLocations(),
+      getStoredCharacters(),
+      storage.getItem<Business[]>(STORAGE_KEYS.BUSINESSES).then(b => b && b.length > 0 ? b : BUSINESSES_DATA),
+      storage.getItem<RpServer[]>(STORAGE_KEYS.RP_SERVERS).then(r => r && r.length > 0 ? r : RP_SERVERS_DATA),
+      storage.getItem<BlogPost[]>(STORAGE_KEYS.BLOG_POSTS).then(p => p && p.length > 0 ? p : BLOG_POSTS_DATA)
+    ]);
 
     // Save core datasets
-    await storage.setItem(STORAGE_KEYS.VEHICLES, VEHICLES_DATA);
-    await storage.setItem(STORAGE_KEYS.WEAPONS, WEAPONS_DATA);
-    await storage.setItem(STORAGE_KEYS.MAP_LOCATIONS, MAP_LOCATIONS_DATA);
-    await storage.setItem(STORAGE_KEYS.BUSINESSES, BUSINESSES_DATA);
-    await storage.setItem(STORAGE_KEYS.RP_SERVERS, RP_SERVERS_DATA);
-    await storage.setItem(STORAGE_KEYS.BLOG_POSTS, BLOG_POSTS_DATA);
+    await storage.setItem(STORAGE_KEYS.VEHICLES, vehicles);
+    await storage.setItem(STORAGE_KEYS.WEAPONS, weapons);
+    await storage.setItem(STORAGE_KEYS.MAP_LOCATIONS, mapLocations);
+    await storage.setItem(STORAGE_KEYS.CHARACTERS, characters);
+    await storage.setItem(STORAGE_KEYS.BUSINESSES, businesses);
+    await storage.setItem(STORAGE_KEYS.RP_SERVERS, rpServers);
+    await storage.setItem(STORAGE_KEYS.BLOG_POSTS, blogPosts);
 
     // Calculate approximate size in KB
     const totalJson = JSON.stringify({
-      vehicles: VEHICLES_DATA,
-      weapons: WEAPONS_DATA,
-      map: MAP_LOCATIONS_DATA,
-      businesses: BUSINESSES_DATA,
-      rp: RP_SERVERS_DATA,
-      blogs: BLOG_POSTS_DATA
+      vehicles,
+      weapons,
+      map: mapLocations,
+      characters,
+      businesses,
+      rp: rpServers,
+      blogs: blogPosts
     });
     const sizeKb = Math.round(new Blob([totalJson]).size / 1024);
 
     const metadata: CacheMetadata = {
       lastSyncedAt: new Date().toISOString(),
-      vehiclesCount: VEHICLES_DATA.length,
-      weaponsCount: WEAPONS_DATA.length,
-      mapLocationsCount: MAP_LOCATIONS_DATA.length,
-      businessesCount: BUSINESSES_DATA.length,
-      rpServersCount: RP_SERVERS_DATA.length,
-      blogPostsCount: BLOG_POSTS_DATA.length,
+      vehiclesCount: vehicles.length,
+      weaponsCount: weapons.length,
+      mapLocationsCount: mapLocations.length,
+      charactersCount: characters.length,
+      businessesCount: businesses.length,
+      rpServersCount: rpServers.length,
+      blogPostsCount: blogPosts.length,
       isFullyPreloaded: true,
       estimatedSizeKb: sizeKb
     };
@@ -85,9 +106,59 @@ export async function preloadAllCriticalData(): Promise<CacheMetadata> {
   }
 }
 
-import { getStoredVehicles } from './vehicleStore';
-import { getStoredWeapons } from './weaponStore';
-import { getStoredMapLocations } from './mapStore';
+/**
+ * Forcefully queries the active Firestore master bundles for vehicles, weapons, map locations, and characters.
+ * Bypasses local storage and in-memory caches to download staff updates and caches them locally.
+ */
+export async function forceSyncFirestoreToLocal(): Promise<CacheMetadata> {
+  try {
+    console.log('[OfflineStorage] Direct Firestore synchronization in progress...');
+    
+    // Fetch directly from live Firestore databases using the Bundle Store Engines
+    const liveVehicles = await vehicleBundleEngine.forceFetchFromServer();
+    const liveWeapons = await weaponBundleEngine.forceFetchFromServer();
+    const liveMapLocations = await mapBundleEngine.forceFetchFromServer();
+    const liveCharacters = await characterBundleEngine.forceFetchFromServer();
+
+    // Also update the offline cache storage entries to match
+    await storage.setItem(STORAGE_KEYS.VEHICLES, liveVehicles);
+    await storage.setItem(STORAGE_KEYS.WEAPONS, liveWeapons);
+    await storage.setItem(STORAGE_KEYS.MAP_LOCATIONS, liveMapLocations);
+    await storage.setItem(STORAGE_KEYS.CHARACTERS, liveCharacters);
+
+    // Re-calculate the current total JSON footprint size for metadata tracking
+    const totalJson = JSON.stringify({
+      vehicles: liveVehicles,
+      weapons: liveWeapons,
+      map: liveMapLocations,
+      characters: liveCharacters,
+      businesses: BUSINESSES_DATA,
+      rp: RP_SERVERS_DATA,
+      blogs: BLOG_POSTS_DATA
+    });
+    const sizeKb = Math.round(new Blob([totalJson]).size / 1024);
+
+    const metadata: CacheMetadata = {
+      lastSyncedAt: new Date().toISOString(),
+      vehiclesCount: liveVehicles.length,
+      weaponsCount: liveWeapons.length,
+      mapLocationsCount: liveMapLocations.length,
+      charactersCount: liveCharacters.length,
+      businessesCount: BUSINESSES_DATA.length,
+      rpServersCount: RP_SERVERS_DATA.length,
+      blogPostsCount: BLOG_POSTS_DATA.length,
+      isFullyPreloaded: true,
+      estimatedSizeKb: sizeKb
+    };
+
+    await storage.setItem(STORAGE_KEYS.METADATA, metadata);
+    console.log('[OfflineStorage] Successfully synchronized and cached live Firestore data:', metadata);
+    return metadata;
+  } catch (err) {
+    console.error('[OfflineStorage] Error synchronizing live Firestore data:', err);
+    throw err;
+  }
+}
 
 /**
  * Gets cached vehicles or falls back to static default data with real-time Firestore sync.
@@ -115,6 +186,20 @@ export async function getCachedWeapons(): Promise<Weapon[]> {
  */
 export async function getCachedMapLocations(): Promise<MapLocation[]> {
   return getStoredMapLocations() as Promise<MapLocation[]>;
+}
+
+/**
+ * Gets cached characters or falls back to static character data with real-time Firestore sync.
+ */
+export async function getCachedCharacters(): Promise<Character[]> {
+  return getStoredCharacters();
+}
+
+/**
+ * Save updated characters list to localforage.
+ */
+export async function saveCachedCharacters(characters: Character[]): Promise<void> {
+  await storage.setItem(STORAGE_KEYS.CHARACTERS, characters);
 }
 
 /**

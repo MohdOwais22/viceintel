@@ -14,12 +14,14 @@ import {
   Car,
   Crosshair,
   Briefcase,
-  Zap
+  Zap,
+  Users
 } from 'lucide-react';
 import {
   preloadAllCriticalData,
   getCacheMetadata,
   clearAllOfflineCache,
+  forceSyncFirestoreToLocal,
   CacheMetadata
 } from '../lib/offlineStorage';
 import { formatDateTime } from '../lib/dateUtils';
@@ -70,13 +72,16 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({ isOpen, onCl
     setSyncProgressMessage('Caching vehicle top speeds, mod specs & handling parameters...');
 
     try {
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 300));
       setSyncProgressMessage('Caching weapon TTK damage matrices & attachment data...');
 
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 300));
       setSyncProgressMessage('Caching Vice City POI coordinates & map tiles...');
 
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 300));
+      setSyncProgressMessage('Caching Character dossiers, syndicate lore & voice actor rosters...');
+
+      await new Promise((r) => setTimeout(r, 300));
       setSyncProgressMessage('Caching Business ROI formulas & FiveM RP directory...');
 
       const newMeta = await preloadAllCriticalData();
@@ -89,6 +94,46 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({ isOpen, onCl
     } catch (err) {
       console.error(err);
       setNotification({ message: 'Failed to complete offline dataset pre-caching.', type: 'error' });
+    } finally {
+      setIsSyncing(false);
+      setSyncProgressMessage('');
+    }
+  };
+
+  const handleLiveSync = async () => {
+    if (!isOnline) {
+      setNotification({ message: 'Sync requires an active internet connection. Please connect to the network.', type: 'error' });
+      return;
+    }
+    setIsSyncing(true);
+    setSyncProgressMessage('Connecting to Google Cloud Firestore Live Gateway...');
+
+    try {
+      await new Promise((r) => setTimeout(r, 250));
+      setSyncProgressMessage('Pulling master vehicle catalog bundles (Thanh Le Pattern)...');
+      
+      await new Promise((r) => setTimeout(r, 250));
+      setSyncProgressMessage('Pulling master weapon TTK matrices & custom staff specs...');
+      
+      await new Promise((r) => setTimeout(r, 250));
+      setSyncProgressMessage('Pulling master map POI coordinates & custom landmark coordinates...');
+
+      await new Promise((r) => setTimeout(r, 250));
+      setSyncProgressMessage('Pulling master character gallery & syndicate lore...');
+
+      await new Promise((r) => setTimeout(r, 200));
+      setSyncProgressMessage('Compacting database payloads and updating Local Browser Caches...');
+
+      const newMeta = await forceSyncFirestoreToLocal();
+      setCacheStats(newMeta);
+
+      setNotification({
+        message: `Successfully synchronized live Firestore catalogs (${newMeta.estimatedSizeKb} KB cached locally)!`,
+        type: 'success'
+      });
+    } catch (err) {
+      console.error(err);
+      setNotification({ message: 'Failed to sync with live Cloud Firestore. Please try again.', type: 'error' });
     } finally {
       setIsSyncing(false);
       setSyncProgressMessage('');
@@ -222,7 +267,7 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({ isOpen, onCl
               <span>Offline Cached Datasets Summary</span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800 flex items-center gap-3">
                 <Car className="w-5 h-5 text-rose-400 shrink-0" />
                 <div>
@@ -249,6 +294,16 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({ isOpen, onCl
                   <div className="text-xs font-bold text-white">Vice City Map POIs</div>
                   <div className="text-[11px] font-mono text-zinc-400">
                     {cacheStats ? `${cacheStats.mapLocationsCount} Cached` : 'Static Ready'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800 flex items-center gap-3">
+                <Users className="w-5 h-5 text-pink-400 shrink-0" />
+                <div>
+                  <div className="text-xs font-bold text-white">Character Dossiers</div>
+                  <div className="text-[11px] font-mono text-zinc-400">
+                    {cacheStats ? `${cacheStats.charactersCount} Cached` : 'Static Ready'}
                   </div>
                 </div>
               </div>
@@ -331,14 +386,27 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({ isOpen, onCl
               </button>
             )}
 
-            <button
-              onClick={handlePreloadData}
-              disabled={isSyncing}
-              className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-rose-500 via-pink-600 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white shadow-lg shadow-rose-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{cacheStats ? 'Re-Sync Offline Cache' : 'Pre-Cache All Data For Offline Use'}</span>
-            </button>
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+              <button
+                onClick={handlePreloadData}
+                disabled={isSyncing}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                title="Loads standard static default catalog files directly into local cache"
+              >
+                <Database className="w-4 h-4 text-zinc-400" />
+                <span>Default Local Preload</span>
+              </button>
+
+              <button
+                onClick={handleLiveSync}
+                disabled={isSyncing}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-rose-500 via-pink-600 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white shadow-lg shadow-rose-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                title="Queries Firestore Live master bundles directly to pull newly added items & changes from staff CMS"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>Sync Live Firestore Catalogs</span>
+              </button>
+            </div>
           </div>
 
         </div>

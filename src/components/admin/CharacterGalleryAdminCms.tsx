@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
   Image as ImageIcon,
@@ -14,7 +14,14 @@ import {
   Link,
   Upload,
   RotateCcw,
-  FileImage
+  FileImage,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Layers,
+  AlertTriangle,
+  Sparkle
 } from 'lucide-react';
 import { Character, CharacterRole } from '../../types';
 import {
@@ -22,9 +29,12 @@ import {
   saveOrUpdateCharacter,
   deleteCharacter,
   resetCharactersToDefault,
+  cleanAndDeduplicateCharacters,
   CHARACTERS_UPDATED_EVENT
 } from '../../lib/characterStore';
+import { forceSyncFirestoreToLocal } from '../../lib/offlineStorage';
 import { logStaffActivity } from '../../lib/staffAuditLogger';
+import { getCacheBustedImageUrl } from '../../lib/imageCacheBuster';
 
 /**
  * Helper to process and compress local image files uploaded from user's PC into base64 Data URLs.
@@ -45,8 +55,8 @@ const processLocalImageFile = (file: File): Promise<string> => {
       
       const img = new Image();
       img.onload = () => {
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 600;
         let width = img.width;
         let height = img.height;
 
@@ -66,7 +76,7 @@ const processLocalImageFile = (file: File): Promise<string> => {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.80);
           resolve(compressedDataUrl);
         } else {
           resolve(result);
@@ -83,9 +93,15 @@ const processLocalImageFile = (file: File): Promise<string> => {
 export const CharacterGalleryAdminCms: React.FC = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [isCleaningDupes, setIsCleaningDupes] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number | 'All'>(6);
 
   // Edit/Create Modal State
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
@@ -109,6 +125,45 @@ export const CharacterGalleryAdminCms: React.FC = () => {
     }
   };
 
+  const handleForceSyncCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      await forceSyncFirestoreToLocal();
+      await loadCharacters();
+      showNotification('✅ Successfully synced characters with Cloud Firestore across all devices!');
+    } catch (err) {
+      console.error('Cloud sync error:', err);
+      showNotification('⚠️ Could not complete character sync.');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleCleanDuplicates = async () => {
+    setIsCleaningDupes(true);
+    try {
+      const cleaned = await cleanAndDeduplicateCharacters();
+      setCharacters(cleaned);
+      setCurrentPage(1);
+      showNotification('🧹 Successfully removed duplicate character profiles and synced clean catalog to Cloud Firestore!');
+
+      logStaffActivity({
+        actionType: 'SYSTEM_CONFIG_CHANGE',
+        actionCategory: 'Content CMS',
+        targetId: 'all_characters',
+        targetName: 'Character Gallery',
+        targetType: 'deduplication',
+        severity: 'LOW',
+        details: `Staff purged duplicate character records. Clean count: ${cleaned.length}`
+      }).catch(() => {});
+    } catch (err) {
+      console.error('Deduplication error:', err);
+      showNotification('⚠️ Error running character deduplication.');
+    } finally {
+      setIsCleaningDupes(false);
+    }
+  };
+
   useEffect(() => {
     loadCharacters();
 
@@ -125,9 +180,14 @@ export const CharacterGalleryAdminCms: React.FC = () => {
     };
   }, []);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, roleFilter, itemsPerPage]);
+
   const showNotification = (msg: string) => {
     setNotice(msg);
-    setTimeout(() => setNotice(null), 4000);
+    setTimeout(() => setNotice(null), 4500);
   };
 
   const openCreateModal = () => {
@@ -208,10 +268,27 @@ export const CharacterGalleryAdminCms: React.FC = () => {
         .map(t => t.trim())
         .filter(Boolean);
 
+      const targetId = formData.id?.trim() || `c_${Date.now()}`;
+      const targetSlug = (formData.slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).trim();
+
+      // Prevent duplicate ID or duplicate slug collision on new character creation
+      if (isNewCharacter) {
+        const idCollision = characters.find(c => c.id === targetId);
+        if (idCollision) {
+          showNotification(`⚠️ Character ID "${targetId}" already exists (${idCollision.name}). Please use a unique identifier.`);
+          return;
+        }
+        const slugCollision = characters.find(c => c.slug && c.slug.toLowerCase() === targetSlug.toLowerCase());
+        if (slugCollision) {
+          showNotification(`⚠️ Character slug "${targetSlug}" already exists (${slugCollision.name}). Please provide a distinct name or slug.`);
+          return;
+        }
+      }
+
       const finalChar: Character = {
-        id: formData.id || `c_${Date.now()}`,
-        slug: formData.slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        name: formData.name,
+        id: targetId,
+        slug: targetSlug,
+        name: formData.name.trim(),
         role: (formData.role as CharacterRole) || 'Supporting',
         faction: formData.faction || 'Vice City Independent',
         description: formData.description || '',
@@ -302,17 +379,61 @@ export const CharacterGalleryAdminCms: React.FC = () => {
     }
   };
 
-  const filtered = characters.filter((c) => {
-    const matchesQuery =
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.faction.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.socialHandle && c.socialHandle.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesRole = roleFilter === 'All' || c.role === roleFilter;
-    return matchesQuery && matchesRole;
-  });
+  // Deduplication & Duplicate counting
+  const { uniqueCharacters, duplicateCount } = useMemo(() => {
+    const seenIds = new Set<string>();
+    const seenSlugs = new Set<string>();
+    const unique: Character[] = [];
+    let dupes = 0;
+
+    for (const c of characters) {
+      if (!c || !c.id) continue;
+      const cleanId = String(c.id).trim();
+      const cleanSlug = c.slug ? String(c.slug).trim().toLowerCase() : '';
+
+      if (seenIds.has(cleanId) || (cleanSlug && seenSlugs.has(cleanSlug))) {
+        dupes++;
+        continue;
+      }
+
+      seenIds.add(cleanId);
+      if (cleanSlug) seenSlugs.add(cleanSlug);
+      unique.push(c);
+    }
+    return { uniqueCharacters: unique, duplicateCount: dupes };
+  }, [characters]);
+
+  const filtered = useMemo(() => {
+    return uniqueCharacters.filter((c) => {
+      const matchesQuery =
+        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.faction.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.socialHandle && c.socialHandle.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesRole = roleFilter === 'All' || c.role === roleFilter;
+      return matchesQuery && matchesRole;
+    });
+  }, [uniqueCharacters, searchQuery, roleFilter]);
+
+  // Pagination calculations
+  const totalPages = itemsPerPage === 'All' ? 1 : Math.max(1, Math.ceil(filtered.length / (itemsPerPage as number)));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedCharacters = useMemo(() => {
+    if (itemsPerPage === 'All') return filtered;
+    const start = (safeCurrentPage - 1) * (itemsPerPage as number);
+    return filtered.slice(start, start + (itemsPerPage as number));
+  }, [filtered, safeCurrentPage, itemsPerPage]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    const topElem = document.getElementById('character-admin-cms-top');
+    if (topElem) {
+      topElem.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" id="character-admin-cms-top">
       {/* CMS Header Banner */}
       <div className="p-6 rounded-3xl bg-gradient-to-r from-pink-950/80 via-purple-950/90 to-zinc-950 border border-pink-500/30 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-1">
@@ -321,19 +442,47 @@ export const CharacterGalleryAdminCms: React.FC = () => {
               <Sparkles className="w-3.5 h-3.5 text-yellow-300" /> Executive CMS Control
             </span>
             <span className="px-2.5 py-0.5 rounded text-[10px] font-bold text-pink-300 bg-pink-950/90 border border-pink-700/50">
-              {characters.length} Active Profiles
+              {uniqueCharacters.length} Unique Profiles
             </span>
+            {duplicateCount > 0 && (
+              <span className="px-2.5 py-0.5 rounded text-[10px] font-bold text-amber-300 bg-amber-950/90 border border-amber-600/50 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-amber-400" />
+                {duplicateCount} Duplicates Filtered
+              </span>
+            )}
           </div>
           <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
             <Users className="w-6 h-6 text-pink-400" />
             <span>GTA VI Character Gallery &amp; Local PC Image CMS</span>
           </h2>
           <p className="text-xs text-zinc-300 leading-relaxed max-w-2xl">
-            Upload character photos directly from your local PC or paste image URLs. All updates sync live across the community gallery.
+            Upload character photos directly from your local PC or paste image URLs. Automatically deduplicated and synced live across the community gallery.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <button
+            onClick={handleForceSyncCloud}
+            disabled={isSyncingCloud}
+            className="px-3.5 py-2.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold border border-zinc-700 flex items-center justify-center gap-2 transition cursor-pointer"
+            title="Force sync characters with Cloud Firestore across all devices"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-pink-400 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+            <span>{isSyncingCloud ? 'Syncing...' : 'Sync All Devices'}</span>
+          </button>
+          <button
+            onClick={handleCleanDuplicates}
+            disabled={isCleaningDupes}
+            className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold border flex items-center justify-center gap-2 transition cursor-pointer ${
+              duplicateCount > 0
+                ? 'bg-amber-950/80 hover:bg-amber-900 text-amber-200 border-amber-600/60 shadow-lg shadow-amber-950/50'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border-zinc-700'
+            }`}
+            title="Purge duplicate entries and write clean master bundle to Firestore"
+          >
+            <Sparkle className={`w-3.5 h-3.5 text-amber-400 ${isCleaningDupes ? 'animate-spin' : ''}`} />
+            <span>{isCleaningDupes ? 'Cleaning...' : duplicateCount > 0 ? `Clean Duplicates (${duplicateCount})` : 'Clean Duplicates'}</span>
+          </button>
           <button
             onClick={openCreateModal}
             className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-xs font-black shadow-xl shadow-pink-600/30 flex items-center justify-center gap-2 border border-pink-400/40 transition"
@@ -351,6 +500,33 @@ export const CharacterGalleryAdminCms: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Duplicate Alert Banner */}
+      {duplicateCount > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-950/80 border border-amber-500/60 text-amber-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-900/80 border border-amber-500/50 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+            </div>
+            <div>
+              <span className="font-black text-white block">
+                {duplicateCount} Duplicate Profile{duplicateCount > 1 ? 's' : ''} Detected in Storage
+              </span>
+              <span className="text-amber-300/90 text-[11px]">
+                The CMS has safely filtered duplicate entries in view. Click below to permanently purge duplicate IDs from Cloud Firestore.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={handleCleanDuplicates}
+            disabled={isCleaningDupes}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs shadow-lg shadow-amber-500/30 flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+          >
+            <Sparkle className={`w-3.5 h-3.5 ${isCleaningDupes ? 'animate-spin' : ''}`} />
+            <span>{isCleaningDupes ? 'Purging Duplicates...' : 'Purge & Clean Duplicates'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Toast Notice */}
       {notice && (
@@ -403,108 +579,211 @@ export const CharacterGalleryAdminCms: React.FC = () => {
           <p className="text-xs">Try clearing search filters or add a new character profile.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filtered.map((char) => (
-            <div
-              key={char.id}
-              className="group bg-zinc-900/90 border border-zinc-800 rounded-3xl overflow-hidden hover:border-pink-500/50 transition-all duration-300 shadow-xl flex flex-col justify-between"
-            >
-              <div>
-                {/* Character Banner Image Preview */}
-                <div className="relative h-52 w-full bg-zinc-950 overflow-hidden">
-                  <img
-                    src={char.imageUrl}
-                    alt={char.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1000&q=80';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-black/40" />
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {paginatedCharacters.map((char) => (
+              <div
+                key={char.id}
+                className="group bg-zinc-900/90 border border-zinc-800 rounded-3xl overflow-hidden hover:border-pink-500/50 transition-all duration-300 shadow-xl flex flex-col justify-between"
+              >
+                <div>
+                  {/* Character Banner Image Preview */}
+                  <div className="relative h-52 w-full bg-zinc-950 overflow-hidden">
+                    <img
+                      key={`${char.id}-${char.imageVersion || char.updatedAt || char.imageUrl}`}
+                      src={getCacheBustedImageUrl(char.imageUrl, char.imageVersion || char.updatedAt)}
+                      alt={char.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1000&q=80';
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-black/40" />
 
-                  {/* Role Badge */}
-                  <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-pink-600/90 text-white backdrop-blur-md shadow-md">
-                    {char.role}
-                  </span>
+                    {/* Role Badge */}
+                    <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-pink-600/90 text-white backdrop-blur-md shadow-md">
+                      {char.role}
+                    </span>
 
-                  {/* Status Tag */}
-                  <span className="absolute top-3 right-3 px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-950/80 text-zinc-300 border border-zinc-700/80 backdrop-blur-md">
-                    {char.status}
-                  </span>
+                    {/* Status Tag */}
+                    <span className="absolute top-3 right-3 px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-950/80 text-zinc-300 border border-zinc-700/80 backdrop-blur-md">
+                      {char.status}
+                    </span>
 
-                  {/* Quick Change Image Floating Button */}
-                  <button
-                    onClick={() => openQuickImageModal(char)}
-                    className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl bg-pink-600/90 hover:bg-pink-500 text-white text-[11px] font-black shadow-lg shadow-pink-600/40 backdrop-blur-md flex items-center gap-1.5 transition"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload / Change Photo</span>
-                  </button>
-                </div>
-
-                {/* Character Meta Header */}
-                <div className="p-5 space-y-3">
-                  <div className="space-y-0.5">
-                    <h3 className="text-lg font-black text-white group-hover:text-pink-400 transition">
-                      {char.name}
-                    </h3>
-                    <p className="text-xs text-pink-400 font-medium">{char.faction}</p>
-                    {char.socialHandle && (
-                      <p className="text-[10px] text-zinc-500 font-mono">{char.socialHandle}</p>
-                    )}
+                    {/* Quick Change Image Floating Button */}
+                    <button
+                      onClick={() => openQuickImageModal(char)}
+                      className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl bg-pink-600/90 hover:bg-pink-500 text-white text-[11px] font-black shadow-lg shadow-pink-600/40 backdrop-blur-md flex items-center gap-1.5 transition"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload / Change Photo</span>
+                    </button>
                   </div>
 
-                  <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800/80">
-                    {char.description}
-                  </p>
-
-                  {/* Trait tags */}
-                  {char.keyTraits && char.keyTraits.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {char.keyTraits.slice(0, 3).map((trait, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-0.5 rounded-lg text-[10px] font-medium bg-zinc-950 text-zinc-400 border border-zinc-800"
-                        >
-                          #{trait}
-                        </span>
-                      ))}
+                  {/* Character Meta Header */}
+                  <div className="p-5 space-y-3">
+                    <div className="space-y-0.5">
+                      <h3 className="text-lg font-black text-white group-hover:text-pink-400 transition">
+                        {char.name}
+                      </h3>
+                      <p className="text-xs text-pink-400 font-medium">{char.faction}</p>
+                      {char.socialHandle && (
+                        <p className="text-[10px] text-zinc-500 font-mono">{char.socialHandle}</p>
+                      )}
                     </div>
-                  )}
+
+                    <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800/80">
+                      {char.description}
+                    </p>
+
+                    {/* Trait tags */}
+                    {char.keyTraits && char.keyTraits.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {char.keyTraits.slice(0, 3).map((trait, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 rounded-lg text-[10px] font-medium bg-zinc-950 text-zinc-400 border border-zinc-800"
+                          >
+                            #{trait}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="p-4 bg-zinc-950/80 border-t border-zinc-800 flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => openQuickImageModal(char)}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold flex items-center gap-1.5 transition"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-pink-400" />
+                    <span>Upload Image</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openEditModal(char)}
+                      className="px-3 py-1.5 rounded-xl bg-pink-950/80 hover:bg-pink-900 border border-pink-700/60 text-pink-300 hover:text-white text-xs font-bold flex items-center gap-1 transition"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit Profile</span>
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(char)}
+                      className="p-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-800/60 text-rose-400 hover:text-white transition"
+                      title="Delete Character"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
+            ))}
+          </div>
 
-              {/* Action Buttons */}
-              <div className="p-4 bg-zinc-950/80 border-t border-zinc-800 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => openQuickImageModal(char)}
-                  className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold flex items-center gap-1.5 transition"
-                >
-                  <Upload className="w-3.5 h-3.5 text-pink-400" />
-                  <span>Upload Image</span>
-                </button>
+          {/* Pagination Controls Bar */}
+          {filtered.length > 0 && (
+            <div className="p-4 rounded-2xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+              <div className="flex items-center gap-2 text-xs text-zinc-400 font-bold">
+                <span>
+                  Showing {itemsPerPage === 'All' ? `all ${filtered.length}` : `${(safeCurrentPage - 1) * (itemsPerPage as number) + 1}–${Math.min(safeCurrentPage * (itemsPerPage as number), filtered.length)} of ${filtered.length}`} characters
+                </span>
+                {duplicateCount > 0 && (
+                  <span className="text-amber-400 text-[11px] font-normal">
+                    ({duplicateCount} duplicate{duplicateCount > 1 ? 's' : ''} filtered)
+                  </span>
+                )}
+              </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openEditModal(char)}
-                    className="px-3 py-1.5 rounded-xl bg-pink-950/80 hover:bg-pink-900 border border-pink-700/60 text-pink-300 hover:text-white text-xs font-bold flex items-center gap-1 transition"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>Edit Profile</span>
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(char)}
-                    className="p-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-800/60 text-rose-400 hover:text-white transition"
-                    title="Delete Character"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Items per page selector */}
+                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <span className="font-bold text-[11px]">Per Page:</span>
+                  <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-xl p-1">
+                    {[6, 9, 12, 24, 'All'].map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => setItemsPerPage(val as any)}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold transition ${
+                          itemsPerPage === val
+                            ? 'bg-pink-600 text-white shadow-md'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Page navigation buttons */}
+                {itemsPerPage !== 'All' && totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handlePageChange(1)}
+                      disabled={safeCurrentPage === 1}
+                      className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      title="First Page"
+                    >
+                      <ChevronsLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handlePageChange(safeCurrentPage - 1)}
+                      disabled={safeCurrentPage === 1}
+                      className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter((p) => p === 1 || p === totalPages || Math.abs(p - safeCurrentPage) <= 1)
+                        .map((p, idx, arr) => {
+                          const showEllipsis = idx > 0 && p - arr[idx - 1] > 1;
+                          return (
+                            <React.Fragment key={p}>
+                              {showEllipsis && <span className="px-1 text-zinc-600 text-xs">...</span>}
+                              <button
+                                onClick={() => handlePageChange(p)}
+                                className={`w-8 h-8 rounded-xl text-xs font-bold transition flex items-center justify-center ${
+                                  safeCurrentPage === p
+                                    ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30'
+                                    : 'bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            </React.Fragment>
+                          );
+                        })}
+                    </div>
+
+                    <button
+                      onClick={() => handlePageChange(safeCurrentPage + 1)}
+                      disabled={safeCurrentPage === totalPages}
+                      className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      title="Next Page"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handlePageChange(totalPages)}
+                      disabled={safeCurrentPage === totalPages}
+                      className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      title="Last Page"
+                    >
+                      <ChevronsRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {/* QUICK LOCAL PC IMAGE UPLOAD MODAL */}

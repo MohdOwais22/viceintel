@@ -37,7 +37,10 @@ import {
   Trophy,
   FileCode,
   Bot,
-  Users
+  Users,
+  Database,
+  CloudDownload,
+  RefreshCw
 } from 'lucide-react';
 
 interface NavbarProps {

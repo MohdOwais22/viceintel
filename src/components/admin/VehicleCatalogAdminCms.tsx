@@ -10,7 +10,9 @@ import {
   resetVehiclesToDefault,
   VEHICLES_UPDATED_EVENT
 } from '../../lib/vehicleStore';
+import { forceSyncFirestoreToLocal } from '../../lib/offlineStorage';
 import { logStaffActivity } from '../../lib/staffAuditLogger';
+import { getCacheBustedImageUrl } from '../../lib/imageCacheBuster';
 import {
   Car,
   Plus,
@@ -30,12 +32,17 @@ import {
   Shield,
   Layers,
   Sparkles,
-  Info
+  Info,
+  Camera,
+  RefreshCw,
+  Save,
+  Link as LinkIcon
 } from 'lucide-react';
 
 export const VehicleCatalogAdminCms: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [sortBy, setSortBy] = useState<'name' | 'price' | 'topSpeed'>('price');
@@ -44,6 +51,10 @@ export const VehicleCatalogAdminCms: React.FC = () => {
   // Modal State for Editing/Adding
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(false);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+
+  // Quick Image Modal State
+  const [quickImageModalVeh, setQuickImageModalVeh] = useState<Vehicle | null>(null);
+  const [quickImageUrlInput, setQuickImageUrlInput] = useState<string>('');
 
   // Form Fields
   const [formData, setFormData] = useState<Partial<Vehicle>>({
@@ -128,7 +139,7 @@ export const VehicleCatalogAdminCms: React.FC = () => {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
+        const MAX_HEIGHT = 900;
         let width = img.width;
         let height = img.height;
 
@@ -148,13 +159,104 @@ export const VehicleCatalogAdminCms: React.FC = () => {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
         setFormData((prev) => ({ ...prev, imageUrl: dataUrl }));
-        showNotification('✅ Local image compressed and attached!');
+        showNotification('✅ Image optimized and attached!');
       };
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
+  };
+
+  const processQuickImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showNotification('⚠️ Please select a valid image file (PNG, JPG, WEBP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 900;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        setQuickImageUrlInput(dataUrl);
+        showNotification('✅ Photo loaded from your computer!');
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleOpenQuickImage = (veh: Vehicle) => {
+    setQuickImageModalVeh(veh);
+    setQuickImageUrlInput(veh.imageUrl || '');
+  };
+
+  const handleSaveQuickImage = async () => {
+    if (!quickImageModalVeh) return;
+    const target = quickImageModalVeh;
+    const newUrl = quickImageUrlInput.trim() || target.imageUrl;
+
+    try {
+      const updatedVeh: Vehicle = {
+        ...target,
+        imageUrl: newUrl
+      };
+      const updatedList = await saveOrUpdateVehicle(updatedVeh);
+      setVehicles(updatedList);
+      setQuickImageModalVeh(null);
+      showNotification(`✅ Updated photo for "${target.name}" and synced to Cloud!`);
+
+      logStaffActivity({
+        actionType: 'CMS_CONTENT_UPDATE',
+        actionCategory: 'Content CMS',
+        targetId: target.id,
+        targetName: target.name,
+        targetType: 'vehicle',
+        severity: 'LOW',
+        details: `Staff updated vehicle image for "${target.name}" via Quick Image CMS.`
+      }).catch(() => {});
+    } catch (err) {
+      console.error('Quick image save error:', err);
+      showNotification('❌ Failed to update vehicle photo.');
+    }
+  };
+
+  const handleForceSyncCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      await forceSyncFirestoreToLocal();
+      const fresh = await getStoredVehicles();
+      setVehicles(fresh);
+      showNotification('✅ Successfully synced vehicles with Cloud Firestore!');
+    } catch (err) {
+      console.error('Cloud sync error:', err);
+      showNotification('⚠️ Could not complete cloud sync.');
+    } finally {
+      setIsSyncingCloud(false);
+    }
   };
 
   const handleOpenAdd = () => {
@@ -328,10 +430,19 @@ export const VehicleCatalogAdminCms: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleForceSyncCloud}
+              disabled={isSyncingCloud}
+              className="px-3.5 py-2.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold border border-zinc-700 flex items-center justify-center gap-2 transition cursor-pointer"
+              title="Force sync database with Cloud Firestore across all devices"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+              <span>{isSyncingCloud ? 'Syncing...' : 'Sync All Devices'}</span>
+            </button>
             <button
               onClick={() => setShowResetConfirm(true)}
-              className="px-3 py-2.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold border border-zinc-700 flex items-center justify-center gap-1.5 transition"
+              className="px-3 py-2.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold border border-zinc-700 flex items-center justify-center gap-1.5 transition cursor-pointer"
               title="Reset vehicle catalog to Rockstar defaults"
             >
               <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
@@ -422,9 +533,14 @@ export const VehicleCatalogAdminCms: React.FC = () => {
                   {/* Image Container */}
                   <div className="h-44 w-full bg-zinc-950 relative overflow-hidden">
                     <img
-                      src={veh.imageUrl}
+                      key={`${veh.id}-${veh.imageVersion || veh.updatedAt || veh.imageUrl}`}
+                      src={getCacheBustedImageUrl(veh.imageUrl, veh.imageVersion || veh.updatedAt)}
                       alt={veh.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=800&q=80';
+                      }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-black/40" />
                     
@@ -433,16 +549,16 @@ export const VehicleCatalogAdminCms: React.FC = () => {
                       {veh.category}
                     </span>
 
-                    {/* Default vs Custom Badge */}
-                    <span
-                      className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-mono font-bold ${
-                        isDefault
-                          ? 'bg-zinc-800/80 text-zinc-400 border border-zinc-700'
-                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      }`}
+                    {/* Quick Image Edit Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenQuickImage(veh)}
+                      className="absolute top-3 right-3 p-1.5 rounded-xl bg-black/70 hover:bg-amber-500 text-zinc-300 hover:text-black border border-zinc-700/60 hover:border-amber-400 transition backdrop-blur-md flex items-center gap-1 cursor-pointer z-10"
+                      title="Quick Change Photo"
                     >
-                      {isDefault ? 'Rockstar Default' : 'Custom Entry'}
-                    </span>
+                      <Camera className="w-3.5 h-3.5" />
+                      <span className="text-[9px] font-bold">Photo</span>
+                    </button>
 
                     {/* Price Tag */}
                     <div className="absolute bottom-3 left-3">
@@ -852,6 +968,100 @@ export const VehicleCatalogAdminCms: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK PHOTO CHANGER MODAL */}
+      {quickImageModalVeh && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-zinc-900 border border-amber-500/40 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Update Vehicle Photo</h3>
+                  <p className="text-[11px] text-zinc-400">{quickImageModalVeh.brand} • {quickImageModalVeh.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickImageModalVeh(null)}
+                className="p-1.5 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Current/New Photo Preview */}
+            <div className="space-y-2">
+              <div className="relative h-44 w-full bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800">
+                <img
+                  src={quickImageUrlInput || quickImageModalVeh.imageUrl}
+                  alt={quickImageModalVeh.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=800&q=80';
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* PC Upload Button */}
+            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-amber-500/40 hover:border-amber-400 rounded-2xl cursor-pointer bg-zinc-950/80 hover:bg-zinc-900 transition text-center p-2 group">
+              <Upload className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform mb-1" />
+              <span className="text-xs font-bold text-white">Upload New Photo from PC</span>
+              <span className="text-[9px] text-zinc-400">Click to browse your computer files</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    processQuickImageFile(file);
+                  }
+                }}
+              />
+            </label>
+
+            {/* Direct URL Input */}
+            <div>
+              <label className="text-[11px] font-bold text-zinc-300 block mb-1">
+                Or Direct Image URL
+              </label>
+              <div className="relative">
+                <LinkIcon className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="url"
+                  value={quickImageUrlInput}
+                  onChange={(e) => setQuickImageUrlInput(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setQuickImageModalVeh(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold hover:bg-zinc-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickImage}
+                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-black shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Photo</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

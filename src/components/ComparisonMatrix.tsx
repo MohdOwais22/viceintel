@@ -5,6 +5,7 @@ import { WEAPONS_DATA } from '../data/weapons';
 import { Vehicle, Weapon } from '../types';
 import { UnitToggleSwitch } from './UnitToggleSwitch';
 import { getStoredUnitPreference, setStoredUnitPreference, formatSpeed, formatRange, convertSpeed, UnitSystem } from '../lib/unitConverter';
+import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
 import { Trophy, GitCompare, Gauge, Crosshair, Zap, DollarSign, ShieldAlert, Check, ShieldCheck, Flame } from 'lucide-react';
 
 interface ComparisonMatrixProps {
@@ -213,7 +214,13 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="absolute top-0 right-0 px-4 py-1 bg-rose-600 text-white font-bold text-[10px] uppercase rounded-bl-xl">
                 Contender 1
               </div>
-              <img src={vehicleA.imageUrl} alt={vehicleA.name} className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950" referrerPolicy="no-referrer" />
+              <img
+                key={`${vehicleA.id}-${vehicleA.imageVersion || vehicleA.updatedAt || vehicleA.imageUrl}`}
+                src={getCacheBustedImageUrl(vehicleA.imageUrl, vehicleA.imageVersion || vehicleA.updatedAt)}
+                alt={vehicleA.name}
+                className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950"
+                referrerPolicy="no-referrer"
+              />
               <div>
                 <span className="text-xs font-semibold text-rose-400 uppercase">{vehicleA.brand}</span>
                 <h3 className="text-2xl font-black text-white">{vehicleA.name}</h3>
@@ -225,7 +232,13 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="absolute top-0 right-0 px-4 py-1 bg-cyan-600 text-white font-bold text-[10px] uppercase rounded-bl-xl">
                 Contender 2
               </div>
-              <img src={vehicleB.imageUrl} alt={vehicleB.name} className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950" referrerPolicy="no-referrer" />
+              <img
+                key={`${vehicleB.id}-${vehicleB.imageVersion || vehicleB.updatedAt || vehicleB.imageUrl}`}
+                src={getCacheBustedImageUrl(vehicleB.imageUrl, vehicleB.imageVersion || vehicleB.updatedAt)}
+                alt={vehicleB.name}
+                className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950"
+                referrerPolicy="no-referrer"
+              />
               <div>
                 <span className="text-xs font-semibold text-cyan-400 uppercase">{vehicleB.brand}</span>
                 <h3 className="text-2xl font-black text-white">{vehicleB.name}</h3>
@@ -328,7 +341,13 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="absolute top-0 right-0 px-4 py-1 bg-rose-600 text-white font-bold text-[10px] uppercase rounded-bl-xl">
                 Armament 1
               </div>
-              <img src={weaponA.imageUrl} alt={weaponA.name} className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950" referrerPolicy="no-referrer" />
+              <img
+                key={`${weaponA.id}-${weaponA.imageVersion || weaponA.updatedAt || weaponA.imageUrl}`}
+                src={getCacheBustedImageUrl(weaponA.imageUrl, weaponA.imageVersion || weaponA.updatedAt)}
+                alt={weaponA.name}
+                className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950"
+                referrerPolicy="no-referrer"
+              />
               <div>
                 <span className="text-xs font-semibold text-rose-400 uppercase">{weaponA.manufacturer} • {weaponA.category}</span>
                 <h3 className="text-2xl font-black text-white">{weaponA.name}</h3>
@@ -340,7 +359,13 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="absolute top-0 right-0 px-4 py-1 bg-cyan-600 text-white font-bold text-[10px] uppercase rounded-bl-xl">
                 Armament 2
               </div>
-              <img src={weaponB.imageUrl} alt={weaponB.name} className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950" referrerPolicy="no-referrer" />
+              <img
+                key={`${weaponB.id}-${weaponB.imageVersion || weaponB.updatedAt || weaponB.imageUrl}`}
+                src={getCacheBustedImageUrl(weaponB.imageUrl, weaponB.imageVersion || weaponB.updatedAt)}
+                alt={weaponB.name}
+                className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950"
+                referrerPolicy="no-referrer"
+              />
               <div>
                 <span className="text-xs font-semibold text-cyan-400 uppercase">{weaponB.manufacturer} • {weaponB.category}</span>
                 <h3 className="text-2xl font-black text-white">{weaponB.name}</h3>

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Vehicle } from '../types';
 import { UnitToggleSwitch } from './UnitToggleSwitch';
 import { getStoredUnitPreference, setStoredUnitPreference, convertSpeed, UnitSystem } from '../lib/unitConverter';
+import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
 import { X, Gauge, Zap, ShieldAlert, Tag, Award, Compass, Car } from 'lucide-react';
 
 interface VehicleDetailModalProps {
@@ -79,7 +80,8 @@ export const VehicleDetailModal: React.FC<VehicleDetailModalProps> = ({
           {/* Main Hero Vehicle Image */}
           <div className="relative aspect-[16/9] w-full rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-950 shadow-inner group shrink-0">
             <img
-              src={vehicle.imageUrl}
+              key={`${vehicle.id}-${vehicle.imageVersion || vehicle.updatedAt || vehicle.imageUrl}`}
+              src={getCacheBustedImageUrl(vehicle.imageUrl, vehicle.imageVersion || vehicle.updatedAt)}
               alt={vehicle.name}
               className="w-full h-full object-cover object-center transition duration-500 group-hover:scale-105"
               referrerPolicy="no-referrer"

@@ -1516,6 +1516,7 @@ export default function App() {
         <Footer
           onNavigate={(tab) => handleTabChange(tab)}
           onOpenReportModal={() => setIsReportModalOpen(true)}
+          onOpenOfflineSync={() => setIsOfflineSyncOpen(true)}
         />
       )}
 

@@ -3108,11 +3108,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         </div>
       )}
 
-      {/* Tab Content: GTA VI Character Gallery CMS */}
-      {activeSubTab === 'character-gallery' && (
-        <CharacterGalleryAdminCms />
-      )}
-
       {/* Tab Content: Zero-Code CMS Portal */}
       {activeSubTab === 'cms' && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-6">

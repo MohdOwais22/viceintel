@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { VEHICLES_DATA } from '../data/vehicles';
 import { Vehicle, VehicleCategory } from '../types';
 import { VehicleDetailModal } from './VehicleDetailModal';
@@ -7,6 +7,7 @@ import { getCachedVehicles } from '../lib/offlineStorage';
 import { VEHICLES_UPDATED_EVENT } from '../lib/vehicleStore';
 import { UnitToggleSwitch } from './UnitToggleSwitch';
 import { getStoredUnitPreference, setStoredUnitPreference, formatSpeed, UnitSystem } from '../lib/unitConverter';
+import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
 import { Car, Gauge, Zap, GitCompare, ArrowUpDown, Filter, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AdSlot } from './ads';
 
@@ -39,6 +40,7 @@ const VehicleSkeletonCard = () => (
 );
 
 export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectForCompare, isLoading = false }) => {
+  const catalogTopRef = useRef<HTMLDivElement>(null);
   const [vehiclesList, setVehiclesList] = useState<Vehicle[]>(VEHICLES_DATA);
   const [selectedCategory, setSelectedCategory] = useState<VehicleCategory | 'All'>('All');
   const [sortBy, setSortBy] = useState<'price' | 'speed' | 'acceleration'>('speed');
@@ -46,6 +48,13 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
   const [isFilterLoading, setIsFilterLoading] = useState(false);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(getStoredUnitPreference());
   const [currentPage, setCurrentPage] = useState<number>(1);
+
+  const handlePageChange = (pageNum: number) => {
+    setCurrentPage(pageNum);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const handleUnitChange = (newUnit: UnitSystem) => {
     setUnitSystem(newUnit);
@@ -62,6 +71,11 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
     const handleVehiclesUpdated = (e: CustomEvent<Vehicle[]>) => {
       if (e.detail && Array.isArray(e.detail)) {
         setVehiclesList(e.detail);
+        setActiveModalVehicle((current) => {
+          if (!current) return null;
+          const updated = e.detail.find((v) => v.id === current.id);
+          return updated || current;
+        });
       }
     };
 
@@ -112,7 +126,7 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
   const paginatedVehicles = filteredVehicles.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-h-[100vh]">
       {/* Top Banner Leaderboard in Responsive Grid Container with Min-Height Protection */}
       <div className="w-full my-3 sm:my-5 px-1 sm:px-2 grid grid-cols-1 place-items-center min-h-[100px] overflow-hidden transition-all">
         <AdSlot
@@ -129,7 +143,7 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
       </div>
 
       {/* Category Pills & Sort Bar */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-zinc-900/60 p-4 rounded-2xl border border-zinc-800">
+      <div ref={catalogTopRef} className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-zinc-900/60 p-4 rounded-2xl border border-zinc-800 scroll-mt-24">
         <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-none">
           <Filter className="w-4 h-4 text-zinc-400 mr-1 shrink-0" />
           {categories.map((cat) => (
@@ -166,8 +180,8 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
         </div>
       </div>
 
-      {/* Vehicle Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+      {/* Vehicle Grid with Min-Height Protection to prevent footer jump on sparse pages */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 min-h-[80vh] align-content-start">
         {(isLoading || isFilterLoading) ? (
           Array.from({ length: 8 }).map((_, idx) => (
             <VehicleSkeletonCard key={idx} />
@@ -188,7 +202,8 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
               {/* Image & Badges */}
               <div className="relative h-44 w-full bg-zinc-950 overflow-hidden shrink-0">
                 <img
-                  src={vehicle.imageUrl}
+                  key={`${vehicle.id}-${vehicle.imageVersion || vehicle.updatedAt || vehicle.imageUrl}`}
+                  src={getCacheBustedImageUrl(vehicle.imageUrl, vehicle.imageVersion || vehicle.updatedAt)}
                   alt={vehicle.name}
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300 opacity-90"
                   referrerPolicy="no-referrer"
@@ -294,7 +309,7 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              onClick={() => handlePageChange(Math.max(1, safeCurrentPage - 1))}
               disabled={safeCurrentPage === 1}
               className="p-2 rounded-xl bg-zinc-800 border border-zinc-700/80 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
               title="Previous Page"
@@ -308,7 +323,7 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
                 return (
                   <button
                     key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
+                    onClick={() => handlePageChange(pageNum)}
                     className={`w-8 h-8 rounded-xl font-bold transition flex items-center justify-center ${
                       safeCurrentPage === pageNum
                         ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
@@ -322,7 +337,7 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
             </div>
 
             <button
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              onClick={() => handlePageChange(Math.min(totalPages, safeCurrentPage + 1))}
               disabled={safeCurrentPage === totalPages}
               className="p-2 rounded-xl bg-zinc-800 border border-zinc-700/80 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
               title="Next Page"

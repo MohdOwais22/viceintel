@@ -120,6 +120,18 @@ service cloud.firestore {
     }
 
     // 10. Content Collections (Public Read & Write)
+    match /vehicle_catalog_bundles/{id} {
+      allow read, write: if true;
+    }
+    match /character_catalog_bundles/{id} {
+      allow read, write: if true;
+    }
+    match /weapon_catalog_bundles/{id} {
+      allow read, write: if true;
+    }
+    match /map_catalog_bundles/{id} {
+      allow read, write: if true;
+    }
     match /blogPosts/{id} {
       allow read, write: if true;
     }

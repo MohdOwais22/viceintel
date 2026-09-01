@@ -1,8 +1,9 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CHARACTERS_DATA } from '../data/characters';
 import { Character, CharacterRole } from '../types';
 import { getStoredCharacters, CHARACTERS_UPDATED_EVENT } from '../lib/characterStore';
+import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
 import { Users, Shield, Zap, Filter, Eye, ChevronLeft, ChevronRight, MapPin, Heart, X, Share2, Award, Film } from 'lucide-react';
 import { AdSlot } from './ads';
 
@@ -73,6 +74,11 @@ export const CharactersTab: React.FC<CharactersTabProps> = ({ searchQuery, isLoa
       const customEvt = e as CustomEvent<Character[]>;
       if (customEvt.detail && Array.isArray(customEvt.detail)) {
         setCharactersList(customEvt.detail);
+        setActiveModalCharacter((current) => {
+          if (!current) return null;
+          const updated = customEvt.detail.find((c) => c.id === current.id);
+          return updated || current;
+        });
       } else {
         loadCharacters();
       }
@@ -101,15 +107,29 @@ export const CharactersTab: React.FC<CharactersTabProps> = ({ searchQuery, isLoa
     'Law Enforcement',
   ];
 
-  const filteredCharacters = charactersList.filter((c) => {
-    const matchesSearch =
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.faction.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.socialHandle && c.socialHandle.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      c.keyTraits.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesRole = selectedRole === 'All' || c.role === selectedRole;
-    return matchesSearch && matchesRole;
-  });
+  const uniqueList = useMemo(() => {
+    const seenIds = new Set<string>();
+    const seenSlugs = new Set<string>();
+    return charactersList.filter(c => {
+      if (!c || !c.id || seenIds.has(c.id)) return false;
+      if (c.slug && seenSlugs.has(c.slug.toLowerCase())) return false;
+      seenIds.add(c.id);
+      if (c.slug) seenSlugs.add(c.slug.toLowerCase());
+      return true;
+    });
+  }, [charactersList]);
+
+  const filteredCharacters = useMemo(() => {
+    return uniqueList.filter((c) => {
+      const matchesSearch =
+        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.faction.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.socialHandle && c.socialHandle.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        c.keyTraits.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesRole = selectedRole === 'All' || c.role === selectedRole;
+      return matchesSearch && matchesRole;
+    });
+  }, [uniqueList, searchQuery, selectedRole]);
 
   const totalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE) || 1;
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -194,7 +214,8 @@ export const CharactersTab: React.FC<CharactersTabProps> = ({ searchQuery, isLoa
               {/* Header Image & Avatar Banner */}
               <div className="relative h-48 w-full bg-zinc-950 overflow-hidden shrink-0">
                 <img
-                  src={character.imageUrl}
+                  key={`${character.id}-${character.imageVersion || character.updatedAt || character.imageUrl}`}
+                  src={getCacheBustedImageUrl(character.imageUrl, character.imageVersion || character.updatedAt)}
                   alt={character.name}
                   className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 opacity-70"
                   referrerPolicy="no-referrer"
@@ -363,7 +384,8 @@ export const CharactersTab: React.FC<CharactersTabProps> = ({ searchQuery, isLoa
             {/* Modal Header Banner */}
             <div className="relative h-48 sm:h-56 w-full bg-zinc-950 overflow-hidden shrink-0">
               <img
-                src={activeModalCharacter.imageUrl}
+                key={`${activeModalCharacter.id}-${activeModalCharacter.imageVersion || activeModalCharacter.updatedAt || activeModalCharacter.imageUrl}`}
+                src={getCacheBustedImageUrl(activeModalCharacter.imageUrl, activeModalCharacter.imageVersion || activeModalCharacter.updatedAt)}
                 alt={activeModalCharacter.name}
                 className="w-full h-full object-cover opacity-60"
                 referrerPolicy="no-referrer"

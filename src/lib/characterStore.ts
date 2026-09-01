@@ -5,8 +5,26 @@ import { BundledStoreEngine } from './firebase/bundledStoreEngine';
 export const CHARACTERS_UPDATED_EVENT = 'gtavi_characters_updated';
 
 function sortCharacters(chars: Character[]): Character[] {
+  if (!Array.isArray(chars)) return [];
+  const seenIds = new Set<string>();
+  const seenSlugs = new Set<string>();
+  const unique: Character[] = [];
+
+  for (const c of chars) {
+    if (!c || !c.id) continue;
+    const cleanId = String(c.id).trim();
+    const cleanSlug = c.slug ? String(c.slug).trim().toLowerCase() : '';
+    
+    if (seenIds.has(cleanId) || (cleanSlug && seenSlugs.has(cleanSlug))) {
+      continue;
+    }
+    seenIds.add(cleanId);
+    if (cleanSlug) seenSlugs.add(cleanSlug);
+    unique.push(c);
+  }
+
   const defaultIds = CHARACTERS_DATA.map(c => c.id);
-  return [...chars].sort((a, b) => {
+  return unique.sort((a, b) => {
     const indexA = defaultIds.indexOf(a.id);
     const indexB = defaultIds.indexOf(b.id);
     if (indexA !== -1 && indexB !== -1) return indexA - indexB;
@@ -70,4 +88,14 @@ export async function deleteCharacter(characterId: string): Promise<Character[]>
  */
 export async function resetCharactersToDefault(): Promise<Character[]> {
   return characterBundleEngine.resetToDefault();
+}
+
+/**
+ * Actively purges any duplicate IDs or slugs from stored characters and saves clean array to Firestore & Local.
+ */
+export async function cleanAndDeduplicateCharacters(): Promise<Character[]> {
+  const current = await characterBundleEngine.getItems();
+  const cleaned = sortCharacters(current);
+  await characterBundleEngine.saveFullList(cleaned);
+  return cleaned;
 }
