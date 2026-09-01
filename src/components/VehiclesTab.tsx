@@ -4,9 +4,10 @@ import { VEHICLES_DATA } from '../data/vehicles';
 import { Vehicle, VehicleCategory } from '../types';
 import { VehicleDetailModal } from './VehicleDetailModal';
 import { getCachedVehicles } from '../lib/offlineStorage';
+import { VEHICLES_UPDATED_EVENT } from '../lib/vehicleStore';
 import { UnitToggleSwitch } from './UnitToggleSwitch';
 import { getStoredUnitPreference, setStoredUnitPreference, formatSpeed, UnitSystem } from '../lib/unitConverter';
-import { Car, Gauge, Zap, GitCompare, ArrowUpDown, Filter, Eye } from 'lucide-react';
+import { Car, Gauge, Zap, GitCompare, ArrowUpDown, Filter, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AdSlot } from './ads';
 
 interface VehiclesTabProps {
@@ -14,6 +15,8 @@ interface VehiclesTabProps {
   onSelectForCompare: (vehicle: Vehicle) => void;
   isLoading?: boolean;
 }
+
+const ITEMS_PER_PAGE = 8;
 
 const VehicleSkeletonCard = () => (
   <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl overflow-hidden animate-pulse flex flex-col h-[340px]">
@@ -42,6 +45,7 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
   const [activeModalVehicle, setActiveModalVehicle] = useState<Vehicle | null>(null);
   const [isFilterLoading, setIsFilterLoading] = useState(false);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(getStoredUnitPreference());
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   const handleUnitChange = (newUnit: UnitSystem) => {
     setUnitSystem(newUnit);
@@ -54,11 +58,27 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
         setVehiclesList(data);
       }
     });
+
+    const handleVehiclesUpdated = (e: CustomEvent<Vehicle[]>) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setVehiclesList(e.detail);
+      }
+    };
+
+    window.addEventListener(VEHICLES_UPDATED_EVENT as any, handleVehiclesUpdated);
+    return () => {
+      window.removeEventListener(VEHICLES_UPDATED_EVENT as any, handleVehiclesUpdated);
+    };
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory, sortBy]);
 
   const handleCategoryChange = (cat: VehicleCategory | 'All') => {
     setIsFilterLoading(true);
     setSelectedCategory(cat);
+    setCurrentPage(1);
     setTimeout(() => setIsFilterLoading(false), 300);
   };
 
@@ -85,6 +105,11 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
     if (sortBy === 'acceleration') return b.acceleration - a.acceleration;
     return 0;
   });
+
+  const totalPages = Math.ceil(filteredVehicles.length / ITEMS_PER_PAGE) || 1;
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedVehicles = filteredVehicles.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   return (
     <div className="space-y-6">
@@ -148,7 +173,7 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
             <VehicleSkeletonCard key={idx} />
           ))
         ) : (
-          filteredVehicles.map((vehicle) => {
+          paginatedVehicles.map((vehicle) => {
           const formattedPrice = new Intl.NumberFormat('en-US', {
             style: 'currency',
             currency: 'USD',
@@ -253,6 +278,58 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
         <div className="text-center py-12 bg-zinc-900/40 rounded-2xl border border-zinc-800 text-zinc-400">
           <Car className="w-10 h-10 mx-auto text-zinc-600 mb-2" />
           <p className="text-sm">No vehicles matched your criteria.</p>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {filteredVehicles.length > 0 && totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400">
+          <div>
+            Showing <span className="font-bold text-white">{startIndex + 1}</span> to{' '}
+            <span className="font-bold text-white">
+              {Math.min(startIndex + ITEMS_PER_PAGE, filteredVehicles.length)}
+            </span>{' '}
+            of <span className="font-bold text-rose-400">{filteredVehicles.length}</span> vehicles
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={safeCurrentPage === 1}
+              className="p-2 rounded-xl bg-zinc-800 border border-zinc-700/80 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }).map((_, i) => {
+                const pageNum = i + 1;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-8 h-8 rounded-xl font-bold transition flex items-center justify-center ${
+                      safeCurrentPage === pageNum
+                        ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                        : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={safeCurrentPage === totalPages}
+              className="p-2 rounded-xl bg-zinc-800 border border-zinc-700/80 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              title="Next Page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

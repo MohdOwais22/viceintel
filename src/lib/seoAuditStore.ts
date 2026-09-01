@@ -1,4 +1,4 @@
-import { doc, setDoc, deleteDoc, collection, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { saveSeoOverride, getSeoOverride, CURATED_GTA6_OG_PRESETS, sanitizeFirestoreData } from './seoStore';
 import { setMetaTag, setCanonicalUrl, updatePageSeoMeta, getTabFromPath, TAB_TITLES, TAB_DESCRIPTIONS } from './seoRouting';
@@ -42,20 +42,33 @@ export function initAuditFixesRealtimeSync(): () => void {
   isRealtimeSyncInitialized = true;
 
   try {
-    const colRef = collection(db, 'seo_audit_fixes');
+    const docRef = doc(db, 'seo_audit_fixes', 'master_audit_fixes_bundle');
     const unsub = onSnapshot(
-      colRef,
-      (snapshot) => {
-        const newMap: Record<string, AuditResolutionRecord> = {};
-        snapshot.docs.forEach((docSnap) => {
-          const data = docSnap.data() as AuditResolutionRecord;
-          if (data && data.id) {
-            newMap[data.id] = data;
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.fixes && typeof data.fixes === 'object') {
+            memoryResolvedIssues = { ...memoryResolvedIssues, ...data.fixes };
           }
-        });
+        } else {
+          // Fallback to legacy documents if bundle does not exist
+          const colRef = collection(db, 'seo_audit_fixes');
+          getDocs(colRef).then((snapshot) => {
+            const newMap: Record<string, AuditResolutionRecord> = {};
+            snapshot.docs.forEach((docSnap) => {
+              if (docSnap.id !== 'master_audit_fixes_bundle') {
+                const data = docSnap.data() as AuditResolutionRecord;
+                if (data && data.id) newMap[data.id] = data;
+              }
+            });
+            if (Object.keys(newMap).length > 0) {
+              memoryResolvedIssues = { ...memoryResolvedIssues, ...newMap };
+              setDoc(docRef, { fixes: memoryResolvedIssues, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+            }
+          }).catch(() => {});
+        }
 
-        // Merge with local memory (preserve local if offline)
-        memoryResolvedIssues = { ...memoryResolvedIssues, ...newMap };
         try {
           if (typeof window !== 'undefined') {
             localStorage.setItem(RESOLVED_ISSUES_STORAGE_KEY, JSON.stringify(memoryResolvedIssues));
@@ -65,7 +78,7 @@ export function initAuditFixesRealtimeSync(): () => void {
         subscribers.forEach((cb) => cb(memoryResolvedIssues));
       },
       (err) => {
-        console.warn('Firestore onSnapshot warning for seo_audit_fixes:', err);
+        console.warn('Firestore onSnapshot warning for seo_audit_fixes master bundle:', err);
       }
     );
 
@@ -108,7 +121,9 @@ export async function markIssueResolved(record: AuditResolutionRecord): Promise<
   const docId = `${record.targetUrl.replace(/[^a-zA-Z0-9]/g, '_')}_${record.id}`;
   try {
     const sanitized = sanitizeFirestoreData(record);
-    await setDoc(doc(db, 'seo_audit_fixes', docId), sanitized, { merge: true });
+    const docRef = doc(db, 'seo_audit_fixes', 'master_audit_fixes_bundle');
+    await setDoc(docRef, { fixes: memoryResolvedIssues, updatedAt: Date.now() }, { merge: true });
+    setDoc(doc(db, 'seo_audit_fixes', docId), sanitized, { merge: true }).catch(() => {});
   } catch (err) {
     console.warn('Failed to save audit fix to Firestore (persisted locally):', err);
   }
@@ -118,7 +133,6 @@ export async function markIssueResolved(record: AuditResolutionRecord): Promise<
  * Resets all audit resolutions for testing.
  */
 export async function resetAuditResolutions(): Promise<void> {
-  const ids = Object.keys(memoryResolvedIssues);
   memoryResolvedIssues = {};
   try {
     if (typeof window !== 'undefined') {
@@ -128,11 +142,10 @@ export async function resetAuditResolutions(): Promise<void> {
 
   subscribers.forEach((cb) => cb(memoryResolvedIssues));
 
-  const promises = ids.map((id) => {
-    const docId = id;
-    return deleteDoc(doc(db, 'seo_audit_fixes', docId)).catch(() => {});
-  });
-  await Promise.allSettled(promises);
+  try {
+    const docRef = doc(db, 'seo_audit_fixes', 'master_audit_fixes_bundle');
+    await setDoc(docRef, { fixes: {}, updatedAt: Date.now() }, { merge: true });
+  } catch (err) {}
 }
 
 /**

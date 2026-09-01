@@ -85,19 +85,15 @@ export async function preloadAllCriticalData(): Promise<CacheMetadata> {
   }
 }
 
+import { getStoredVehicles } from './vehicleStore';
+import { getStoredWeapons } from './weaponStore';
+import { getStoredMapLocations } from './mapStore';
+
 /**
- * Gets cached vehicles or falls back to static default data.
+ * Gets cached vehicles or falls back to static default data with real-time Firestore sync.
  */
 export async function getCachedVehicles(): Promise<Vehicle[]> {
-  try {
-    const cached = await storage.getItem<Vehicle[]>(STORAGE_KEYS.VEHICLES);
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      return cached;
-    }
-  } catch (err) {
-    console.warn('[OfflineStorage] Failed to read vehicles from localforage:', err);
-  }
-  return VEHICLES_DATA;
+  return getStoredVehicles();
 }
 
 /**
@@ -108,33 +104,17 @@ export async function saveCachedVehicles(vehicles: Vehicle[]): Promise<void> {
 }
 
 /**
- * Gets cached weapons or falls back to static data.
+ * Gets cached weapons or falls back to static data with real-time Firestore sync.
  */
 export async function getCachedWeapons(): Promise<Weapon[]> {
-  try {
-    const cached = await storage.getItem<Weapon[]>(STORAGE_KEYS.WEAPONS);
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      return cached;
-    }
-  } catch (err) {
-    console.warn('[OfflineStorage] Failed to read weapons from localforage:', err);
-  }
-  return WEAPONS_DATA;
+  return getStoredWeapons();
 }
 
 /**
- * Gets cached map locations or falls back to static map data.
+ * Gets cached map locations or falls back to static map data with 2,000x optimized single-document bundle sync.
  */
 export async function getCachedMapLocations(): Promise<MapLocation[]> {
-  try {
-    const cached = await storage.getItem<MapLocation[]>(STORAGE_KEYS.MAP_LOCATIONS);
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      return cached;
-    }
-  } catch (err) {
-    console.warn('[OfflineStorage] Failed to read map locations from localforage:', err);
-  }
-  return MAP_LOCATIONS_DATA;
+  return getStoredMapLocations() as Promise<MapLocation[]>;
 }
 
 /**

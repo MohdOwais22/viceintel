@@ -14,6 +14,7 @@ import { RP_SERVERS_DATA } from './src/data/rpServers';
 import { BUSINESSES_DATA } from './src/data/businesses';
 import { MAP_LOCATIONS_DATA } from './src/data/mapLocations';
 import { WEAPONS_DATA } from './src/data/weapons';
+import { CHARACTERS_DATA } from './src/data/characters';
 import { SEO_KEYWORD_PAGES } from './src/data/seoKeywordsData';
 import {
   deduplicateKnowledgeArticles,
@@ -142,14 +143,16 @@ export function handleServerFirestoreError(err: any, context: string) {
                   errStr.includes('Quota limit exceeded') || 
                   errStr.includes('Quota exceeded') ||
                   errStr.includes('code=resource-exhausted') ||
-                  errStr.includes('8 RESOURCE_EXHAUSTED');
+                  errStr.includes('8 RESOURCE_EXHAUSTED') ||
+                  errStr.includes('Free daily read units per project') ||
+                  errStr.includes('quota metric');
 
   if (isQuota) {
     if (!isFirestoreQuotaExceededServer) {
       isFirestoreQuotaExceededServer = true;
-      console.warn(`⚠️ [Firestore Server Sentinel] Firestore daily read/write quota limit has been exceeded. Pausing automated background Firestore operations until quota resets.`);
+      console.warn(`⚠️ [Firestore Server Sentinel] Firestore daily read/write quota limit has been exceeded. Operating in safe offline fallback mode.`);
     } else {
-      console.log(`[Firestore Server Sentinel] Quietly skipping background ${context} (Quota limit exceeded, background sync paused)`);
+      console.log(`[Firestore Server Sentinel] Quietly handling ${context} (Quota limit exceeded, background sync paused)`);
     }
   } else {
     console.error(`[${context} Error]:`, err);
@@ -6747,14 +6750,15 @@ Showing top entries for "${query || 'All'}":
     }
   });
 
-  // Automated Background Squad Room Inactivity Cleanup (runs on server startup + every 5 minutes)
+  // Automated Background Squad Room Inactivity Cleanup (runs on server startup + every 15 minutes)
   setTimeout(() => {
     runStaleSquadRoomsCleanupServer('startup').catch(err => console.error('Initial squad cleanup failed:', err));
   }, 6000);
 
   setInterval(() => {
+    if (isFirestoreQuotaExceededServer) return;
     runStaleSquadRoomsCleanupServer('cron').catch(err => console.error('Scheduled squad cleanup failed:', err));
-  }, 5 * 60 * 1000);
+  }, 15 * 60 * 1000);
 
   // Automated Background Firestore Write-Behind Buffer Flusher (runs every 60 seconds)
   setInterval(() => {
@@ -6777,25 +6781,27 @@ Showing top entries for "${query || 'All'}":
     }
   }, 60 * 1000);
 
-  // Automated Background VIP Expiry Timer (runs on server startup + every 6 hours)
+  // Automated Background VIP Expiry Timer (runs on server startup + every 12 hours)
   setTimeout(() => {
     runVipExpiryCheckServer().catch(err => console.error('Initial VIP expiry check failed:', err));
   }, 8000);
 
   setInterval(() => {
+    if (isFirestoreQuotaExceededServer) return;
     runVipExpiryCheckServer().catch(err => console.error('Scheduled VIP expiry check failed:', err));
-  }, 6 * 60 * 60 * 1000);
+  }, 12 * 60 * 60 * 1000);
 
-  // Automated Background FiveM Server Traffic & Health Sync Cron (runs on startup + every 15 minutes)
+  // Automated Background FiveM Server Traffic & Health Sync Cron (runs on startup + every 1 hour)
   setTimeout(() => {
     runFivemTrafficSyncJob().catch(err => console.error('Initial FiveM traffic sync failed:', err));
   }, 5000);
 
   setInterval(() => {
+    if (isFirestoreQuotaExceededServer) return;
     runFivemTrafficSyncJob().catch(err => console.error('Scheduled FiveM traffic sync failed:', err));
-  }, 15 * 60 * 1000);
+  }, 60 * 60 * 1000);
 
-  // Automated Background pSEO News Spider & Web Search Crawler (Runs every 15 minutes)
+  // Automated Background pSEO News Spider & Web Search Crawler (Runs every 2 hours)
   if (process.env.AUTO_PSEO_ENABLED !== 'false') {
     initializePseoArticles().catch(err => console.error('Initial pSEO article loader failed:', err));
 
@@ -6805,44 +6811,47 @@ Showing top entries for "${query || 'All'}":
       }
     }, 4000);
 
-    const PSEO_CRAWLER_INTERVAL_MS = 15 * 60 * 1000;
+    const PSEO_CRAWLER_INTERVAL_MS = 2 * 60 * 60 * 1000;
     setInterval(() => {
+      if (isFirestoreQuotaExceededServer) return;
       const now = new Date();
       const minutesSinceLastCrawl = (now.getTime() - lastPseoCrawlTimestamp) / (1000 * 60);
 
-      // Trigger if at least 14 minutes since last crawl or on schedule
-      if (minutesSinceLastCrawl >= 14 || lastPseoCrawlTimestamp === 0) {
-        console.log(`[15-Min pSEO Spider Schedule] Triggering automated background news crawl (${minutesSinceLastCrawl.toFixed(1)}m since last crawl)...`);
-        runMidnightPseoGenerator().catch(err => console.error('Scheduled 15-min pSEO generator failed:', err));
+      // Trigger if at least 110 minutes since last crawl or on schedule
+      if (minutesSinceLastCrawl >= 110 || lastPseoCrawlTimestamp === 0) {
+        console.log(`[2-Hour pSEO Spider Schedule] Triggering automated background news crawl (${minutesSinceLastCrawl.toFixed(1)}m since last crawl)...`);
+        runMidnightPseoGenerator().catch(err => console.error('Scheduled 2-hour pSEO generator failed:', err));
       }
     }, PSEO_CRAWLER_INTERVAL_MS);
   }
 
-  // Automated Background pSEO Smart Merge & 30-Day Retention Prune Cron (Runs on server startup + every 12 hours)
+  // Automated Background pSEO Smart Merge & 30-Day Retention Prune Cron (Runs on server startup + every 24 hours)
   setTimeout(() => {
     cleanAndPrunePseoArticles().then(stats => {
       if (stats.mergedCount > 0 || stats.prunedCount > 0) {
-        console.log(`[pSEO 12-Hour Merge & Prune Cron] Initial bootstrap pass: Merged ${stats.mergedCount} articles, Pruned ${stats.prunedCount} expired (>30d) articles, Retained ${stats.retainedCount} active.`);
+        console.log(`[pSEO 24-Hour Merge & Prune Cron] Initial bootstrap pass: Merged ${stats.mergedCount} articles, Pruned ${stats.prunedCount} expired (>30d) articles, Retained ${stats.retainedCount} active.`);
       }
     }).catch(err => console.error('Initial pSEO merge & prune failed:', err));
   }, 10000);
 
-  const PSEO_MERGE_PRUNE_INTERVAL_MS = 12 * 60 * 60 * 1000;
+  const PSEO_MERGE_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
   setInterval(() => {
-    console.log('[pSEO 12-Hour Merge & Prune Cron] Triggering scheduled 12-hour consolidation & 30-day retention prune pass...');
+    if (isFirestoreQuotaExceededServer) return;
+    console.log('[pSEO 24-Hour Merge & Prune Cron] Triggering scheduled 24-hour consolidation & 30-day retention prune pass...');
     cleanAndPrunePseoArticles().then(stats => {
-      console.log(`[pSEO 12-Hour Merge & Prune Cron] Completed pass: Merged ${stats.mergedCount} articles, Pruned ${stats.prunedCount} expired (>30d) articles, Retained ${stats.retainedCount} active.`);
-    }).catch(err => console.error('Scheduled 12-hour pSEO merge & prune failed:', err));
+      console.log(`[pSEO 24-Hour Merge & Prune Cron] Completed pass: Merged ${stats.mergedCount} articles, Pruned ${stats.prunedCount} expired (>30d) articles, Retained ${stats.retainedCount} active.`);
+    }).catch(err => console.error('Scheduled 24-hour pSEO merge & prune failed:', err));
   }, PSEO_MERGE_PRUNE_INTERVAL_MS);
 
-  // Automated Background Tuning Championship Challenge Expiry & Payout Checker (runs on server startup + every 5 minutes)
+  // Automated Background Tuning Championship Challenge Expiry & Payout Checker (runs on server startup + every 30 minutes)
   setTimeout(() => {
     runChallengesPayoutCheckServer().catch(err => console.error('Initial background challenges check failed:', err));
   }, 12000);
 
   setInterval(() => {
+    if (isFirestoreQuotaExceededServer) return;
     runChallengesPayoutCheckServer().catch(err => console.error('Scheduled background challenges check failed:', err));
-  }, 5 * 60 * 1000);
+  }, 30 * 60 * 1000);
 
   // -------------------------------------------------------------
   // B2B SAAS NO-CODE WHITELIST & DISCORD OAUTH INTEGRATION ENDPOINTS
@@ -7266,8 +7275,14 @@ Showing top entries for "${query || 'All'}":
         discordAvatar: cleanAvatar
       });
     } catch (err: any) {
-      console.error('Discord link profile error:', err);
-      return res.status(500).json({ success: false, error: err?.message || 'Failed to link profile' });
+      handleServerFirestoreError(err, 'Discord link profile');
+      return res.json({
+        success: false,
+        quotaExceeded: isFirestoreQuotaExceededServer,
+        error: isFirestoreQuotaExceededServer
+          ? 'Firestore daily quota limit reached. Operating in offline/fallback mode.'
+          : (err?.message || 'Failed to link profile')
+      });
     }
   });
 
@@ -7311,8 +7326,14 @@ Showing top entries for "${query || 'All'}":
         lastRefreshedAt: authData?.lastRefreshedAt || null
       });
     } catch (err: any) {
-      console.error('Discord status check error:', err);
-      return res.status(500).json({ success: false, error: err?.message || 'Failed to check Discord status' });
+      handleServerFirestoreError(err, 'Discord status check');
+      return res.json({
+        success: true,
+        connected: false,
+        discordConnected: false,
+        quotaExceeded: true,
+        warning: 'Firestore quota limit exceeded. Operating in safe fallback mode.'
+      });
     }
   });
 
@@ -7411,8 +7432,14 @@ Showing top entries for "${query || 'All'}":
         lastRefreshedAt: updatedAuthRecord.lastRefreshedAt
       });
     } catch (err: any) {
-      console.error('Discord refresh endpoint error:', err);
-      return res.status(500).json({ success: false, error: err?.message || 'Failed to refresh Discord token' });
+      handleServerFirestoreError(err, 'Discord refresh endpoint');
+      return res.json({
+        success: false,
+        quotaExceeded: isFirestoreQuotaExceededServer,
+        error: isFirestoreQuotaExceededServer
+          ? 'Firestore daily quota limit reached. Operating in offline/fallback mode.'
+          : (err?.message || 'Failed to refresh Discord token')
+      });
     }
   });
 
@@ -7441,8 +7468,14 @@ Showing top entries for "${query || 'All'}":
         message: 'Discord account and OAuth tokens unlinked successfully.'
       });
     } catch (err: any) {
-      console.error('Discord unlink error:', err);
-      return res.status(500).json({ success: false, error: err?.message || 'Failed to unlink Discord account' });
+      handleServerFirestoreError(err, 'Discord unlink');
+      return res.json({
+        success: false,
+        quotaExceeded: isFirestoreQuotaExceededServer,
+        error: isFirestoreQuotaExceededServer
+          ? 'Firestore daily quota limit reached. Operating in offline/fallback mode.'
+          : (err?.message || 'Failed to unlink Discord account')
+      });
     }
   });
 
@@ -10890,7 +10923,7 @@ Return pure JSON only.`;
     const lastMod = new Date().toISOString().split('T')[0];
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-    xml += `<urlset xmlns="http://www.sitemap.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
+    xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
 
     const addUrl = (loc: string, priority = '0.8', changefreq = 'weekly', customLastMod = lastMod, imageUrl?: string) => {
       xml += `  <url>\n`;
@@ -10911,9 +10944,13 @@ Return pure JSON only.`;
     addUrl('/', '1.0', 'daily');
     addUrl('/vehicles', '0.9', 'daily');
     addUrl('/weapons', '0.9', 'daily');
+    addUrl('/characters', '0.9', 'daily');
+    addUrl('/characters?page=2', '0.85', 'daily');
     addUrl('/comparison', '0.8', 'weekly');
     addUrl('/mod-calculator', '0.8', 'weekly');
     addUrl('/roi-calculator', '0.9', 'daily');
+    addUrl('/handling-editor', '0.8', 'weekly');
+    addUrl('/economy-balancer', '0.8', 'weekly');
     addUrl('/scripts/generator', '0.95', 'daily');
     addUrl('/blog', '0.9', 'daily');
     addUrl('/map', '0.8', 'weekly');
@@ -10925,6 +10962,11 @@ Return pure JSON only.`;
     addUrl('/pseo', '0.6', 'monthly');
     addUrl('/giftcards', '0.6', 'weekly');
     addUrl('/seo-hub', '0.9', 'daily');
+    addUrl('/challenges', '0.85', 'daily');
+    addUrl('/for-servers', '0.8', 'weekly');
+    addUrl('/about', '0.5', 'monthly');
+    addUrl('/privacy', '0.4', 'monthly');
+    addUrl('/copyright', '0.4', 'monthly');
 
     // 2. Dynamic Blog Posts
     BLOG_POSTS.forEach(post => {
@@ -10948,6 +10990,13 @@ Return pure JSON only.`;
         const catSlug = (w.category || 'pistols').toLowerCase().replace(/\s+/g, '-');
         const itemSlug = w.slug || (w.name || 'weapon').toLowerCase().replace(/\s+/g, '-');
         addUrl(`/weapons/${catSlug}/${itemSlug}`, '0.80', 'weekly', lastMod, w.image);
+      }
+    });
+
+    // 5. Dynamic Characters Catalog & Syndicate Dossiers
+    CHARACTERS_DATA.forEach(c => {
+      if (c && c.slug) {
+        addUrl(`/characters/${c.slug}`, '0.85', 'daily', lastMod, c.imageUrl);
       }
     });
 

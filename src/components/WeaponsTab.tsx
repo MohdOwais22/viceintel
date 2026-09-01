@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { WEAPONS_DATA } from '../data/weapons';
 import { Weapon, WeaponCategory } from '../types';
 import { getCachedWeapons } from '../lib/offlineStorage';
+import { WEAPONS_UPDATED_EVENT } from '../lib/weaponStore';
 import { UnitToggleSwitch } from './UnitToggleSwitch';
 import { getStoredUnitPreference, setStoredUnitPreference, formatRange, UnitSystem } from '../lib/unitConverter';
-import { Crosshair, Shield, Zap, Target, Flame, ChevronRight, Lock, Check } from 'lucide-react';
+import { Crosshair, Shield, Zap, Target, Flame, ChevronRight, ChevronLeft, Lock, Check } from 'lucide-react';
 import { AdSlot } from './ads';
 
 interface WeaponsTabProps {
@@ -13,6 +14,8 @@ interface WeaponsTabProps {
   isLoading?: boolean;
   onNavigateTab?: (tab: string, targetId?: string) => void;
 }
+
+const ITEMS_PER_PAGE = 6;
 
 const WeaponSkeletonItem = () => (
   <div className="p-3.5 rounded-xl border border-zinc-800/80 bg-zinc-900/40 animate-pulse flex items-center justify-between">
@@ -53,6 +56,7 @@ export const WeaponsTab: React.FC<WeaponsTabProps> = ({ searchQuery, isLoading =
   const [selectedWeapon, setSelectedWeapon] = useState<Weapon>(WEAPONS_DATA[0]);
   const [isFilterLoading, setIsFilterLoading] = useState(false);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(getStoredUnitPreference());
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   const handleUnitChange = (newUnit: UnitSystem) => {
     setUnitSystem(newUnit);
@@ -69,11 +73,31 @@ export const WeaponsTab: React.FC<WeaponsTabProps> = ({ searchQuery, isLoading =
         }
       }
     });
+
+    const handleWeaponsUpdated = (e: CustomEvent<Weapon[]>) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setWeaponsList(e.detail);
+        setSelectedWeapon(prev => {
+          const match = e.detail.find(w => w.id === prev.id);
+          return match || e.detail[0] || prev;
+        });
+      }
+    };
+
+    window.addEventListener(WEAPONS_UPDATED_EVENT as any, handleWeaponsUpdated);
+    return () => {
+      window.removeEventListener(WEAPONS_UPDATED_EVENT as any, handleWeaponsUpdated);
+    };
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory]);
 
   const handleCategoryChange = (cat: WeaponCategory | 'All') => {
     setIsFilterLoading(true);
     setSelectedCategory(cat);
+    setCurrentPage(1);
     setTimeout(() => setIsFilterLoading(false), 300);
   };
 
@@ -84,6 +108,8 @@ export const WeaponsTab: React.FC<WeaponsTabProps> = ({ searchQuery, isLoading =
     'Sniper Rifles',
     'Handguns',
     'Submachine Guns',
+    'Heavy Weapons',
+    'Melee',
   ];
 
   const filteredWeapons = weaponsList.filter((w) => {
@@ -93,6 +119,18 @@ export const WeaponsTab: React.FC<WeaponsTabProps> = ({ searchQuery, isLoading =
     const matchesCategory = selectedCategory === 'All' || w.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const totalPages = Math.ceil(filteredWeapons.length / ITEMS_PER_PAGE) || 1;
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedWeapons = filteredWeapons.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  // Auto select first weapon on page change if current selected is not in paginated list
+  useEffect(() => {
+    if (paginatedWeapons.length > 0 && !paginatedWeapons.some(w => w.id === selectedWeapon?.id)) {
+      setSelectedWeapon(paginatedWeapons[0]);
+    }
+  }, [safeCurrentPage, filteredWeapons]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -124,7 +162,7 @@ export const WeaponsTab: React.FC<WeaponsTabProps> = ({ searchQuery, isLoading =
               <WeaponSkeletonItem key={idx} />
             ))
           ) : (
-            filteredWeapons.map((weapon) => {
+            paginatedWeapons.map((weapon) => {
             const isSelected = selectedWeapon.id === weapon.id;
             return (
               <div
@@ -157,6 +195,34 @@ export const WeaponsTab: React.FC<WeaponsTabProps> = ({ searchQuery, isLoading =
           })
           )}
         </div>
+
+        {/* Weapons List Pagination Controls */}
+        {filteredWeapons.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400">
+            <span>
+              <strong className="text-white">{startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, filteredWeapons.length)}</strong> of <strong className="text-rose-400">{filteredWeapons.length}</strong>
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={safeCurrentPage === 1}
+                className="p-1.5 rounded-lg bg-zinc-800 border border-zinc-700/80 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="px-2 font-bold text-white">
+                {safeCurrentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={safeCurrentPage === totalPages}
+                className="p-1.5 rounded-lg bg-zinc-800 border border-zinc-700/80 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Weapon Specification Detail Panel */}

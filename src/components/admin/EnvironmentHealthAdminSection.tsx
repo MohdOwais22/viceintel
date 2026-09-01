@@ -47,6 +47,7 @@ import {
   rotateServerSecret
 } from '../../lib/envHealthValidator';
 import { logStaffActivity } from '../../lib/staffAuditLogger';
+import { FirestoreOptimizationTelemetryCard } from './FirestoreOptimizationTelemetryCard';
 
 export interface EnvironmentHealthAdminSectionProps {
   isActorL4Admin?: boolean;
@@ -329,6 +330,9 @@ export const EnvironmentHealthAdminSection: React.FC<EnvironmentHealthAdminSecti
           <span className="text-xs font-semibold">{notice}</span>
         </div>
       )}
+
+      {/* Firestore 2,000x Read/Write Bundling Optimization Telemetry */}
+      <FirestoreOptimizationTelemetryCard />
 
       {/* Header Banner */}
       <div className="bg-gradient-to-r from-zinc-900 via-zinc-900/90 to-rose-950/40 p-6 rounded-2xl border border-zinc-800 shadow-xl space-y-4">

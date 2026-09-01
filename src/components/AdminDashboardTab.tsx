@@ -65,6 +65,7 @@ import { RP_SERVERS_DATA } from '../data/rpServers';
 import { DEFAULT_GTA6_AVATAR } from '../data/avatars';
 import { canBanTarget, canAssignRole, canEditUserFields, isTargetAdmin, getRoleLevel, isAdminUser, isStaffUser } from '../lib/rbac';
 import { getVipPriceFormatted, getVipPriceText } from '../lib/vipConfig';
+import { saveOrUpdateMapLocation, deleteMapLocation } from '../lib/mapStore';
 import { PseoArchitectureTab } from './PseoArchitectureTab';
 import { BugReportsAdminSection } from './admin/BugReportsAdminSection';
 import { ChallengesAdminCms } from './admin/ChallengesAdminCms';
@@ -76,6 +77,9 @@ import { EnvironmentHealthAdminSection } from './admin/EnvironmentHealthAdminSec
 import { MarketAgencyAdminCms } from './admin/MarketAgencyAdminCms';
 import { CustomWebhookBotAdminCms } from './admin/CustomWebhookBotAdminCms';
 import { BloomFilterTelemetryCms } from './admin/BloomFilterTelemetryCms';
+import { CharacterGalleryAdminCms } from './admin/CharacterGalleryAdminCms';
+import { VehicleCatalogAdminCms } from './admin/VehicleCatalogAdminCms';
+import { WeaponCatalogAdminCms } from './admin/WeaponCatalogAdminCms';
 import { SystemPricingControl } from './SystemPricingControl';
 import { logStaffActivity } from '../lib/staffAuditLogger';
 import { formatVipExpiry, formatDate, formatDateTime, formatShortTimestamp, formatAutoCrawlTime } from '../lib/dateUtils';
@@ -216,7 +220,7 @@ interface PendingApproval {
 const INITIAL_PENDING: PendingApproval[] = [];
 
 export interface AdminDashboardTabProps {
-  initialSubTab?: 'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency';
+  initialSubTab?: 'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'character-gallery' | 'vehicle-cms' | 'weapon-cms';
 }
 
 export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSubTab }) => {
@@ -246,7 +250,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const [editModerationNote, setEditModerationNote] = useState('');
   const [editRawJson, setEditRawJson] = useState('');
   const [isSavingUserDoc, setIsSavingUserDoc] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot' | 'bloom-telemetry'>(() => {
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot' | 'bloom-telemetry' | 'character-gallery' | 'vehicle-cms' | 'weapon-cms'>(() => {
     if (initialSubTab) return initialSubTab;
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
@@ -255,13 +259,22 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       if (sub === 'webhook-bot' || sub === 'bot' || sub === 'webhook' || sub === 'discord-bot') {
         return 'webhook-bot';
       }
+      if (sub === 'character-gallery' || sub === 'characters' || sub === 'character' || sub === 'character-cms') {
+        return 'character-gallery';
+      }
+      if (sub === 'vehicle-cms' || sub === 'vehicles-cms' || sub === 'vehicle' || sub === 'vehicles') {
+        return 'vehicle-cms';
+      }
+      if (sub === 'weapon-cms' || sub === 'weapons-cms' || sub === 'weapon' || sub === 'weapons') {
+        return 'weapon-cms';
+      }
       if (sub === 'bloom' || sub === 'bloom-filter' || sub === 'bloom-telemetry' || sub === 'gamertag-engine') {
         return 'bloom-telemetry';
       }
       if (sub === 'market-agency' || sub === 'marketagency' || path.includes('marketagency') || path.includes('market-agency') || path.includes('agency')) {
         return 'market-agency';
       }
-      if (sub && ['users', 'approvals', 'reports', 'cms', 'challenge-cms', 'rental-cms', 'analytics', 'pricing-control', 'pseo', 'vip-notifications', 'squad-rooms', 'staff-logs', 'coupon-cms', 'ad-toggles', 'env-health', 'market-agency', 'webhook-bot', 'bloom-telemetry'].includes(sub)) {
+      if (sub && ['users', 'approvals', 'reports', 'cms', 'challenge-cms', 'rental-cms', 'analytics', 'pricing-control', 'pseo', 'vip-notifications', 'squad-rooms', 'staff-logs', 'coupon-cms', 'ad-toggles', 'env-health', 'market-agency', 'webhook-bot', 'bloom-telemetry', 'character-gallery', 'vehicle-cms', 'weapon-cms'].includes(sub)) {
         return sub as any;
       }
     }
@@ -744,37 +757,37 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     let unsubChat = () => {};
 
     try {
-      unsubBlogs = onSnapshot(collection(db, 'blogPosts'), (snap) => {
+      unsubBlogs = onSnapshot(query(collection(db, 'blogPosts'), limit(25)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedBlogs(list);
       }, (e) => console.warn('Blogs sub error:', e));
 
-      unsubVehicles = onSnapshot(collection(db, 'vehicles'), (snap) => {
+      unsubVehicles = onSnapshot(query(collection(db, 'vehicles'), limit(25)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedVehicles(list);
       }, (e) => console.warn('Vehicles sub error:', e));
 
-      unsubWeapons = onSnapshot(collection(db, 'weapons'), (snap) => {
+      unsubWeapons = onSnapshot(query(collection(db, 'weapons'), limit(25)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedWeapons(list);
       }, (e) => console.warn('Weapons sub error:', e));
 
-      unsubMaps = onSnapshot(collection(db, 'mapLocations'), (snap) => {
+      unsubMaps = onSnapshot(query(collection(db, 'mapLocations'), limit(25)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedMapLocations(list);
       }, (e) => console.warn('Map locations sub error:', e));
 
-      unsubRp = onSnapshot(collection(db, 'rpServers'), (snap) => {
+      unsubRp = onSnapshot(query(collection(db, 'rpServers'), limit(25)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedRpServers(list);
       }, (e) => console.warn('RP servers sub error:', e));
 
-      unsubChat = onSnapshot(collection(db, 'chatChannels'), (snap) => {
+      unsubChat = onSnapshot(query(collection(db, 'chatChannels'), limit(25)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedChatChannels(list);
@@ -1065,7 +1078,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     };
 
     try {
-      await setDoc(doc(db, 'mapLocations', id), newDoc, { merge: true });
+      await saveOrUpdateMapLocation(newDoc as any);
       logStaffActivity({
         actionType: editingMapId ? 'CMS_CONTENT_UPDATE' : 'CMS_CONTENT_CREATE',
         actionCategory: 'Content CMS',
@@ -1170,7 +1183,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     const { colName, id, title } = cmsDeleteConfirm;
     setCmsDeleteConfirm(null);
     try {
-      await deleteDoc(doc(db, colName, id));
+      if (colName === 'mapLocations') {
+        await deleteMapLocation(id);
+      } else {
+        await deleteDoc(doc(db, colName, id));
+      }
       logStaffActivity({
         actionType: 'CMS_CONTENT_DELETE',
         actionCategory: 'Content CMS',
@@ -1979,7 +1996,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
             ? 'users_hub'
             : activeSubTab === 'approvals' || activeSubTab === 'reports' || activeSubTab === 'staff-logs'
             ? 'moderation_hub'
-            : activeSubTab === 'cms' || activeSubTab === 'challenge-cms' || activeSubTab === 'rental-cms' || activeSubTab === 'coupon-cms'
+            : activeSubTab === 'cms' || activeSubTab === 'challenge-cms' || activeSubTab === 'rental-cms' || activeSubTab === 'coupon-cms' || activeSubTab === 'character-gallery'
             ? 'cms_hub'
             : activeSubTab === 'squad-rooms' || activeSubTab === 'pseo' || activeSubTab === 'env-health'
             ? 'system_hub'
@@ -2182,6 +2199,42 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                     <span>Zero-Code Content CMS & Publisher</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('character-gallery')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      activeSubTab === 'character-gallery'
+                        ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 shadow-sm'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5 text-pink-400" />
+                    <span>Character Gallery CMS</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('vehicle-cms')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      activeSubTab === 'vehicle-cms'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    <Car className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Vehicles Catalog CMS</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('weapon-cms')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      activeSubTab === 'weapon-cms'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    <Crosshair className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Weapons Arsenal CMS</span>
                   </button>
                   <button
                     type="button"
@@ -3053,6 +3106,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
           <BugReportsAdminSection />
         </div>
+      )}
+
+      {/* Tab Content: GTA VI Character Gallery CMS */}
+      {activeSubTab === 'character-gallery' && (
+        <CharacterGalleryAdminCms />
       )}
 
       {/* Tab Content: Zero-Code CMS Portal */}
@@ -4114,6 +4172,21 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
             </div>
           )}
         </div>
+      )}
+
+      {/* Tab Content: Character Gallery CMS */}
+      {activeSubTab === 'character-gallery' && (
+        <CharacterGalleryAdminCms />
+      )}
+
+      {/* Tab Content: Vehicle Catalog CMS */}
+      {activeSubTab === 'vehicle-cms' && (
+        <VehicleCatalogAdminCms />
+      )}
+
+      {/* Tab Content: Weapon Catalog CMS */}
+      {activeSubTab === 'weapon-cms' && (
+        <WeaponCatalogAdminCms />
       )}
 
       {/* Tab Content: Tuning Challenge No-Code CMS & Moderation */}

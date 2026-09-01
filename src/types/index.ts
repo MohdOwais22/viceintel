@@ -51,6 +51,34 @@ export interface Weapon {
   attachments: WeaponAttachment[];
 }
 
+export type CharacterRole = 'Protagonist' | 'Supporting' | 'Antagonist' | 'Faction Boss' | 'Law Enforcement';
+
+export interface Character {
+  id: string;
+  slug: string;
+  name: string;
+  role: CharacterRole;
+  faction: string;
+  description: string;
+  voiceActor?: string;
+  specialAbility?: string;
+  imageUrl: string;
+  avatarUrl?: string;
+  status: 'Alive' | 'Active' | 'In Custody' | 'Unknown';
+  firstAppeared: string;
+  trailerTimestamp?: string;
+  trailerScene?: string;
+  keyTraits: string[];
+  location?: string;
+  relationship?: string;
+  heistRole?: string;
+  leonidaQuote?: string;
+  socialHandle?: string;
+  leonidaMoment?: string;
+  trailerFrameDesc?: string;
+  realTrailerVisual?: string;
+}
+
 export interface ModUpgradeOption {
   id: string;
   name: string;
@@ -524,7 +552,7 @@ export interface GiftCard {
   paymentMethod?: string;
 }
 
-export type ActiveTab = 'home' | 'about' | 'vehicles' | 'weapons' | 'comparison' | 'mod-calculator' | 'roi-calculator' | 'handling-editor' | 'economy-balancer' | 'script-generator' | 'map' | 'rp-servers' | 'monetization' | 'chat' | 'admin' | 'docs' | 'blog' | 'profile' | 'pseo' | 'giftcards' | 'seo-hub' | 'challenges' | 'whitelist-manage' | 'whitelist-apply' | 'whitelist-review' | 'whitelist-status' | 'server-manage' | 'server-apply' | 'server-review' | 'server-status' | 'server-dashboard' | 'server-billing' | 'server-growth' | 'server-studio' | 'marketing' | 'privacy' | 'copyright' | 'for-servers' | 'servers-onboarding' | 'admin-business' | 'market-agency' | 'marketagency' | 'pitch' | 'investors';
+export type ActiveTab = 'home' | 'about' | 'vehicles' | 'weapons' | 'characters' | 'comparison' | 'mod-calculator' | 'roi-calculator' | 'handling-editor' | 'economy-balancer' | 'script-generator' | 'map' | 'rp-servers' | 'monetization' | 'chat' | 'admin' | 'docs' | 'blog' | 'profile' | 'pseo' | 'giftcards' | 'seo-hub' | 'challenges' | 'whitelist-manage' | 'whitelist-apply' | 'whitelist-review' | 'whitelist-status' | 'server-manage' | 'server-apply' | 'server-review' | 'server-status' | 'server-dashboard' | 'server-billing' | 'server-growth' | 'server-studio' | 'marketing' | 'privacy' | 'copyright' | 'for-servers' | 'servers-onboarding' | 'admin-business' | 'market-agency' | 'marketagency' | 'pitch' | 'investors';
 
 export type NotificationType = 'article' | 'admin_message' | 'car_addition' | 'weapon_addition' | 'chat_tag' | 'channel_join_request' | 'admin_chat_broadcast' | 'channel_all_tag' | 'whitelist_status_update' | 'VIP_EXPIRY_ALERT' | 'challenge_win';
 

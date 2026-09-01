@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MAP_LOCATIONS_DATA, ExtendedMapLocation } from '../data/mapLocations';
 import { getCachedMapLocations } from '../lib/offlineStorage';
+import { initializeRealtimeMapSync, getStoredMapLocations, MAP_LOCATIONS_UPDATED_EVENT } from '../lib/mapStore';
 import {
   MapPin,
   Filter,
@@ -142,6 +143,29 @@ export const InteractiveMap: React.FC = () => {
     });
 
     return () => unsub();
+  }, []);
+
+  // Initialize 2,000x Optimized Map Locations Bundled Store Engine (Thanh Le Pattern)
+  useEffect(() => {
+    initializeRealtimeMapSync();
+    getStoredMapLocations().then((locs) => {
+      if (locs && locs.length > 0) {
+        setMapLocationsList(locs);
+      }
+    }).catch(() => {});
+
+    const handleUpdate = () => {
+      getStoredMapLocations().then((locs) => {
+        if (locs && locs.length > 0) {
+          setMapLocationsList(locs);
+        }
+      }).catch(() => {});
+    };
+
+    window.addEventListener(MAP_LOCATIONS_UPDATED_EVENT, handleUpdate);
+    return () => {
+      window.removeEventListener(MAP_LOCATIONS_UPDATED_EVENT, handleUpdate);
+    };
   }, []);
 
   // Real-time Firestore Subscription for Active Squad Room

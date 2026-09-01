@@ -36,7 +36,8 @@ import {
   TrendingUp,
   Trophy,
   FileCode,
-  Bot
+  Bot,
+  Users
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -159,8 +160,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   // Items for Databases Group
   const databaseItems = [
-    { id: 'vehicles' as ActiveTab, label: 'Vehicles DB', icon: Car, badge: '8 Featured', desc: '500+ top speeds, trade prices & handling ratings' },
-    { id: 'weapons' as ActiveTab, label: 'Weapons Spec', icon: Crosshair, badge: '5 Guns', desc: 'TTK matrix, fire rate & attachment specs' },
+    { id: 'vehicles' as ActiveTab, label: 'Vehicles DB', icon: Car, badge: '18 Vehicles', desc: '500+ top speeds, trade prices & handling ratings' },
+    { id: 'weapons' as ActiveTab, label: 'Weapons Spec', icon: Crosshair, badge: '12 Guns', desc: 'TTK matrix, fire rate & attachment specs' },
+    { id: 'characters' as ActiveTab, label: 'Characters & Lore', icon: Users, badge: 'Lucia & Jason', desc: 'Dossiers, heist roles & special abilities' },
     { id: 'comparison' as ActiveTab, label: '1v1 Compare', icon: GitCompare, badge: 'Dynamic', desc: 'Side-by-side vehicle & weapon spec showdown' },
   ];
 
@@ -192,7 +194,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'docs' as ActiveTab, label: 'Docs & System API', icon: BookOpen, badge: 'API Spec', desc: 'REST endpoints, architecture specs & database models', restricted: true },
   ];
 
-  const isDatabasesActive = ['vehicles', 'weapons', 'comparison'].includes(activeTab);
+  const isDatabasesActive = ['vehicles', 'weapons', 'characters', 'comparison'].includes(activeTab);
   const isUtilitiesActive = ['script-generator', 'mod-calculator', 'roi-calculator', 'handling-editor', 'economy-balancer', 'giftcards', 'challenges'].includes(activeTab);
   const isCommunityActive = ['chat', 'rp-servers', 'blog', 'seo-hub'].includes(activeTab);
 

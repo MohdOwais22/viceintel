@@ -19,6 +19,7 @@ import { handleFirestoreError, OperationType } from './lib/firestoreErrorHandler
 import { MasterPortalHome } from './components/MasterPortalHome';
 import { VehiclesTab } from './components/VehiclesTab';
 import { WeaponsTab } from './components/WeaponsTab';
+import { CharactersTab } from './components/CharactersTab';
 import { ComparisonMatrix } from './components/ComparisonMatrix';
 import { ModBuilderCalculator } from './components/ModBuilderCalculator';
 import { BusinessRoiCalculator } from './components/BusinessRoiCalculator';
@@ -952,6 +953,10 @@ export default function App() {
 
             {activeTab === 'weapons' && (
               <WeaponsTab searchQuery={searchQuery} onNavigateTab={handleTabChange} />
+            )}
+
+            {activeTab === 'characters' && (
+              <CharactersTab searchQuery={searchQuery} />
             )}
 
             {activeTab === 'comparison' && (
