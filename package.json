@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx server.ts",
     "validate:health": "node scripts/validate-env-health.js",
+    "sitemap:generate": "tsx scripts/generate-sitemap.ts",
+    "migrate:images": "tsx scripts/migrate-base64-to-uploadthing.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
@@ -16,6 +18,8 @@
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.1.14",
     "@types/d3": "^7.4.3",
+    "@types/multer": "^2.2.0",
+    "@uploadthing/react": "^7.3.3",
     "@upstash/redis": "^1.38.3",
     "@vercel/analytics": "^2.0.1",
     "@vitejs/plugin-react": "^5.0.4",
@@ -35,6 +39,7 @@
     "mediasoup": "^3.24.0",
     "mediasoup-client": "^3.21.0",
     "motion": "^12.23.24",
+    "multer": "^2.3.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-leaflet": "^5.0.0",
@@ -42,6 +47,7 @@
     "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
     "stripe": "^22.4.0",
+    "uploadthing": "^7.7.4",
     "vite": "^6.2.3"
   },
   "devDependencies": {

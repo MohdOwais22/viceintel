@@ -6,10 +6,13 @@
 // Helper to access environment variables safely in both browser (import.meta.env) and server (process.env)
 function getEnvVar(key: string, defaultValue: string = ''): string {
   // Check import.meta.env for Vite client-side exposed vars
-  const meta = import.meta as any;
-  if (meta && meta.env) {
-    const val = meta.env[key];
-    if (val !== undefined && val !== '') return val;
+  try {
+    const metaEnv = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) ? (import.meta as any).env : null;
+    if (metaEnv && metaEnv[key] !== undefined && metaEnv[key] !== '') {
+      return metaEnv[key];
+    }
+  } catch (e) {
+    // ignore CJS environment warning
   }
   // Check process.env for Node server-side vars
   if (typeof process !== 'undefined' && process.env) {
@@ -49,6 +52,9 @@ export const ENV = {
   
   /** Discord Integration Client ID */
   DISCORD_CLIENT_ID: getEnvVar('DISCORD_CLIENT_ID', '1540025117470621759'),
+
+  /** Official Community Discord Server Invite URL */
+  DISCORD_INVITE_URL: getEnvVar('DISCORD_INVITE_URL', '') || getEnvVar('VITE_DISCORD_INVITE_URL', ''),
   
   /** Discord Integration OAuth2 Redirect URI */
   DISCORD_REDIRECT_URI: getEnvVar('DISCORD_REDIRECT_URI', ''),
@@ -80,6 +86,9 @@ export const ENV = {
 
   /** Transactional Email Webhook URL */
   EMAIL_WEBHOOK_URL: getEnvVar('EMAIL_WEBHOOK_URL', ''),
+
+  /** UploadThing CDN Asset Storage Token */
+  UPLOADTHING_TOKEN: getEnvVar('UPLOADTHING_TOKEN', ''),
   
   /** Server Port */
   PORT: parseInt(getEnvVar('PORT', '3000'), 10),

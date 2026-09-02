@@ -423,17 +423,7 @@ export const AiPracticeExamModal: React.FC<AiPracticeExamModalProps> = ({
                       )}
                     </button>
 
-                    {server.officialWebsiteUrl ? (
-                      <a
-                        href={server.officialWebsiteUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex-1 sm:flex-initial px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-black rounded-xl flex items-center justify-center gap-1.5 transition-all"
-                      >
-                        Go to Official Form
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    ) : server.officialDiscordUrl ? (
+                    {server.officialDiscordUrl && (
                       <a
                         href={server.officialDiscordUrl}
                         target="_blank"
@@ -443,7 +433,7 @@ export const AiPracticeExamModal: React.FC<AiPracticeExamModalProps> = ({
                         Join Server Discord
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
-                    ) : null}
+                    )}
                   </div>
                 </div>
 

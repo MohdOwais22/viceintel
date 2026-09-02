@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useId, useTransition } from 'react';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { safeFirestoreWrite } from '../../lib/firebase/firestoreCircuitBreaker';
 import {
   AdSlotType,
   AdPosition,
@@ -233,8 +234,10 @@ export const AdSlot: React.FC<AdSlotProps> = ({
           refreshCycle: currentCycle
         };
 
-        // Asynchronous non-blocking write to Firestore
-        await addDoc(collection(db, 'ad_impressions'), metricData);
+        // Asynchronous non-blocking write to Firestore with circuit breaker
+        await safeFirestoreWrite(async () => {
+          await addDoc(collection(db, 'ad_impressions'), metricData);
+        });
       } catch (err) {
         // Silently catch to prevent interrupting UI rendering if offline
         console.debug('[AdSlot] Impression telemetry notice (offline-safe):', err);

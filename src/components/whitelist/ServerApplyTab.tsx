@@ -484,36 +484,25 @@ export const ServerApplyTab: React.FC<ServerApplyTabProps> = ({
               </p>
             </div>
 
-            {/* Official Portal Notice Box */}
+            {/* Community Discord Notice Box */}
             <div className="bg-zinc-950/80 border border-violet-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="text-xs font-bold text-violet-300 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-violet-400" />
-                  <span>Official External Application Process</span>
+                  <span>Community Application & Onboarding</span>
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed max-w-xl">
-                  Applications for this community are reviewed directly on their official portal by their server staff. To ensure your application is reviewed, please apply on their website:
+                  Connect with the server community and staff via their official Discord for whitelist updates, rules, and server events:
                 </p>
               </div>
 
               <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                {matchedRpServer.officialWebsiteUrl && (
-                  <a
-                    href={matchedRpServer.officialWebsiteUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-4 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md shadow-violet-600/20"
-                  >
-                    <span>Official Portal</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
                 {(config?.discordInviteUrl || config?.customBranding?.discordInviteUrl || matchedRpServer?.officialDiscordUrl) && (
                   <a
                     href={config?.discordInviteUrl || config?.customBranding?.discordInviteUrl || matchedRpServer?.officialDiscordUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-3.5 py-2.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+                    className="px-4 py-2.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md shadow-[#5865F2]/20"
                   >
                     <span>Discord Server</span>
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -531,7 +520,7 @@ export const ServerApplyTab: React.FC<ServerApplyTabProps> = ({
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-3">
               <h3 className="text-xs font-black uppercase text-zinc-400 tracking-wider">Direct Connection</h3>
               <p className="text-xs text-zinc-400">
-                Once whitelisted on their official portal, connect via FiveM console:
+                Once whitelisted for this community, connect via FiveM console:
               </p>
               <button
                 onClick={() => handleCopyF8(matchedRpServer.connectUrl)}
@@ -589,7 +578,7 @@ export const ServerApplyTab: React.FC<ServerApplyTabProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">🧪 Practice AI Whitelist Interview</h3>
-                  <p className="text-[11px] text-zinc-400">Test your backstory & scenario responses before applying on the official portal.</p>
+                  <p className="text-[11px] text-zinc-400">Test your backstory & scenario responses to ensure fast approval.</p>
                 </div>
               </div>
               <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[10px] font-bold uppercase">

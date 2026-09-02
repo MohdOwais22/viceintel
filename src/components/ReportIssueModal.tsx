@@ -23,6 +23,7 @@ import {
   getRecentClientErrors,
   IssueReport
 } from '../lib/report-service';
+import { uploadImageAsset } from '../lib/uploadService';
 
 interface ReportIssueModalProps {
   isOpen: boolean;
@@ -225,8 +226,8 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({
     };
   }, [isCropDragActive, cropDragStart]);
 
-  // Helper to process uploaded or pasted image file into base64
-  const processImageFile = (file: File) => {
+  // Helper to upload image file to UploadThing CDN (No base64 data URLs)
+  const processImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       alert('Please upload a valid image file (PNG, JPG, WebP, or GIF).');
       return;
@@ -237,13 +238,13 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      setScreenshotUrl(result);
+    try {
+      const cdnUrl = await uploadImageAsset(file, 'reportScreenshot');
+      setScreenshotUrl(cdnUrl);
       setScreenshotFileName(file.name || 'uploaded_screenshot.png');
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      alert(`Screenshot upload failed: ${err?.message || 'Network error'}`);
+    }
   };
 
   // In-Modal Image Crop Apply handler
@@ -286,11 +287,21 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({
       originalImg.crossOrigin = 'anonymous';
       originalImg.onload = () => {
         ctx.drawImage(originalImg, realX, realY, realW, realH, 0, 0, realW, realH);
-        const croppedUrl = canvas.toDataURL('image/jpeg', 0.92);
-        setScreenshotUrl(croppedUrl);
-        setScreenshotFileName(`trimmed_crop_${realW}x${realH}_${Date.now()}.jpg`);
-        setIsCropEditorOpen(false);
-        setImageCropBox(null);
+        canvas.toBlob(async (blob) => {
+          if (blob) {
+            try {
+              const croppedFile = new File([blob], `cropped_${Date.now()}.jpg`, { type: 'image/jpeg' });
+              const cdnUrl = await uploadImageAsset(croppedFile, 'reportScreenshot');
+              setScreenshotUrl(cdnUrl);
+              setScreenshotFileName(`trimmed_crop_${realW}x${realH}_${Date.now()}.jpg`);
+            } catch {
+              const fallbackUrl = canvas.toDataURL('image/jpeg', 0.85);
+              setScreenshotUrl(fallbackUrl);
+            }
+          }
+          setIsCropEditorOpen(false);
+          setImageCropBox(null);
+        }, 'image/jpeg', 0.90);
       };
       originalImg.src = cropEditorImage;
     }

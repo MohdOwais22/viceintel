@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Zap, ShieldCheck, ArrowDownRight, Layers, RefreshCw, CheckCircle2, TrendingUp, Cpu, Server } from 'lucide-react';
+import { Database, Zap, ShieldCheck, ArrowDownRight, Layers, RefreshCw, CheckCircle2, TrendingUp, Cpu, Server, Image as ImageIcon, Sparkles, HardDriveDownload } from 'lucide-react';
 import { vehicleBundleEngine } from '../../lib/vehicleStore';
 import { weaponBundleEngine } from '../../lib/weaponStore';
 import { characterBundleEngine } from '../../lib/characterStore';
@@ -14,6 +14,17 @@ export const FirestoreOptimizationTelemetryCard: React.FC = () => {
   const [isCompacting, setIsCompacting] = useState<boolean>(false);
   const [compactStatus, setCompactStatus] = useState<string | null>(null);
 
+  // Base64 Migration state
+  const [isMigratingImages, setIsMigratingImages] = useState<boolean>(false);
+  const [migrationResult, setMigrationResult] = useState<{
+    success: boolean;
+    totalDocsScanned: number;
+    totalDocsUpdated: number;
+    totalImagesReplaced: number;
+    kbSaved: string;
+    message?: string;
+  } | null>(null);
+
   useEffect(() => {
     async function loadStats() {
       const v = await getStoredVehicles();
@@ -25,6 +36,22 @@ export const FirestoreOptimizationTelemetryCard: React.FC = () => {
     }
     loadStats();
   }, []);
+
+  const handleRunBase64Migration = async () => {
+    try {
+      setIsMigratingImages(true);
+      const res = await fetch('/api/admin/migrate-images', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.message || 'Migration failed');
+      }
+      setMigrationResult(data);
+    } catch (err: any) {
+      alert(`Base64 migration error: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsMigratingImages(false);
+    }
+  };
 
   const totalCatalogItems = vehicleCount + weaponCount + characterCount;
 
@@ -90,15 +117,42 @@ export const FirestoreOptimizationTelemetryCard: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleRunCompaction}
-          disabled={isCompacting}
-          className="flex items-center justify-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-emerald-950/40 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isCompacting ? 'animate-spin' : ''}`} />
-          <span>{isCompacting ? 'Compacting Bundles...' : 'Re-Bundle & Sync Master Docs'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRunBase64Migration}
+            disabled={isMigratingImages}
+            className="flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-indigo-950/40 disabled:opacity-50"
+          >
+            <ImageIcon className={`w-3.5 h-3.5 ${isMigratingImages ? 'animate-spin' : ''}`} />
+            <span>{isMigratingImages ? 'Sanitizing Base64...' : 'Clean & Migrate Base64 to UploadThing'}</span>
+          </button>
+
+          <button
+            onClick={handleRunCompaction}
+            disabled={isCompacting}
+            className="flex items-center justify-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-emerald-950/40 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isCompacting ? 'animate-spin' : ''}`} />
+            <span>{isCompacting ? 'Compacting Bundles...' : 'Re-Bundle Master Docs'}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Migration Result Banner */}
+      {migrationResult && (
+        <div className="p-4 bg-indigo-950/50 border border-indigo-500/40 rounded-xl text-xs text-indigo-200 space-y-1">
+          <div className="flex items-center justify-between font-bold">
+            <span className="flex items-center gap-1.5 text-indigo-300">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>Base64 Database Sanitization Complete</span>
+            </span>
+            <span className="text-emerald-400 font-mono">Saved {migrationResult.kbSaved} KB in Firestore</span>
+          </div>
+          <p className="text-[11px] text-indigo-300/80">
+            Scanned {migrationResult.totalDocsScanned} documents across collections, sanitized {migrationResult.totalDocsUpdated} documents, and converted {migrationResult.totalImagesReplaced} base64 payloads to high-speed UploadThing CDN links.
+          </p>
+        </div>
+      )}
 
       {/* Status banner */}
       {compactStatus && (
@@ -177,7 +231,7 @@ export const FirestoreOptimizationTelemetryCard: React.FC = () => {
               <th className="py-2 px-3 text-emerald-400">Thanh Le Document Bundling (Active)</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/60">
+          <tbody className="divide-y border-slate-800/60">
             <tr>
               <td className="py-2 px-3 font-medium">Read Cost Per Catalog Load</td>
               <td className="py-2 px-3 text-rose-400 font-mono">N Reads (e.g. 50–200 reads)</td>
@@ -199,9 +253,9 @@ export const FirestoreOptimizationTelemetryCard: React.FC = () => {
               <td className="py-2 px-3 text-emerald-400">1 setDoc call per master bundle update</td>
             </tr>
             <tr>
-              <td className="py-2 px-3 font-medium">Quota Impact</td>
-              <td className="py-2 px-3 text-rose-400">Exhausts free Spark tier rapidly</td>
-              <td className="py-2 px-3 text-emerald-400 font-semibold">Stays well within free tier thresholds</td>
+              <td className="py-2 px-3 font-medium">Image Storage Overhead</td>
+              <td className="py-2 px-3 text-rose-400">Bloated base64 strings in Firestore docs</td>
+              <td className="py-2 px-3 text-emerald-400 font-semibold">UploadThing CDN URLs (~50 bytes/image)</td>
             </tr>
           </tbody>
         </table>
@@ -209,3 +263,4 @@ export const FirestoreOptimizationTelemetryCard: React.FC = () => {
     </div>
   );
 };
+

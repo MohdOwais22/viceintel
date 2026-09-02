@@ -1,6 +1,8 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
 import { ActiveTab } from '../types';
+import { VEHICLES_DATA } from '../data/vehicles';
+import { WEAPONS_DATA } from '../data/weapons';
 import { resolveApplicantAvatar } from '../data/avatars';
 import { User as FirebaseUser } from 'firebase/auth';
 import { getDocsNavigationTarget, getAdminNavigationTarget } from '../lib/subdomainRouter';
@@ -163,8 +165,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   // Items for Databases Group
   const databaseItems = [
-    { id: 'vehicles' as ActiveTab, label: 'Vehicles DB', icon: Car, badge: '18 Vehicles', desc: '500+ top speeds, trade prices & handling ratings' },
-    { id: 'weapons' as ActiveTab, label: 'Weapons Spec', icon: Crosshair, badge: '12 Guns', desc: 'TTK matrix, fire rate & attachment specs' },
+    { id: 'vehicles' as ActiveTab, label: 'Vehicles DB', icon: Car, badge: `${VEHICLES_DATA.length} Vehicles`, desc: '500+ top speeds, trade prices & handling ratings' },
+    { id: 'weapons' as ActiveTab, label: 'Weapons Spec', icon: Crosshair, badge: `${WEAPONS_DATA.length} Guns`, desc: 'TTK matrix, fire rate & attachment specs' },
     { id: 'characters' as ActiveTab, label: 'Characters & Lore', icon: Users, badge: 'Lucia & Jason', desc: 'Dossiers, heist roles & special abilities' },
     { id: 'comparison' as ActiveTab, label: '1v1 Compare', icon: GitCompare, badge: 'Dynamic', desc: 'Side-by-side vehicle & weapon spec showdown' },
   ];

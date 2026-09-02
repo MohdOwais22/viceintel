@@ -1,4 +1,5 @@
 import { auth } from './firebase';
+import { markFirestoreQuotaExhausted, isFirestoreQuotaExhausted } from './firebase/firestoreCircuitBreaker';
 
 export enum OperationType {
   CREATE = 'create',
@@ -28,26 +29,40 @@ export interface FirestoreErrorInfo {
 }
 
 // Global state for quota exceeded status
-let isQuotaExceededGlobal = false;
+let isQuotaExceededGlobal = isFirestoreQuotaExhausted();
 const quotaExceededListeners: Set<(isExceeded: boolean) => void> = new Set();
 
-export function isFirestoreQuotaExceeded(): boolean {
-  return isQuotaExceededGlobal;
+export function isFirestoreQuotaExceededState(): boolean {
+  return isQuotaExceededGlobal || isFirestoreQuotaExhausted();
 }
 
 export function subscribeQuotaExceeded(callback: (isExceeded: boolean) => void): () => void {
   quotaExceededListeners.add(callback);
-  if (isQuotaExceededGlobal) {
+  if (isFirestoreQuotaExceededState()) {
     callback(true);
   }
+
+  const handleCustomEvent = () => {
+    isQuotaExceededGlobal = true;
+    callback(true);
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('firestore:quota_exhausted', handleCustomEvent);
+  }
+
   return () => {
     quotaExceededListeners.delete(callback);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('firestore:quota_exhausted', handleCustomEvent);
+    }
   };
 }
 
 export function notifyQuotaExceeded() {
   if (!isQuotaExceededGlobal) {
     isQuotaExceededGlobal = true;
+    markFirestoreQuotaExhausted();
     quotaExceededListeners.forEach(cb => cb(true));
   }
 }
@@ -82,6 +97,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   };
 
-  console.warn(`[Firestore ${operationType.toUpperCase()} Notification at ${path || 'unknown'}]:`, JSON.stringify(errInfo));
+  if (!isQuota) {
+    console.warn(`[Firestore ${operationType.toUpperCase()} Notification at ${path || 'unknown'}]:`, JSON.stringify(errInfo));
+  }
   return errInfo;
 }

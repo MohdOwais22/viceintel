@@ -1,6 +1,8 @@
 'use client';
 import React from 'react';
 import { ActiveTab } from '../types';
+import { VEHICLES_DATA } from '../data/vehicles';
+import { WEAPONS_DATA } from '../data/weapons';
 import {
   Car,
   Crosshair,
@@ -37,8 +39,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   const isAuthorizedStaff = isAdmin || isStaff;
 
   const allTabs = [
-    { id: 'vehicles' as ActiveTab, label: 'Vehicles DB', icon: Car, badge: '8 Featured' },
-    { id: 'weapons' as ActiveTab, label: 'Weapons Spec', icon: Crosshair, badge: '5 Guns' },
+    { id: 'vehicles' as ActiveTab, label: 'Vehicles DB', icon: Car, badge: `${VEHICLES_DATA.length} Vehicles` },
+    { id: 'weapons' as ActiveTab, label: 'Weapons Spec', icon: Crosshair, badge: `${WEAPONS_DATA.length} Guns` },
     { id: 'comparison' as ActiveTab, label: '1v1 Compare', icon: GitCompare, badge: 'Dynamic' },
     { id: 'mod-calculator' as ActiveTab, label: 'Mod Cost Builder', icon: Wrench, badge: 'Utility' },
     { id: 'roi-calculator' as ActiveTab, label: 'Business ROI', icon: DollarSign, badge: 'Profit' },

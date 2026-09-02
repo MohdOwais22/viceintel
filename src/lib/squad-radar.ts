@@ -16,6 +16,16 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import localforage from 'localforage';
+import {
+  subscribeRtdbSquadRoom,
+  saveRtdbSquadRoom,
+  updateRtdbSquadPosition,
+  addRtdbSquadWaypoint,
+  addRtdbSquadPing,
+  toggleRtdbCollectibleSync,
+  leaveRtdbSquadRoom,
+  subscribeRtdbLfgSquads
+} from './firebase/rtdbChatService';
 
 export interface SquadMember {
   displayName: string;
@@ -76,6 +86,10 @@ export interface SquadRoom {
   roomId: string; // 6-character unique code (e.g., "VC-9482")
   hostUid: string;
   isVipRoom: boolean; // VIP rooms allow up to 8 squad members; standard free tier allows 2
+  isLocked?: boolean; // When locked, no new players can join
+  privacyMode?: 'public' | 'passcode' | 'invite_only';
+  passcode?: string; // Optional 4-digit passcode PIN
+  kickedUids?: string[]; // Blacklisted user UIDs kicked by host
   createdAt: number;
   lastActiveTimestamp?: number;
   status?: 'active' | 'stale' | 'cleaned_up';
@@ -212,13 +226,29 @@ export function generateRoomCode(): string {
   return `VC-${randomSuffix}`;
 }
 
+export function sanitizeFirestoreData<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeFirestoreData) as unknown as T;
+  }
+  const clean: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = sanitizeFirestoreData(value);
+    }
+  }
+  return clean as T;
+}
+
 /**
  * Generates a random 6-character room code (e.g., "VC-9482") and creates a new document in squad_rooms.
  */
 export async function createSquadRoom(
   hostUid: string,
   isVip: boolean = false,
-  hostUser?: { displayName?: string; avatarColor?: string; lat?: number; lng?: number }
+  hostUser?: { displayName?: string; avatarColor?: string; lat?: number; lng?: number },
+  options?: { passcode?: string; isLocked?: boolean; privacyMode?: 'public' | 'passcode' | 'invite_only' }
 ): Promise<string> {
   const roomId = generateRoomCode();
   const now = Date.now();
@@ -234,10 +264,14 @@ export async function createSquadRoom(
     };
   }
 
-  const roomData: SquadRoom = {
+  const rawRoomData: SquadRoom = {
     roomId,
     hostUid,
     isVipRoom: isVip,
+    isLocked: Boolean(options?.isLocked),
+    privacyMode: options?.privacyMode || (options?.passcode ? 'passcode' : 'public'),
+    ...(options?.passcode?.trim() ? { passcode: options.passcode.trim() } : {}),
+    kickedUids: [],
     createdAt: now,
     lastActiveTimestamp: now,
     status: 'active',
@@ -247,20 +281,33 @@ export async function createSquadRoom(
     checkedCollectibles: []
   };
 
+  const roomData = sanitizeFirestoreData(rawRoomData);
+
   const roomRef = doc(db, 'squad_rooms', roomId);
   await setDoc(roomRef, roomData);
+  await saveRtdbSquadRoom(roomData);
   await cacheActiveRoom(roomId);
   await cacheSquadRoom(roomData);
   return roomId;
 }
 
 /**
- * Adds the user into the members map. Enforces room member capacity limits.
+ * Adds the user into the members map. Enforces security, kick lists, lock status, passcode, and member capacity limits.
  */
 export async function joinSquadRoom(
   roomId: string,
-  user: { uid: string; displayName: string; color: string; lat?: number; lng?: number }
-): Promise<{ success: boolean; error?: string; room?: SquadRoom; requiresVip?: boolean; isStale?: boolean }> {
+  user: { uid: string; displayName: string; color: string; lat?: number; lng?: number },
+  providedPasscode?: string
+): Promise<{
+  success: boolean;
+  error?: string;
+  room?: SquadRoom;
+  requiresVip?: boolean;
+  requiresPasscode?: boolean;
+  isLocked?: boolean;
+  isKicked?: boolean;
+  isStale?: boolean;
+}> {
   if (!roomId) {
     return { success: false, error: 'Room code is required.' };
   }
@@ -292,10 +339,42 @@ export async function joinSquadRoom(
   }
 
   const existingMembers = room.members || {};
-  const currentCount = Object.keys(existingMembers).length;
   const isAlreadyMember = Boolean(user.uid && existingMembers[user.uid]);
 
-  // Check member limits: Free tier = 2 players, VIP tier = 8 players
+  // 1. Check if user is in blacklisted kickedUids
+  if (user.uid && room.kickedUids && room.kickedUids.includes(user.uid)) {
+    return {
+      success: false,
+      isKicked: true,
+      error: 'You have been kicked from this squad room by the host and cannot re-join.',
+      room
+    };
+  }
+
+  // 2. Check room lock status (Host can lock room from new joins)
+  if (room.isLocked && !isAlreadyMember && user.uid !== room.hostUid) {
+    return {
+      success: false,
+      isLocked: true,
+      error: 'This squad room has been locked by the host against new joins.',
+      room
+    };
+  }
+
+  // 3. Check room passcode protection
+  if (room.passcode && room.passcode.trim().length > 0 && !isAlreadyMember && user.uid !== room.hostUid) {
+    if (!providedPasscode || providedPasscode.trim() !== room.passcode.trim()) {
+      return {
+        success: false,
+        requiresPasscode: true,
+        error: providedPasscode ? 'Incorrect 4-digit room passcode.' : 'This squad room requires a passcode to join.',
+        room
+      };
+    }
+  }
+
+  // 4. Check member limits: Free tier = 2 players, VIP tier = 8 players
+  const currentCount = Object.keys(existingMembers).length;
   if (!isAlreadyMember) {
     const maxAllowed = room.isVipRoom ? 8 : 2;
     if (currentCount >= maxAllowed) {
@@ -319,15 +398,141 @@ export async function joinSquadRoom(
     lastUpdated: now
   };
 
+  const updatedMembers = { ...existingMembers, [user.uid]: memberData };
+  const updatedRoom: SquadRoom = {
+    ...room,
+    members: updatedMembers,
+    lastActiveTimestamp: now,
+    status: 'active',
+    isStale: false
+  };
+
   await updateDoc(roomRef, {
     [`members.${user.uid}`]: memberData,
     lastActiveTimestamp: now,
     status: 'active',
     isStale: false
   });
+  await saveRtdbSquadRoom(updatedRoom);
 
   await cacheActiveRoom(normalizedRoomId);
-  return { success: true, room };
+  return { success: true, room: updatedRoom };
+}
+
+/**
+ * Host Kicks an unwanted or unknown player from the squad room and blacklists their UID.
+ */
+export async function kickSquadMember(
+  roomId: string,
+  hostUid: string,
+  targetUid: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!roomId || !targetUid) return { success: false, error: 'Invalid room or target UID.' };
+  const roomRef = doc(db, 'squad_rooms', roomId);
+  const snap = await getDoc(roomRef);
+  if (!snap.exists()) return { success: false, error: 'Room not found.' };
+
+  const room = snap.data() as SquadRoom;
+  if (room.hostUid !== hostUid) {
+    return { success: false, error: 'Only the squad host can kick players.' };
+  }
+
+  const updatedMembers = { ...(room.members || {}) };
+  delete updatedMembers[targetUid];
+
+  const currentKicked = room.kickedUids || [];
+  const updatedKicked = currentKicked.includes(targetUid) ? currentKicked : [...currentKicked, targetUid];
+
+  const updatedRoom: SquadRoom = {
+    ...room,
+    members: updatedMembers,
+    kickedUids: updatedKicked,
+    lastActiveTimestamp: Date.now()
+  };
+
+  await updateDoc(roomRef, {
+    [`members.${targetUid}`]: deleteField(),
+    kickedUids: arrayUnion(targetUid),
+    lastActiveTimestamp: Date.now()
+  });
+
+  await saveRtdbSquadRoom(updatedRoom);
+  leaveRtdbSquadRoom(roomId, targetUid).catch(() => {});
+  return { success: true };
+}
+
+/**
+ * Toggles room lock status (Host can lock room to block any new joins).
+ */
+export async function toggleLockSquadRoom(
+  roomId: string,
+  hostUid: string,
+  isLocked: boolean
+): Promise<{ success: boolean; error?: string }> {
+  if (!roomId) return { success: false, error: 'Invalid room ID.' };
+  const roomRef = doc(db, 'squad_rooms', roomId);
+  const snap = await getDoc(roomRef);
+  if (!snap.exists()) return { success: false, error: 'Room not found.' };
+
+  const room = snap.data() as SquadRoom;
+  if (room.hostUid !== hostUid) {
+    return { success: false, error: 'Only the squad host can lock or unlock the room.' };
+  }
+
+  const updatedRoom: SquadRoom = {
+    ...room,
+    isLocked,
+    lastActiveTimestamp: Date.now()
+  };
+
+  await updateDoc(roomRef, {
+    isLocked,
+    lastActiveTimestamp: Date.now()
+  });
+
+  await saveRtdbSquadRoom(updatedRoom);
+  return { success: true };
+}
+
+/**
+ * Updates squad room passcode (Host can configure/clear 4-digit PIN for private sessions).
+ */
+export async function updateSquadRoomPasscode(
+  roomId: string,
+  hostUid: string,
+  passcode?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!roomId) return { success: false, error: 'Invalid room ID.' };
+  const roomRef = doc(db, 'squad_rooms', roomId);
+  const snap = await getDoc(roomRef);
+  if (!snap.exists()) return { success: false, error: 'Room not found.' };
+
+  const room = snap.data() as SquadRoom;
+  if (room.hostUid !== hostUid) {
+    return { success: false, error: 'Only the squad host can set the room passcode.' };
+  }
+
+  const cleanPasscode = passcode?.trim() || undefined;
+
+  const rawUpdatedRoom: SquadRoom = {
+    ...room,
+    privacyMode: cleanPasscode ? 'passcode' : 'public',
+    lastActiveTimestamp: Date.now(),
+    ...(cleanPasscode ? { passcode: cleanPasscode } : {})
+  };
+  if (!cleanPasscode) {
+    delete rawUpdatedRoom.passcode;
+  }
+  const updatedRoom = sanitizeFirestoreData(rawUpdatedRoom);
+
+  await updateDoc(roomRef, {
+    passcode: cleanPasscode || deleteField(),
+    privacyMode: cleanPasscode ? 'passcode' : 'public',
+    lastActiveTimestamp: Date.now()
+  });
+
+  await saveRtdbSquadRoom(updatedRoom);
+  return { success: true };
 }
 
 /**
@@ -340,6 +545,11 @@ export async function updatePlayerPosition(
   lng: number
 ): Promise<void> {
   if (!roomId || !uid) return;
+  
+  // 1. RTDB instant update (~10ms)
+  updateRtdbSquadPosition(roomId, uid, lat, lng).catch(() => {});
+
+  // 2. Firestore backup update
   const roomRef = doc(db, 'squad_rooms', roomId);
   const now = Date.now();
   try {
@@ -466,6 +676,7 @@ export async function toggleCollectibleSync(
  */
 export async function leaveSquadRoom(roomId: string, uid: string): Promise<void> {
   if (!roomId || !uid) return;
+  leaveRtdbSquadRoom(roomId, uid).catch(() => {});
   const roomRef = doc(db, 'squad_rooms', roomId);
   try {
     await updateDoc(roomRef, {
@@ -478,7 +689,7 @@ export async function leaveSquadRoom(roomId: string, uid: string): Promise<void>
 }
 
 /**
- * Subscribes to real-time updates for a squad room via Firestore onSnapshot.
+ * Subscribes to real-time updates for a squad room via Realtime Database & Firestore fallback.
  */
 export function subscribeToSquadRoom(
   roomId: string,
@@ -489,15 +700,30 @@ export function subscribeToSquadRoom(
     onUpdate(null);
     return () => {};
   }
+
+  let unsubRtdb: () => void = () => {};
+  let unsubFs: () => void = () => {};
+
+  try {
+    unsubRtdb = subscribeRtdbSquadRoom(roomId, (rtdbRoom) => {
+      if (rtdbRoom) {
+        onUpdate(rtdbRoom as SquadRoom);
+        cacheSquadRoom(rtdbRoom as SquadRoom).catch(() => {});
+      }
+    });
+  } catch (e) {
+    console.warn('RTDB squad room sub warning:', e);
+  }
+
   const roomRef = doc(db, 'squad_rooms', roomId);
-  return onSnapshot(
+  unsubFs = onSnapshot(
     roomRef,
     (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() as SquadRoom;
         onUpdate(data);
         cacheSquadRoom(data).catch(() => {});
-      } else {
+      } else if (!unsubRtdb) {
         onUpdate(null);
       }
     },
@@ -506,6 +732,11 @@ export function subscribeToSquadRoom(
       if (onError) onError(err);
     }
   );
+
+  return () => {
+    unsubRtdb();
+    unsubFs();
+  };
 }
 
 // LocalForage Cache Helpers
@@ -655,10 +886,23 @@ export function subscribeToLfgSquads(
   onUpdate: (rooms: SquadRoom[]) => void,
   onError?: (err: any) => void
 ): () => void {
+  let unsubRtdb: () => void = () => {};
+  let unsubFs: () => void = () => {};
+
+  try {
+    unsubRtdb = subscribeRtdbLfgSquads((rtdbRooms) => {
+      if (rtdbRooms && rtdbRooms.length > 0) {
+        onUpdate(rtdbRooms as SquadRoom[]);
+      }
+    });
+  } catch (e) {
+    console.warn('RTDB LFG sub warning:', e);
+  }
+
   const roomsRef = collection(db, 'squad_rooms');
   const q = query(roomsRef, where('isLfgActive', '==', true), limit(25));
 
-  return onSnapshot(
+  unsubFs = onSnapshot(
     q,
     (snapshot) => {
       const activeLfgRooms: SquadRoom[] = [];
@@ -673,13 +917,20 @@ export function subscribeToLfgSquads(
           activeLfgRooms.push(room);
         }
       });
-      onUpdate(activeLfgRooms);
+      if (activeLfgRooms.length > 0) {
+        onUpdate(activeLfgRooms);
+      }
     },
     (err) => {
       console.warn('subscribeToLfgSquads snapshot notice:', err?.message || err);
       if (onError) onError(err);
     }
   );
+
+  return () => {
+    unsubRtdb();
+    unsubFs();
+  };
 }
 
 /**

@@ -14,7 +14,10 @@ import {
   Radio,
   Gamepad2,
   Tv,
-  Database
+  Database,
+  MessageSquare,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { ENV } from '../lib/envConfig';
@@ -24,6 +27,8 @@ interface AboutUsTabProps {
 }
 
 export const AboutUsTab: React.FC<AboutUsTabProps> = ({ onNavigate }) => {
+  const discordUrl = ENV.DISCORD_INVITE_URL || '';
+
   return (
     <div className="max-w-7xl mx-auto px-4 lg:px-8 py-8 lg:py-12 space-y-12 animate-fade-in">
       {/* HERO BANNER */}
@@ -50,7 +55,7 @@ export const AboutUsTab: React.FC<AboutUsTabProps> = ({ onNavigate }) => {
             The definitive fan-built companion application and community operations hub for Grand Theft Auto VI and Leonida Vice City roleplay ecosystems.
           </p>
 
-          <div className="pt-2 flex flex-wrap gap-4">
+          <div className="pt-2 flex flex-wrap items-center gap-4">
             {onNavigate && (
               <button
                 onClick={() => onNavigate('vehicles')}
@@ -61,6 +66,20 @@ export const AboutUsTab: React.FC<AboutUsTabProps> = ({ onNavigate }) => {
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
+
+            {discordUrl ? (
+              <a
+                id="about-join-discord-hero-btn"
+                href={discordUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-6 py-3.5 rounded-2xl bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs sm:text-sm flex items-center gap-2.5 shadow-xl shadow-[#5865F2]/25 transition-all duration-200 hover:scale-105 active:scale-95"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Join Official Discord</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+              </a>
+            ) : null}
           </div>
         </div>
       </div>
@@ -268,6 +287,72 @@ export const AboutUsTab: React.FC<AboutUsTabProps> = ({ onNavigate }) => {
         </div>
 
       </div>
+
+      {/* DEDICATED OFFICIAL DISCORD COMMUNITY HEADQUARTERS CARD */}
+      {discordUrl ? (
+        <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-[#5865F2]/15 via-zinc-900/90 to-zinc-950/90 border border-[#5865F2]/40 p-6 lg:p-10 shadow-2xl backdrop-blur-xl">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-[#5865F2]/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
+            <div className="space-y-4 max-w-2xl">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="px-3.5 py-1.5 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-[#5865F2]/20 text-[#8ea1e1] border border-[#5865F2]/40 flex items-center gap-2 shadow-sm">
+                  <MessageSquare className="w-3.5 h-3.5 text-[#5865F2]" /> Official Community Hub
+                </span>
+                <span className="px-3 py-1 rounded-full text-[11px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Live & Active
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  Join the Official Discord Server
+                </h3>
+                <p className="text-sm text-zinc-300 leading-relaxed mt-2">
+                  Connect with thousands of GTA VI roleplayers, FiveM server developers, car tuners, and creators. Get instant patch announcements, early telemetry drops, squad voice lobbies, and live whitelist application notifications.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs text-zinc-300">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#5865F2] shrink-0" />
+                  <span>Verified FiveM Server Staff & Developer Hub</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Instant GTA VI Newswire & Leak Alerts</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Squad Voice Channels & 90 FPS Screen Shares</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />
+                  <span>Weekly Tuning Championship Payouts</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-start lg:items-end gap-3 w-full lg:w-auto shrink-0">
+              <a
+                id="about-join-discord-cta-btn"
+                href={discordUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-[#5865F2] hover:bg-[#4752C4] text-white font-black text-sm flex items-center justify-center gap-3 shadow-xl shadow-[#5865F2]/30 transition-all duration-200 hover:scale-105 active:scale-95"
+              >
+                <MessageSquare className="w-5 h-5" />
+                <span>Join Official Discord Server</span>
+                <ExternalLink className="w-4 h-4 opacity-80" />
+              </a>
+
+              <span className="text-[11px] font-mono text-zinc-400">
+                Invite: <span className="text-zinc-200">{discordUrl}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* NON-COMMERCIAL FAN DISCLAIMER FOOTER NOTICE */}
       <div className="relative rounded-3xl bg-zinc-950/80 border border-zinc-800/80 p-6 lg:p-8 space-y-3 shadow-xl backdrop-blur-md">

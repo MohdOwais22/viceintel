@@ -11,6 +11,7 @@ import { getStoredVehicles, vehicleBundleEngine } from './vehicleStore';
 import { getStoredWeapons, weaponBundleEngine } from './weaponStore';
 import { getStoredMapLocations, mapBundleEngine } from './mapStore';
 import { getStoredCharacters, characterBundleEngine } from './characterStore';
+import { getStoredBusinesses, businessBundleEngine } from './businessStore';
 
 // Configure localforage instance for GTA VI Central
 const storage = localforage.createInstance({
@@ -119,12 +120,14 @@ export async function forceSyncFirestoreToLocal(): Promise<CacheMetadata> {
     const liveWeapons = await weaponBundleEngine.forceFetchFromServer();
     const liveMapLocations = await mapBundleEngine.forceFetchFromServer();
     const liveCharacters = await characterBundleEngine.forceFetchFromServer();
+    const liveBusinesses = await businessBundleEngine.forceFetchFromServer();
 
     // Also update the offline cache storage entries to match
     await storage.setItem(STORAGE_KEYS.VEHICLES, liveVehicles);
     await storage.setItem(STORAGE_KEYS.WEAPONS, liveWeapons);
     await storage.setItem(STORAGE_KEYS.MAP_LOCATIONS, liveMapLocations);
     await storage.setItem(STORAGE_KEYS.CHARACTERS, liveCharacters);
+    await storage.setItem(STORAGE_KEYS.BUSINESSES, liveBusinesses);
 
     // Re-calculate the current total JSON footprint size for metadata tracking
     const totalJson = JSON.stringify({
@@ -132,7 +135,7 @@ export async function forceSyncFirestoreToLocal(): Promise<CacheMetadata> {
       weapons: liveWeapons,
       map: liveMapLocations,
       characters: liveCharacters,
-      businesses: BUSINESSES_DATA,
+      businesses: liveBusinesses,
       rp: RP_SERVERS_DATA,
       blogs: BLOG_POSTS_DATA
     });
@@ -203,18 +206,10 @@ export async function saveCachedCharacters(characters: Character[]): Promise<voi
 }
 
 /**
- * Gets cached businesses or falls back to static default data.
+ * Gets cached businesses or falls back to static default data with real-time Firestore sync.
  */
 export async function getCachedBusinesses(): Promise<Business[]> {
-  try {
-    const cached = await storage.getItem<Business[]>(STORAGE_KEYS.BUSINESSES);
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      return cached;
-    }
-  } catch (err) {
-    console.warn('[OfflineStorage] Failed to read businesses from localforage:', err);
-  }
-  return BUSINESSES_DATA;
+  return getStoredBusinesses();
 }
 
 /**

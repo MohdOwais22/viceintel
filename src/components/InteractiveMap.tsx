@@ -48,6 +48,9 @@ import {
   createSquadRoom,
   joinSquadRoom,
   leaveSquadRoom,
+  kickSquadMember,
+  toggleLockSquadRoom,
+  updateSquadRoomPasscode,
   updatePlayerPosition,
   addWaypoint,
   removeWaypoint,
@@ -75,11 +78,14 @@ export const InteractiveMap: React.FC = () => {
     displayName: string;
     color: string;
     isVip: boolean;
-  }>({
-    uid: `guest_${Math.floor(10000 + Math.random() * 90000)}`,
-    displayName: 'Vice Gamer',
-    color: '#3B82F6',
-    isVip: false
+  }>(() => {
+    const randId = Math.floor(1000 + Math.random() * 9000);
+    return {
+      uid: `guest_${randId}`,
+      displayName: `ViceOperative_${randId}`,
+      color: '#3B82F6',
+      isVip: false
+    };
   });
 
   const [squadRoom, setSquadRoom] = useState<SquadRoom | null>(null);
@@ -189,6 +195,19 @@ export const InteractiveMap: React.FC = () => {
           return;
         }
 
+        // Check if current user was kicked or removed by room host
+        if (
+          updatedRoom.kickedUids?.includes(activeUser.uid) ||
+          (!updatedRoom.members?.[activeUser.uid] && activeUser.uid !== updatedRoom.hostUid)
+        ) {
+          setStatusMessage('⚠️ You were removed from squad room by the host.');
+          clearCachedRoom();
+          setActiveRoomId(null);
+          setSquadRoom(null);
+          setTimeout(() => setStatusMessage(null), 4000);
+          return;
+        }
+
         if (updatedRoom.isStale || updatedRoom.status === 'stale') {
           setStatusMessage(`Squad room ${activeRoomId} has expired due to 30 minutes of inactivity.`);
           clearCachedRoom();
@@ -206,7 +225,7 @@ export const InteractiveMap: React.FC = () => {
     );
 
     return () => unsub();
-  }, [activeRoomId]);
+  }, [activeRoomId, activeUser.uid]);
 
   // Check URL parameters for ?room=VC-XXXX or cached room on mount
   useEffect(() => {
@@ -245,15 +264,20 @@ export const InteractiveMap: React.FC = () => {
   }, [activeUser.uid]);
 
   // Squad Radar Action Handlers
-  const handleCreateRoom = async (isVip: boolean) => {
+  const handleCreateRoom = async (isVip: boolean, passcode?: string) => {
     try {
       setStatusMessage('Hosting new squad room...');
-      const newRoomId = await createSquadRoom(activeUser.uid, isVip, {
-        displayName: activeUser.displayName,
-        avatarColor: activeUser.color,
-        lat: userLocation.lat,
-        lng: userLocation.lng
-      });
+      const newRoomId = await createSquadRoom(
+        activeUser.uid,
+        isVip,
+        {
+          displayName: activeUser.displayName,
+          avatarColor: activeUser.color,
+          lat: userLocation.lat,
+          lng: userLocation.lng
+        },
+        { passcode }
+      );
       setActiveRoomId(newRoomId);
       setStatusMessage(`Created squad room ${newRoomId}!`);
       setTimeout(() => setStatusMessage(null), 3000);
@@ -263,16 +287,20 @@ export const InteractiveMap: React.FC = () => {
     }
   };
 
-  const handleJoinRoom = async (roomId: string) => {
+  const handleJoinRoom = async (roomId: string, passcode?: string) => {
     try {
       setStatusMessage(`Joining room ${roomId}...`);
-      const result = await joinSquadRoom(roomId, {
-        uid: activeUser.uid,
-        displayName: activeUser.displayName,
-        color: activeUser.color,
-        lat: userLocation.lat,
-        lng: userLocation.lng
-      });
+      const result = await joinSquadRoom(
+        roomId,
+        {
+          uid: activeUser.uid,
+          displayName: activeUser.displayName,
+          color: activeUser.color,
+          lat: userLocation.lat,
+          lng: userLocation.lng
+        },
+        passcode
+      );
 
       if (result.success) {
         setActiveRoomId(roomId.toUpperCase());
@@ -288,6 +316,48 @@ export const InteractiveMap: React.FC = () => {
     } catch (err: any) {
       console.error('Error joining room:', err);
       setStatusMessage('Failed to join room.');
+    }
+  };
+
+  const handleKickMember = async (targetUid: string) => {
+    if (!activeRoomId) return;
+    try {
+      const res = await kickSquadMember(activeRoomId, activeUser.uid, targetUid);
+      if (res.success) {
+        setStatusMessage('Player kicked from squad room.');
+        setTimeout(() => setStatusMessage(null), 2500);
+      } else {
+        setStatusMessage(res.error || 'Failed to kick player.');
+        setTimeout(() => setStatusMessage(null), 3000);
+      }
+    } catch (e) {
+      console.warn('Kick member error:', e);
+    }
+  };
+
+  const handleToggleLockRoom = async (isLocked: boolean) => {
+    if (!activeRoomId) return;
+    try {
+      const res = await toggleLockSquadRoom(activeRoomId, activeUser.uid, isLocked);
+      if (res.success) {
+        setStatusMessage(isLocked ? '🔒 Squad room locked.' : '🔓 Squad room unlocked.');
+        setTimeout(() => setStatusMessage(null), 2500);
+      }
+    } catch (e) {
+      console.warn('Lock room error:', e);
+    }
+  };
+
+  const handleUpdatePasscode = async (passcode?: string) => {
+    if (!activeRoomId) return;
+    try {
+      const res = await updateSquadRoomPasscode(activeRoomId, activeUser.uid, passcode);
+      if (res.success) {
+        setStatusMessage(passcode ? `🔑 Squad room PIN set to ${passcode}` : 'Room PIN cleared.');
+        setTimeout(() => setStatusMessage(null), 2500);
+      }
+    } catch (e) {
+      console.warn('Update passcode error:', e);
     }
   };
 
@@ -646,6 +716,9 @@ export const InteractiveMap: React.FC = () => {
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
             onLeaveRoom={handleLeaveRoom}
+            onKickMember={handleKickMember}
+            onToggleLockRoom={handleToggleLockRoom}
+            onUpdatePasscode={handleUpdatePasscode}
             onFocusMember={handleFocusMember}
             followingMemberUid={followingMemberUid}
             onToggleFollowMember={handleToggleFollowMember}

@@ -60,12 +60,16 @@ import {
 import { ENV } from '../lib/envConfig';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, query, limit, getDocs } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+import { deleteRtdbChannel, deleteRtdbMessage, subscribeRtdbMessages } from '../lib/firebase/rtdbChatService';
 import { UserProfile, RpServer, CommunityBuild, UserRole } from '../types';
 import { RP_SERVERS_DATA } from '../data/rpServers';
 import { DEFAULT_GTA6_AVATAR } from '../data/avatars';
 import { canBanTarget, canAssignRole, canEditUserFields, isTargetAdmin, getRoleLevel, isAdminUser, isStaffUser } from '../lib/rbac';
 import { getVipPriceFormatted, getVipPriceText } from '../lib/vipConfig';
 import { saveOrUpdateMapLocation, deleteMapLocation } from '../lib/mapStore';
+import { saveOrUpdateVehicle, deleteVehicle } from '../lib/vehicleStore';
+import { saveOrUpdateWeapon, deleteWeapon } from '../lib/weaponStore';
+import { saveOrUpdateCharacter, deleteCharacter } from '../lib/characterStore';
 import { PseoArchitectureTab } from './PseoArchitectureTab';
 import { BugReportsAdminSection } from './admin/BugReportsAdminSection';
 import { ChallengesAdminCms } from './admin/ChallengesAdminCms';
@@ -74,12 +78,13 @@ import { StaffActivityLogsTab } from './admin/StaffActivityLogsTab';
 import { CouponGeneratorCms } from './admin/CouponGeneratorCms';
 import { AdToggleAdminCms } from './admin/AdToggleAdminCms';
 import { EnvironmentHealthAdminSection } from './admin/EnvironmentHealthAdminSection';
+import { CronRtdbMonitorAdmin } from './admin/CronRtdbMonitorAdmin';
 import { MarketAgencyAdminCms } from './admin/MarketAgencyAdminCms';
 import { CustomWebhookBotAdminCms } from './admin/CustomWebhookBotAdminCms';
-import { BloomFilterTelemetryCms } from './admin/BloomFilterTelemetryCms';
 import { CharacterGalleryAdminCms } from './admin/CharacterGalleryAdminCms';
 import { VehicleCatalogAdminCms } from './admin/VehicleCatalogAdminCms';
 import { WeaponCatalogAdminCms } from './admin/WeaponCatalogAdminCms';
+import { MasterCatalogAdminCms } from './admin/MasterCatalogAdminCms';
 import { SystemPricingControl } from './SystemPricingControl';
 import { logStaffActivity } from '../lib/staffAuditLogger';
 import { formatVipExpiry, formatDate, formatDateTime, formatShortTimestamp, formatAutoCrawlTime } from '../lib/dateUtils';
@@ -250,12 +255,15 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const [editModerationNote, setEditModerationNote] = useState('');
   const [editRawJson, setEditRawJson] = useState('');
   const [isSavingUserDoc, setIsSavingUserDoc] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot' | 'bloom-telemetry' | 'character-gallery' | 'vehicle-cms' | 'weapon-cms'>(() => {
-    if (initialSubTab) return initialSubTab;
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot' | 'character-gallery' | 'vehicle-cms' | 'weapon-cms' | 'cron-rtdb'>(() => {
+    if (initialSubTab) return initialSubTab as any;
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
       const params = new URLSearchParams(window.location.search);
       const sub = params.get('subtab');
+      if (sub === 'cron-rtdb' || sub === 'cron' || sub === 'crons' || sub === 'rtdb-cron') {
+        return 'cron-rtdb';
+      }
       if (sub === 'webhook-bot' || sub === 'bot' || sub === 'webhook' || sub === 'discord-bot') {
         return 'webhook-bot';
       }
@@ -268,13 +276,10 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       if (sub === 'weapon-cms' || sub === 'weapons-cms' || sub === 'weapon' || sub === 'weapons') {
         return 'weapon-cms';
       }
-      if (sub === 'bloom' || sub === 'bloom-filter' || sub === 'bloom-telemetry' || sub === 'gamertag-engine') {
-        return 'bloom-telemetry';
-      }
       if (sub === 'market-agency' || sub === 'marketagency' || path.includes('marketagency') || path.includes('market-agency') || path.includes('agency')) {
         return 'market-agency';
       }
-      if (sub && ['users', 'approvals', 'reports', 'cms', 'challenge-cms', 'rental-cms', 'analytics', 'pricing-control', 'pseo', 'vip-notifications', 'squad-rooms', 'staff-logs', 'coupon-cms', 'ad-toggles', 'env-health', 'market-agency', 'webhook-bot', 'bloom-telemetry', 'character-gallery', 'vehicle-cms', 'weapon-cms'].includes(sub)) {
+      if (sub && ['users', 'approvals', 'reports', 'cms', 'challenge-cms', 'rental-cms', 'analytics', 'pricing-control', 'pseo', 'vip-notifications', 'squad-rooms', 'staff-logs', 'coupon-cms', 'ad-toggles', 'env-health', 'market-agency', 'webhook-bot', 'character-gallery', 'vehicle-cms', 'weapon-cms', 'cron-rtdb'].includes(sub)) {
         return sub as any;
       }
     }
@@ -996,6 +1001,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     };
 
     try {
+      await saveOrUpdateVehicle(newDoc as any);
       await setDoc(doc(db, 'vehicles', id), newDoc, { merge: true });
       logStaffActivity({
         actionType: editingVehId ? 'CMS_CONTENT_UPDATE' : 'CMS_CONTENT_CREATE',
@@ -1185,6 +1191,12 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     try {
       if (colName === 'mapLocations') {
         await deleteMapLocation(id);
+      } else if (colName === 'vehicles') {
+        await deleteVehicle(id);
+      } else if (colName === 'weapons') {
+        await deleteWeapon(id);
+      } else if (colName === 'characters') {
+        await deleteCharacter(id);
       } else {
         await deleteDoc(doc(db, colName, id));
       }
@@ -1667,6 +1679,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       } catch (e) {
         console.warn('Firestore channel delete error:', e);
       }
+      deleteRtdbChannel(channelId).catch(e => console.warn('RTDB channel delete notice:', e));
     }
     try {
       await deleteDoc(doc(db, 'pendingApprovals', approvalId));
@@ -1703,6 +1716,9 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     } catch (e) {
       console.warn('Firestore chat update error:', e);
     }
+
+    // Delete across all channels in RTDB
+    deleteRtdbMessage('general', messageId, deletedByName).catch(() => {});
 
     try {
       await fetch(`/api/chat/${messageId}`, {
@@ -1998,7 +2014,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
             ? 'moderation_hub'
             : activeSubTab === 'cms' || activeSubTab === 'challenge-cms' || activeSubTab === 'rental-cms' || activeSubTab === 'coupon-cms' || activeSubTab === 'character-gallery'
             ? 'cms_hub'
-            : activeSubTab === 'squad-rooms' || activeSubTab === 'pseo' || activeSubTab === 'env-health'
+            : activeSubTab === 'squad-rooms' || activeSubTab === 'pseo' || activeSubTab === 'env-health' || activeSubTab === 'cron-rtdb'
             ? 'system_hub'
             : 'analytics_hub';
 
@@ -2204,37 +2220,13 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                     type="button"
                     onClick={() => setActiveSubTab('character-gallery')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'character-gallery'
-                        ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 shadow-sm'
+                      activeSubTab === 'character-gallery' || activeSubTab === 'vehicle-cms' || activeSubTab === 'weapon-cms'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
                         : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                     }`}
                   >
-                    <Users className="w-3.5 h-3.5 text-pink-400" />
-                    <span>Character Gallery CMS</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('vehicle-cms')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'vehicle-cms'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Car className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Vehicles Catalog CMS</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('weapon-cms')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'weapon-cms'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Crosshair className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Weapons Arsenal CMS</span>
+                    <Layers className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Master Catalog CMS (Characters, Vehicles, Weapons)</span>
                   </button>
                   <button
                     type="button"
@@ -2312,6 +2304,18 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                   </button>
                   <button
                     type="button"
+                    onClick={() => setActiveSubTab('cron-rtdb')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      activeSubTab === 'cron-rtdb'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    <span>⚡ RTDB Cron Hub</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setActiveSubTab('pseo')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                       activeSubTab === 'pseo'
@@ -2333,18 +2337,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                   >
                     <Bot className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Custom Webhook / API Bot</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('bloom-telemetry')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'bloom-telemetry'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Zap className="w-3.5 h-3.5 text-rose-400" />
-                    <span>⚡ Meta Bloom Filter & Trie Engine</span>
                   </button>
                 </>
               )}
@@ -4169,19 +4161,17 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         </div>
       )}
 
-      {/* Tab Content: Character Gallery CMS */}
-      {activeSubTab === 'character-gallery' && (
-        <CharacterGalleryAdminCms />
-      )}
-
-      {/* Tab Content: Vehicle Catalog CMS */}
-      {activeSubTab === 'vehicle-cms' && (
-        <VehicleCatalogAdminCms />
-      )}
-
-      {/* Tab Content: Weapon Catalog CMS */}
-      {activeSubTab === 'weapon-cms' && (
-        <WeaponCatalogAdminCms />
+      {/* Tab Content: Unified Master Catalog CMS (Characters, Vehicles, Weapons) */}
+      {(activeSubTab === 'character-gallery' || activeSubTab === 'vehicle-cms' || activeSubTab === 'weapon-cms') && (
+        <MasterCatalogAdminCms
+          initialCategory={
+            activeSubTab === 'vehicle-cms'
+              ? 'vehicles'
+              : activeSubTab === 'weapon-cms'
+              ? 'weapons'
+              : 'characters'
+          }
+        />
       )}
 
       {/* Tab Content: Tuning Challenge No-Code CMS & Moderation */}
@@ -4272,6 +4262,13 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         <EnvironmentHealthAdminSection isActorL4Admin={isActorL4Admin} />
       )}
 
+      {/* Tab Content: Realtime Database Cron Jobs Hub */}
+      {activeSubTab === 'cron-rtdb' && (
+        <div className="space-y-4">
+          <CronRtdbMonitorAdmin />
+        </div>
+      )}
+
       {/* Tab Content 5: System Architecture & pSEO Blueprint */}
       {activeSubTab === 'pseo' && (
         <div className="space-y-4">
@@ -4283,13 +4280,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       {activeSubTab === 'webhook-bot' && (
         <div className="space-y-4 animate-fade-in">
           <CustomWebhookBotAdminCms />
-        </div>
-      )}
-
-      {/* Tab Content: Meta-Grade GamerTag Bloom Filter & Trie Telemetry */}
-      {activeSubTab === 'bloom-telemetry' && (
-        <div className="space-y-4 animate-fade-in">
-          <BloomFilterTelemetryCms />
         </div>
       )}
 

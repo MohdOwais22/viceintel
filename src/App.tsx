@@ -9,10 +9,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
+import { safeFirestoreWrite } from './lib/firebase/firestoreCircuitBreaker';
 import { playNotificationChime } from './lib/soundUtils';
 import { DEFAULT_GTA6_AVATAR } from './data/avatars';
 import { ActiveTab, Vehicle, UserNotification } from './types';
 import { VEHICLES_DATA } from './data/vehicles';
+import { getCachedVehicles } from './lib/offlineStorage';
 import { Navbar } from './components/Navbar';
 import { FirestoreQuotaBanner } from './components/FirestoreQuotaBanner';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrorHandler';
@@ -262,23 +264,25 @@ export default function App() {
             const initClearance = isSystemAdminEmail ? 'L4' : 'Member';
             const initVc = isSystemAdminEmail ? 50000 : 0;
 
-            await setDoc(userDocRef, {
-              uid: user.uid,
-              username: defaultName,
-              usernameLower: defaultName.toLowerCase(),
-              email: user.email || 'user@vicecity.app',
-              avatar: googlePhoto || DEFAULT_GTA6_AVATAR,
-              googlePhotoURL: googlePhoto,
-              role: initRole,
-              isAdmin: isSystemAdminEmail,
-              isStaff: isSystemAdminEmail,
-              clearanceLevel: initClearance,
-              userLevel: initClearance,
-              isVip: isSystemAdminEmail,
-              vcBalance: initVc,
-              status: 'Active',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+            await safeFirestoreWrite(async () => {
+              await setDoc(userDocRef, {
+                uid: user.uid,
+                username: defaultName,
+                usernameLower: defaultName.toLowerCase(),
+                email: user.email || 'user@vicecity.app',
+                avatar: googlePhoto || DEFAULT_GTA6_AVATAR,
+                googlePhotoURL: googlePhoto,
+                role: initRole,
+                isAdmin: isSystemAdminEmail,
+                isStaff: isSystemAdminEmail,
+                clearanceLevel: initClearance,
+                userLevel: initClearance,
+                isVip: isSystemAdminEmail,
+                vcBalance: initVc,
+                status: 'Active',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              });
             });
 
             setIsAdmin(isSystemAdminEmail);
@@ -312,10 +316,12 @@ export default function App() {
             
             // Record googlePhotoURL if user signed in with Google
             if (googlePhoto && !data.googlePhotoURL) {
-              setDoc(userDocRef, {
-                googlePhotoURL: googlePhoto,
-                updatedAt: new Date().toISOString()
-              }, { merge: true }).catch(() => {});
+              safeFirestoreWrite(async () => {
+                await setDoc(userDocRef, {
+                  googlePhotoURL: googlePhoto,
+                  updatedAt: new Date().toISOString()
+                }, { merge: true });
+              }).catch(() => {});
             }
 
             const now = Date.now();
@@ -328,7 +334,9 @@ export default function App() {
               if (expiry <= now) {
                 isVip = false;
                 if (data.isVip && !isSystemAdminEmail) {
-                  setDoc(doc(db, 'userProfiles', user.uid), { isVip: false, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+                  safeFirestoreWrite(async () => {
+                    await setDoc(doc(db, 'userProfiles', user.uid), { isVip: false, updatedAt: new Date().toISOString() }, { merge: true });
+                  }).catch(() => {});
                 }
               } else {
                 // Check 48h notification window before expiration
@@ -339,17 +347,19 @@ export default function App() {
                   const notifId = `vip_expiry_48h_${user.uid}`;
                   const storageKey = `gtavi_vip_48h_notified_${user.uid}`;
                   if (!localStorage.getItem(storageKey)) {
-                    setDoc(doc(db, 'userNotifications', notifId), {
-                      id: notifId,
-                      targetUserId: user.uid,
-                      title: '⚠️ VIP Membership Expiring Soon',
-                      message: `Your VIP pass is expiring soon (in ${hoursLeft} hours)! Renew your membership to keep 100% ad-free browsing, gold crown badge, and priority perks.`,
-                      type: 'admin_message',
-                      read: false,
-                      createdAt: Date.now(),
-                      timestamp: new Date().toISOString(),
-                      targetTab: 'profile'
-                    }, { merge: true }).then(() => {
+                    safeFirestoreWrite(async () => {
+                      await setDoc(doc(db, 'userNotifications', notifId), {
+                        id: notifId,
+                        targetUserId: user.uid,
+                        title: '⚠️ VIP Membership Expiring Soon',
+                        message: `Your VIP pass is expiring soon (in ${hoursLeft} hours)! Renew your membership to keep 100% ad-free browsing, gold crown badge, and priority perks.`,
+                        type: 'admin_message',
+                        read: false,
+                        createdAt: Date.now(),
+                        timestamp: new Date().toISOString(),
+                        targetTab: 'profile'
+                      }, { merge: true });
+                    }).then(() => {
                       localStorage.setItem(storageKey, 'true');
                     }).catch(err => console.warn('VIP expiry notif error:', err));
                   }
@@ -991,8 +1001,9 @@ export default function App() {
                     : null
                 }
                 onOpenAuthModal={() => setIsAuthOpen(true)}
-                onSelectVehicle={(slug) => {
-                  const v = VEHICLES_DATA.find((item) => item.slug === slug);
+                onSelectVehicle={async (slug) => {
+                  const storedVehicles = await getCachedVehicles();
+                  const v = storedVehicles.find((item) => item.slug === slug) || VEHICLES_DATA.find((item) => item.slug === slug);
                   if (v) handleSelectForCompare(v);
                 }}
               />

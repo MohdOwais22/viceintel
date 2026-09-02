@@ -554,6 +554,23 @@
         "createdAt": { "type": "number" }
       },
       "required": ["name", "token"]
+    },
+    "system_sitemaps": {
+      "title": "System Sitemaps",
+      "description": "Generated XML sitemaps, route statistics, and Firebase Storage metadata for search engine indexing.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "xml": { "type": "string" },
+        "totalRoutes": { "type": "number" },
+        "storagePath": { "type": "string" },
+        "downloadUrl": { "type": "string" },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "lastmod": { "type": "string" },
+        "baseUrl": { "type": "string" },
+        "executionMs": { "type": "number" }
+      },
+      "required": ["id", "xml", "totalRoutes"]
     }
   }
 }

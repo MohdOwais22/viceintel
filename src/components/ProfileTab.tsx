@@ -46,6 +46,7 @@ import {
 import { User as FirebaseUser, updateProfile, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, getDocs, collection, query, where, deleteField } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { safeFirestoreWrite } from '../lib/firebase/firestoreCircuitBreaker';
 import { claimDailyReward, getRewardCooldown, claim30DayVipPass, claimStreakMilestone, convertVcToVipPass, checkUserRewardStatus, getTimestampFromClaimDate } from '../lib/rewardUtils';
 import { linkDiscordToUser, unlinkDiscordFromUser, fetchDiscordAuthStatus, refreshDiscordOAuthToken } from '../lib/whitelist-service';
 import {
@@ -1065,26 +1066,28 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     try {
       const { collection, addDoc } = await import('firebase/firestore');
 
-      // 1. Queue in Firestore 'mail' collection
-      await addDoc(collection(db, 'mail'), {
-        to: [targetEmail],
-        message: {
-          subject: `[TEST VIP REMINDER] ⚠️ Subscription Expiring in ${daysLeft} Days (@${username})`,
-          html: renderedHtml
-        },
-        createdAt: nowIso
-      });
+      await safeFirestoreWrite(async () => {
+        // 1. Queue in Firestore 'mail' collection
+        await addDoc(collection(db, 'mail'), {
+          to: [targetEmail],
+          message: {
+            subject: `[TEST VIP REMINDER] ⚠️ Subscription Expiring in ${daysLeft} Days (@${username})`,
+            html: renderedHtml
+          },
+          createdAt: nowIso
+        });
 
-      // 2. Deliver to In-App Notifications
-      await addDoc(collection(db, 'userNotifications'), {
-        userId: currentUser.uid,
-        username,
-        type: 'VIP_EXPIRY_ALERT',
-        title: `⚠️ VIP Subscription Expiring in ${daysLeft} Days`,
-        message: `Your VIP Pass will expire on ${expireDate}. Reminder email sent to ${targetEmail}.`,
-        daysRemaining: daysLeft,
-        isRead: false,
-        createdAt: nowIso
+        // 2. Deliver to In-App Notifications
+        await addDoc(collection(db, 'userNotifications'), {
+          userId: currentUser.uid,
+          username,
+          type: 'VIP_EXPIRY_ALERT',
+          title: `⚠️ VIP Subscription Expiring in ${daysLeft} Days`,
+          message: `Your VIP Pass will expire on ${expireDate}. Reminder email sent to ${targetEmail}.`,
+          daysRemaining: daysLeft,
+          isRead: false,
+          createdAt: nowIso
+        });
       });
 
       // Also call server API endpoint to save in sentEmails and server logs

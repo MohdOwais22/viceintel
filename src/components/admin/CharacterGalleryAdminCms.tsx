@@ -35,59 +35,16 @@ import {
 import { forceSyncFirestoreToLocal } from '../../lib/offlineStorage';
 import { logStaffActivity } from '../../lib/staffAuditLogger';
 import { getCacheBustedImageUrl } from '../../lib/imageCacheBuster';
+import { uploadImageAsset } from '../../lib/uploadService';
 
 /**
- * Helper to process and compress local image files uploaded from user's PC into base64 Data URLs.
+ * Uploads local image file directly to UploadThing CDN (Eliminates base64 data URLs).
  */
-const processLocalImageFile = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Selected file is not an image'));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (!result) {
-        reject(new Error('Failed to read image file'));
-        return;
-      }
-      
-      const img = new Image();
-      img.onload = () => {
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 600;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > MAX_WIDTH || height > MAX_HEIGHT) {
-          if (width > height) {
-            height = Math.round((height * MAX_WIDTH) / width);
-            width = MAX_WIDTH;
-          } else {
-            width = Math.round((width * MAX_HEIGHT) / height);
-            height = MAX_HEIGHT;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.80);
-          resolve(compressedDataUrl);
-        } else {
-          resolve(result);
-        }
-      };
-      img.onerror = () => resolve(result);
-      img.src = result;
-    };
-    reader.onerror = (err) => reject(err);
-    reader.readAsDataURL(file);
-  });
+const processLocalImageFile = async (file: File): Promise<string> => {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Selected file is not an image');
+  }
+  return await uploadImageAsset(file, 'characterImage');
 };
 
 export const CharacterGalleryAdminCms: React.FC = () => {
@@ -953,14 +910,14 @@ export const CharacterGalleryAdminCms: React.FC = () => {
 
                   <div>
                     <label className="text-[11px] font-bold text-zinc-400 block mb-1">
-                      Or Image URL / Base64 string
+                      Or Permanent Image URL
                     </label>
                     <input
                       type="text"
                       required
                       value={formData.imageUrl || ''}
                       onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                      placeholder="https://... or data:image/..."
+                      placeholder="https://utfs.io/f/... or https://..."
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-pink-500"
                     />
                   </div>

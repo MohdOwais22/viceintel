@@ -64,6 +64,7 @@ import {
 import { SeoMetaOverride, UserProfile } from '../../types';
 import { updatePageSeoMeta } from '../../lib/seoRouting';
 import { generateSeoReportPdf } from '../../lib/pdfGenerator';
+import { generateAndUploadSitemap, SitemapCrawlerResult } from '../../lib/firebase/sitemapCrawler';
 
 interface SeoMetaManagerProps {
   currentUser?: UserProfile | null;
@@ -184,6 +185,31 @@ export function SeoMetaManager({ currentUser, onLogStaffAction }: SeoMetaManager
     yandex: 'idle',
     duckduckgo: 'idle'
   });
+
+  // Dynamic Sitemap Crawler & Firebase Storage State
+  const [isCrawlingSitemap, setIsCrawlingSitemap] = useState(false);
+  const [sitemapCrawlResult, setSitemapCrawlResult] = useState<SitemapCrawlerResult | null>(null);
+
+  const handleRunSitemapCrawler = async () => {
+    try {
+      setIsCrawlingSitemap(true);
+      const result = await generateAndUploadSitemap(activeClient.domain || 'https://viceintel.app');
+      setSitemapCrawlResult(result);
+      if (onLogStaffAction) {
+        onLogStaffAction(
+          'sitemap_crawl',
+          'seo_system',
+          'sitemap.xml',
+          'Firebase Storage Sitemap Generator',
+          `Crawled and uploaded ${result.totalRoutes} active routes to Firebase Storage (${result.storagePath}).`
+        );
+      }
+    } catch (err: any) {
+      alert(`Sitemap crawl failed: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsCrawlingSitemap(false);
+    }
+  };
 
   // Client Report State
   const [clientReportNotes, setClientReportNotes] = useState<string>(
@@ -2208,17 +2234,55 @@ ${urls}
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(generatedXmlSitemap);
-                  alert('Copied XML Sitemap to clipboard!');
-                }}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-md shadow-amber-500/20"
-              >
-                Copy sitemap.xml
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRunSitemapCrawler}
+                  disabled={isCrawlingSitemap}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-md shadow-emerald-500/20 flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCrawlingSitemap ? 'animate-spin' : ''}`} />
+                  <span>{isCrawlingSitemap ? 'Crawling & Syncing...' : 'Crawl & Sync to Firebase Storage'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedXmlSitemap);
+                    alert('Copied XML Sitemap to clipboard!');
+                  }}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-md shadow-amber-500/20"
+                >
+                  Copy sitemap.xml
+                </button>
+              </div>
             </div>
+
+            {sitemapCrawlResult && (
+              <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-xs text-emerald-300 space-y-1.5">
+                <div className="flex items-center justify-between font-bold">
+                  <span className="flex items-center gap-1.5 text-emerald-200">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Sitemap Successfully Crawled & Uploaded</span>
+                  </span>
+                  <span className="text-[11px] text-emerald-400/80">{new Date(sitemapCrawlResult.generatedAt).toLocaleTimeString()}</span>
+                </div>
+                <p className="text-[11px] text-emerald-300/80">
+                  Indexed <strong>{sitemapCrawlResult.totalRoutes} active routes</strong> and saved artifacts to Firebase Storage path: <code className="text-white bg-emerald-950 px-1 py-0.5 rounded font-mono">{sitemapCrawlResult.storagePath}</code>
+                </p>
+                {sitemapCrawlResult.downloadUrl && (
+                  <a
+                    href={sitemapCrawlResult.downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:underline pt-1"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    <span>View in Firebase Storage</span>
+                  </a>
+                )}
+              </div>
+            )}
 
             {/* Indexing Ping Dispatcher Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -85,11 +85,21 @@ export function withItemVersioning<
   const prevVersion = existingItem?.version ?? item.version ?? 0;
   const nextVersion = prevVersion + 1;
 
+  const getCleanUrl = (u?: string | null) => {
+    if (!u || typeof u !== 'string') return '';
+    return u.replace(/([?&])(_?v|t|cacheBust)=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '').trim();
+  };
+
+  const cleanItemImg = getCleanUrl(item.imageUrl);
+  const cleanExistImg = getCleanUrl(existingItem?.imageUrl);
+  const cleanItemAvt = getCleanUrl(item.avatarUrl);
+  const cleanExistAvt = getCleanUrl(existingItem?.avatarUrl);
+
   const hasImageChanged =
     forceNewTimestamp ||
     !existingItem ||
-    (item.imageUrl && item.imageUrl !== existingItem.imageUrl) ||
-    (item.avatarUrl && item.avatarUrl !== existingItem.avatarUrl);
+    (cleanItemImg && cleanItemImg !== cleanExistImg) ||
+    (cleanItemAvt && cleanItemAvt !== cleanExistAvt);
 
   const imageVersion = hasImageChanged ? now : (item.imageVersion ?? existingItem?.imageVersion ?? now);
 

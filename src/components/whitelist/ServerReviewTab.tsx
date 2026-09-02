@@ -450,7 +450,7 @@ export const ServerReviewTab: React.FC<ServerReviewTabProps> = ({
             </h2>
             
             <p className="text-sm text-zinc-400 leading-relaxed">
-              <strong className="text-white">{matchedRpServer.name}</strong> processes whitelist applications directly through their official portal. There is no on-platform applicant queue for this listing unless claimed by the verified server owner.
+              <strong className="text-white">{matchedRpServer.name}</strong> has not yet linked a custom whitelist review queue. Claim this listing below as the server owner to activate our automated application queue.
             </p>
           </div>
 

@@ -13,6 +13,8 @@ import {
 import { forceSyncFirestoreToLocal } from '../../lib/offlineStorage';
 import { logStaffActivity } from '../../lib/staffAuditLogger';
 import { getCacheBustedImageUrl } from '../../lib/imageCacheBuster';
+import { uploadImageAsset } from '../../lib/uploadService';
+import { ImageUploader } from '../ImageUploader';
 import {
   Car,
   Plus,
@@ -126,87 +128,37 @@ export const VehicleCatalogAdminCms: React.FC = () => {
       return b.price - a.price;
     });
 
-  // Image compression utility for PC uploads
-  const processImageFile = (file: File) => {
+  // Upload asset to UploadThing CDN (No base64 data URLs)
+  const processImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       showNotification('⚠️ Please select a valid image file (PNG, JPG, WEBP).');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 900;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        setFormData((prev) => ({ ...prev, imageUrl: dataUrl }));
-        showNotification('✅ Image optimized and attached!');
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    try {
+      showNotification('⏳ Uploading vehicle image to UploadThing...');
+      const cdnUrl = await uploadImageAsset(file, 'vehicleImage');
+      setFormData((prev) => ({ ...prev, imageUrl: cdnUrl }));
+      showNotification('✅ Vehicle photo uploaded to CDN and attached!');
+    } catch (err: any) {
+      showNotification(`❌ Upload failed: ${err?.message || 'Network error'}`);
+    }
   };
 
-  const processQuickImageFile = (file: File) => {
+  const processQuickImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       showNotification('⚠️ Please select a valid image file (PNG, JPG, WEBP).');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 900;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        setQuickImageUrlInput(dataUrl);
-        showNotification('✅ Photo loaded from your computer!');
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    try {
+      showNotification('⏳ Uploading vehicle photo to UploadThing...');
+      const cdnUrl = await uploadImageAsset(file, 'vehicleImage');
+      setQuickImageUrlInput(cdnUrl);
+      showNotification('✅ Photo uploaded to CDN and ready to save!');
+    } catch (err: any) {
+      showNotification(`❌ Upload failed: ${err?.message || 'Network error'}`);
+    }
   };
 
   const handleOpenQuickImage = (veh: Vehicle) => {

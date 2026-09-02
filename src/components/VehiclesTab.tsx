@@ -103,6 +103,7 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
     'Muscle',
     'Off-Road',
     'Motorcycles',
+    'Boats',
     'Helicopters',
   ];
 

@@ -49,6 +49,7 @@ import { ClaimButtonModal } from './servers/ClaimButtonModal';
 import { copyToClipboard } from '../lib/copyUtils';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { subscribeRtdbFivemServers } from '../lib/firebase/rtdbChatService';
 import { normalizeTier, getTierWeight } from '../lib/stripe-subscriptions';
 
 interface RpServerDirectoryProps {
@@ -83,16 +84,12 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
   const [todaySpotlight, setTodaySpotlight] = useState<SpotlightRentalBooking | null>(null);
   const [spotlightDailyRate, setSpotlightDailyRate] = useState<number>(12.0);
   const [forceShowAdBanner, setForceShowAdBanner] = useState<boolean>(false);
-  const [previewServerName, setPreviewServerName] = useState<string>('Vice City Underground RP');
-  const [previewTagline, setPreviewTagline] = useState<string>('Hardcore Vice City RP with custom gang territories, legal businesses, and real-time CAD dispatch.');
-  const [previewConnectCode, setPreviewConnectCode] = useState<string>('cfx.re/join/vicecityunderground');
-  const [showLiveSimBox, setShowLiveSimBox] = useState<boolean>(false);
   const [isPinging, setIsPinging] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>('Just now');
   
-  // Whitelist AI Simulator & Filter State
+  // Whitelist Simulator & Filter State
   const [practiceModalServer, setPracticeModalServer] = useState<RpServer | null>(null);
-  const [activeFilterTab, setActiveFilterTab] = useState<'all' | 'ai_fast_track' | 'external_official' | 'open_public'>('all');
+  const [activeFilterTab, setActiveFilterTab] = useState<'all' | 'whitelisted' | 'open_public'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -233,17 +230,8 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
   };
 
   const handleOpenSubmitModal = () => {
-    if (!currentUser) {
-      if (onOpenAuth) onOpenAuth();
-      else alert('Please sign in to submit a server.');
-      return;
-    }
-    // Server submission is available to L3 (Staff) and L4 (Admin) users; public users see coming soon
-    if (isL3Staff || isL4Admin) {
-      setShowSubmitModal(true);
-    } else {
-      setShowSubmitComingSoonModal(true);
-    }
+    // Server submissions are temporarily paused for maintenance
+    setShowSubmitComingSoonModal(true);
   };
 
   // Form state
@@ -363,6 +351,26 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
       // offline
     }
 
+    // 4. Realtime Database subscription for live FiveM server player counts & latency
+    let unsubFivemRtdb: (() => void) | null = null;
+    try {
+      unsubFivemRtdb = subscribeRtdbFivemServers((rtdbMap) => {
+        if (rtdbMap && Object.keys(rtdbMap).length > 0) {
+          setServers((prev) =>
+            prev.map((s) => {
+              const rtdbData = rtdbMap[s.id];
+              if (rtdbData) {
+                return { ...s, ...rtdbData };
+              }
+              return s;
+            })
+          );
+        }
+      });
+    } catch (e) {
+      // offline fallback
+    }
+
     // Auto refresh traffic rankings every 60 seconds
     const interval = setInterval(() => {
       fetch('/api/rp-servers')
@@ -378,6 +386,7 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
       clearInterval(interval);
       if (unsubPricing) unsubPricing();
       if (unsubRentals) unsubRentals();
+      if (unsubFivemRtdb) unsubFivemRtdb();
     };
   }, []);
 
@@ -584,11 +593,8 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
       const matchTags = (s.tags || []).some(t => t.toLowerCase().includes(q));
       if (!matchName && !matchFw && !matchRegion && !matchTags) return false;
     }
-    if (activeFilterTab === 'ai_fast_track') {
-      if (!(s.whitelistMode === 'ai_fast_track' || (s.isWhitelisted && s.isManagedPartner))) return false;
-    }
-    if (activeFilterTab === 'external_official') {
-      if (!(s.whitelistMode === 'external_official' || (s.isWhitelisted && !s.isManagedPartner))) return false;
+    if (activeFilterTab === 'whitelisted') {
+      if (!s.isWhitelisted) return false;
     }
     if (activeFilterTab === 'open_public') {
       if (!(!s.isWhitelisted || s.whitelistMode === 'open_public')) return false;
@@ -656,7 +662,8 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
 
   const totalActivePlayers = servers.reduce((sum, s) => sum + (s.playerCount || 0), 0);
   const peakServersCount = servers.filter(s => s.isPeakTraffic || s.status === 'busy').length;
-  const fastTrackCount = servers.filter(s => s.whitelistMode === 'ai_fast_track' || (s.isWhitelisted && s.isManagedPartner)).length;
+  const whitelistedCount = servers.filter(s => s.isWhitelisted).length;
+  const publicCount = servers.filter(s => !s.isWhitelisted || s.whitelistMode === 'open_public').length;
 
   return (
     <div className="space-y-6">
@@ -694,10 +701,12 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
 
           <button
             onClick={handleOpenSubmitModal}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-2 shrink-0 cursor-pointer shadow-md shadow-indigo-600/20"
+            className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-bold text-xs rounded-xl transition flex items-center gap-2 shrink-0 cursor-pointer border border-zinc-700 shadow-sm"
+            title="Server submissions are temporarily paused for maintenance"
           >
-            <Server className="w-4 h-4" />
+            <Server className="w-4 h-4 text-amber-400" />
             <span>Submit Your Server</span>
+            <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Paused</span>
           </button>
         </div>
       </div>
@@ -776,14 +785,6 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
                     <Sparkles className="w-4 h-4 text-zinc-950" />
                     <span>Rent Spot Now (${spotlightDailyRate.toFixed(2)})</span>
                   </button>
-
-                  <button
-                    onClick={() => setShowLiveSimBox(!showLiveSimBox)}
-                    className="px-4 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs font-bold rounded-xl transition border border-zinc-700 hover:border-amber-500/40 flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Eye className="w-4 h-4 text-amber-400" />
-                    <span>{showLiveSimBox ? 'Hide Live Sandbox' : '⚡ Test Live Preview'}</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -830,85 +831,6 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
                 </div>
               </div>
             </div>
-
-            {/* Interactive Live Ad Simulator Box */}
-            {showLiveSimBox && (
-              <div className="bg-zinc-950/90 p-5 rounded-2xl border border-amber-500/40 space-y-4">
-                <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-400" />
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                      Live Interactive Ad Mockup Sandbox
-                    </h4>
-                  </div>
-                  <span className="text-[10px] text-amber-300 font-mono">Type below to preview your server live</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                  <div>
-                    <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Server Name</label>
-                    <input
-                      type="text"
-                      value={previewServerName}
-                      onChange={(e) => setPreviewServerName(e.target.value)}
-                      placeholder="e.g. Vice City Underground RP"
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Tagline / Description</label>
-                    <input
-                      type="text"
-                      value={previewTagline}
-                      onChange={(e) => setPreviewTagline(e.target.value)}
-                      placeholder="e.g. Custom vehicles, active SWAT, realistic economy"
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">F8 Connect Code</label>
-                    <input
-                      type="text"
-                      value={previewConnectCode}
-                      onChange={(e) => setPreviewConnectCode(e.target.value)}
-                      placeholder="e.g. cfx.re/join/myvcrp"
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Live Mockup Rendering Card */}
-                <div className="bg-gradient-to-r from-zinc-900 via-amber-950/20 to-zinc-900 p-4 rounded-xl border border-amber-500/30 space-y-2">
-                  <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">Live Spotlight Card Mockup Preview:</span>
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded">
-                          🌟 #1 FEATURED SPOTLIGHT
-                        </span>
-                        <span className="text-[10px] text-emerald-400 font-mono">🟢 850 Online</span>
-                      </div>
-                      <h5 className="text-base font-black text-white mt-1">{previewServerName || 'My Server Name'}</h5>
-                      <p className="text-xs text-zinc-300">{previewTagline || 'Server tagline description...'}</p>
-                    </div>
-
-                    <div className="shrink-0 space-y-1 text-right">
-                      <code className="text-[11px] text-amber-300 bg-zinc-950 px-2 py-1 rounded block border border-amber-500/30 font-mono">
-                        connect {previewConnectCode || 'cfx.re/join/...'}
-                      </code>
-                      <button
-                        onClick={() => setShowSpotlightModal(true)}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-[11px] rounded-lg transition cursor-pointer"
-                      >
-                        Confirm & Rent This Look (${spotlightDailyRate.toFixed(2)})
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           /* ACTIVE BOOKED SERVER VIEW */
@@ -1038,12 +960,12 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
         </div>
 
         <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3 flex items-center gap-3">
-          <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400">
-            <Zap className="w-4 h-4" />
+          <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-400">
+            <ShieldCheck className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-[10px] uppercase font-bold text-zinc-500">AI Fast-Track</div>
-            <div className="text-xs font-bold text-amber-300">{fastTrackCount} Instant Portals</div>
+            <div className="text-[10px] uppercase font-bold text-zinc-500">Whitelist Active</div>
+            <div className="text-xs font-bold text-indigo-300">{whitelistedCount} Verified Hubs</div>
           </div>
         </div>
       </div>
@@ -1068,35 +990,19 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
             </button>
 
             <button
-              id="filter-tab-fast-track"
+              id="filter-tab-whitelisted"
               onClick={() => {
-                setActiveFilterTab('ai_fast_track');
+                setActiveFilterTab('whitelisted');
                 setCurrentPage(1);
               }}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                activeFilterTab === 'ai_fast_track'
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-black shadow-lg shadow-amber-500/20'
-                  : 'bg-zinc-900 text-amber-400 hover:text-amber-300 border border-amber-500/30'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>⚡ Instant AI Fast-Track Whitelist ({fastTrackCount})</span>
-            </button>
-
-            <button
-              id="filter-tab-external"
-              onClick={() => {
-                setActiveFilterTab('external_official');
-                setCurrentPage(1);
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                activeFilterTab === 'external_official'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                activeFilterTab === 'whitelisted'
+                  ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              <Globe className="w-3.5 h-3.5" />
-              <span>External Official Portals</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Whitelisted ({whitelistedCount})</span>
             </button>
 
             <button
@@ -1111,7 +1017,7 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
                   : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              🎮 Public (No Whitelist Required)
+              🎮 Public (No Whitelist Required) ({publicCount})
             </button>
           </div>
 
@@ -1514,19 +1420,6 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
                         <Activity className="w-3.5 h-3.5" />
                         <span>⚙️ Manage Server</span>
                       </button>
-                    )}
-
-                    {/* External Third-Party Partner Link */}
-                    {server.isThirdParty && server.officialWebsiteUrl && (
-                      <a
-                        href={server.officialWebsiteUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs rounded-lg transition flex items-center gap-1.5 border border-zinc-700"
-                      >
-                        <span>Official Portal</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
                     )}
                   </div>
 
@@ -2261,12 +2154,12 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
           <div className="bg-zinc-900 border border-indigo-500/40 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
             <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/30">
+                <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
                   <Server className="w-6 h-6 animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Server Submissions — Coming Soon</h3>
-                  <span className="text-[10px] uppercase font-mono font-bold text-indigo-400">Directory Upgrade In Progress</span>
+                  <h3 className="text-base font-black text-white">Server Submissions — Temporarily Paused</h3>
+                  <span className="text-[10px] uppercase font-mono font-bold text-amber-400">Scheduled Directory Maintenance</span>
                 </div>
               </div>
               <button
@@ -2279,19 +2172,19 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
 
             <div className="space-y-3 text-xs text-zinc-300 leading-relaxed">
               <p>
-                Server submissions are currently paused while we upgrade our <strong className="text-white">FiveM Auto-Ping & Traffic Ranker</strong> system.
+                Server submissions are currently paused while we upgrade our <strong className="text-white">FiveM Auto-Ping & Traffic Ranker</strong> system and onboarding verification pipeline.
               </p>
 
               <div className="p-4 bg-zinc-950 rounded-xl border border-zinc-800/80 space-y-2">
-                <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider block">
+                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block">
                   Directory Status:
                 </span>
-                <div className="flex items-center gap-2 text-indigo-300 font-bold">
-                  <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
-                  <span>Public Listing Portal Launching Soon</span>
+                <div className="flex items-center gap-2 text-amber-300 font-bold">
+                  <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Submissions Paused For Maintenance</span>
                 </div>
                 <p className="text-[11px] text-zinc-400 pt-1">
-                  Directory updates and verification protocols are being refined to ensure high listing quality and instant FiveM console connection accuracy.
+                  Directory updates and verification protocols are being upgraded to ensure high listing quality and instant FiveM console connection accuracy. We will reopen submissions shortly!
                 </p>
               </div>
             </div>
@@ -2300,9 +2193,9 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSubmitComingSoonModal(false)}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 cursor-pointer"
+                className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded-xl border border-zinc-700 shadow-lg cursor-pointer"
               >
-                Understood
+                Got It
               </button>
             </div>
           </div>

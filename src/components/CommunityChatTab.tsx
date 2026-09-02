@@ -74,6 +74,20 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, setDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { safeFirestoreWrite } from '../lib/firebase/firestoreCircuitBreaker';
+import {
+  subscribeRtdbMessages,
+  sendRtdbMessage,
+  deleteRtdbMessage,
+  subscribeRtdbChannels,
+  saveRtdbChannel,
+  deleteRtdbChannel,
+  subscribeRtdbVoiceRooms,
+  setRtdbVoiceParticipants,
+  sendRtdbVoiceSignal,
+  subscribeRtdbVoiceSignals,
+  subscribeRtdbFivemServers
+} from '../lib/firebase/rtdbChatService';
 import { ENV } from '../lib/envConfig';
 import { getVipVcGrantedNumber, calculateVcForUsd } from '../lib/vipConfig';
 import { ChatMessage, ChatAttachment, VoiceParticipant, VoiceRoomState } from '../types';
@@ -637,21 +651,20 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     };
   };
 
-  // Helper to send WebRTC signaling data across BroadcastChannel and Firestore
+  // Helper to send WebRTC signaling data across BroadcastChannel, RTDB (~10ms) and Firestore
   const sendWebRTCSignal = async (targetChan: string, signalData: any) => {
     if (webrtcBroadcastRef.current) {
       try {
         webrtcBroadcastRef.current.postMessage(signalData);
       } catch (e) {}
     }
-    try {
+    sendRtdbVoiceSignal(targetChan, signalData).catch(() => {});
+    await safeFirestoreWrite(async () => {
       await addDoc(collection(db, 'voiceComms', targetChan, 'signals'), {
         ...signalData,
         timestampMs: Date.now()
       });
-    } catch (e) {
-      console.warn('Error broadcasting WebRTC signal:', e);
-    }
+    });
   };
 
   // Helper to create or retrieve WebRTC PeerConnection for a remote peer
@@ -1086,12 +1099,29 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
 
   const lastJoinedVoiceMsRef = useRef<number>(0);
 
-  // Real-Time Firestore Synchronization for Voice Comms across all channels
+  // Real-Time RTDB & Firestore Synchronization for Voice Comms across all channels
   useEffect(() => {
-    let unsub = () => {};
+    let unsubFs = () => {};
+    let unsubRtdb = () => {};
+
+    // 1. RTDB instant presence sync (~10ms)
+    try {
+      unsubRtdb = subscribeRtdbVoiceRooms((rtdbRoomsMap) => {
+        if (rtdbRoomsMap && Object.keys(rtdbRoomsMap).length > 0) {
+          setVoiceRooms(prev => ({
+            ...prev,
+            ...rtdbRoomsMap
+          }));
+        }
+      });
+    } catch (e) {
+      console.warn('RTDB voice rooms sub warning:', e);
+    }
+
+    // 2. Firestore fallback sync
     try {
       const voiceRef = collection(db, 'voiceComms');
-      unsub = onSnapshot(voiceRef, (snapshot) => {
+      unsubFs = onSnapshot(voiceRef, (snapshot) => {
         setVoiceRooms(prev => {
           const nextMap = { ...prev };
           const currentUsername = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'ViceCityPlayer';
@@ -1102,7 +1132,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
             if (data && Array.isArray(data.participants)) {
               let remoteParticipants = data.participants as VoiceParticipant[];
 
-              // Preserve local user if connected to this channel during Firestore sync lag
+              // Preserve local user if connected to this channel during sync lag
               if (isVoiceConnected && activeVoiceChannel === docSnap.id) {
                 const hasLocalUserInRemote = remoteParticipants.some(
                   p => p.username === currentUsername || p.userId === currentUid
@@ -1125,7 +1155,10 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     } catch (e) {
       console.warn('Voice comms subscription error:', e);
     }
-    return () => unsub();
+    return () => {
+      unsubFs();
+      unsubRtdb();
+    };
   }, [isVoiceConnected, activeVoiceChannel, currentUser]);
 
   // Synchronize remote audio elements volume & mute status with outputVolume & isDeafened
@@ -1231,16 +1264,30 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     };
   }, [isVoiceConnected, activeVoiceChannel, currentUser]);
 
-  // WebRTC Firestore signaling listener for remote devices & cross-network connections
+  // WebRTC RTDB & Firestore signaling listener for remote devices & cross-network connections
   useEffect(() => {
     if (!isVoiceConnected || !activeVoiceChannel) return;
-    let unsub = () => {};
+    let unsubFs = () => {};
+    let unsubRtdb = () => {};
+    const joinTime = lastJoinedVoiceMsRef.current || (Date.now() - 5000);
+
+    // 1. RTDB instant signal listener (~10ms)
     try {
-      const joinTime = lastJoinedVoiceMsRef.current || (Date.now() - 5000);
+      unsubRtdb = subscribeRtdbVoiceSignals(activeVoiceChannel, (signalData) => {
+        if (signalData && signalData.createdAtMs && signalData.createdAtMs >= joinTime - 3000) {
+          handleIncomingWebRTCSignal(signalData);
+        }
+      });
+    } catch (e) {
+      console.warn('RTDB voice signal sub warning:', e);
+    }
+
+    // 2. Firestore fallback signal listener
+    try {
       const signalsRef = collection(db, 'voiceComms', activeVoiceChannel, 'signals');
       const q = query(signalsRef, orderBy('timestampMs', 'asc'));
 
-      unsub = onSnapshot(q, (snapshot) => {
+      unsubFs = onSnapshot(q, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const data = change.doc.data();
@@ -1253,7 +1300,10 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     } catch (e) {
       console.warn('Voice signaling subscription error:', e);
     }
-    return () => unsub();
+    return () => {
+      unsubFs();
+      unsubRtdb();
+    };
   }, [isVoiceConnected, activeVoiceChannel, currentUser]);
 
   // Monitor current user's force-mute or kick status in active voice channel
@@ -1360,6 +1410,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     setTimeout(() => setVoiceToast(null), 4000);
 
     try {
+      setRtdbVoiceParticipants(targetChannel, targetParticipants).catch(() => {});
       await setDoc(doc(db, 'voiceComms', targetChannel), {
         channelId: targetChannel,
         participants: targetParticipants,
@@ -1414,6 +1465,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     setTimeout(() => setVoiceToast(null), 3000);
 
     try {
+      setRtdbVoiceParticipants(channelId, updatedParticipants).catch(() => {});
       await setDoc(doc(db, 'voiceComms', channelId), {
         channelId,
         participants: updatedParticipants,
@@ -1706,9 +1758,41 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     return () => unsub();
   }, [currentUser, isVipActive, isAdmin, isStaff]);
 
-  // Sync custom VIP channels with Firestore & auto-expire 24h deletion requests
+  // Sync custom VIP channels with Realtime Database & Firestore & auto-expire 24h deletion requests
   useEffect(() => {
     let unsubChannels: () => void = () => {};
+    let unsubRtdbChannels: () => void = () => {};
+
+    // 1. Subscribe to Realtime Database custom channels
+    try {
+      unsubRtdbChannels = subscribeRtdbChannels((rtdbChannels) => {
+        if (rtdbChannels && rtdbChannels.length > 0) {
+          setCustomChannels(prev => {
+            const map = new Map<string, CustomChannel>();
+            INITIAL_CUSTOM_CHANNELS.forEach(c => map.set(c.id, c));
+            prev.forEach(c => map.set(c.id, c));
+            rtdbChannels.forEach(c => {
+              if (c.isDeleted || c.deleted) {
+                map.delete(c.id);
+              } else {
+                map.set(c.id, {
+                  ...c,
+                  members: Array.isArray(c.members) ? c.members : [],
+                  pendingRequests: Array.isArray(c.pendingRequests) ? c.pendingRequests : [],
+                  admins: Array.isArray(c.admins) ? c.admins : [],
+                  bannedUsers: Array.isArray(c.bannedUsers) ? c.bannedUsers : []
+                } as CustomChannel);
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+      });
+    } catch (e) {
+      console.warn('RTDB channels subscription warning:', e);
+    }
+
+    // 2. Subscribe to Firestore custom channels
     try {
       unsubChannels = onSnapshot(collection(db, 'customChannels'), (snapshot) => {
         const fsChannels = snapshot.docs.map(d => {
@@ -1750,6 +1834,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
                   deletionRequested: false,
                   deletionRequestedAtMs: null
                 }).catch(() => {});
+                saveRtdbChannel({ id: channel.id, name: channel.name, deletionRequested: false }).catch(() => {});
               }
             }
             map.set(channel.id, channel);
@@ -1773,7 +1858,10 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     } catch (e) {
       console.warn('Custom channels subscription error:', e);
     }
-    return () => unsubChannels();
+    return () => {
+      unsubChannels();
+      unsubRtdbChannels();
+    };
   }, []);
 
   // Reset activeChannel to general if currently active channel is deleted
@@ -2283,6 +2371,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     } catch (err) {
       console.warn('Firestore channel creation fallback:', err);
     }
+    saveRtdbChannel(newChan).catch(err => console.warn('RTDB channel creation notice:', err));
 
     setCustomChannels(prev => {
       const map = new Map<string, CustomChannel>();
@@ -2339,7 +2428,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
 
       setCustomChannels(prev => prev.map(c => c.id === channel.id ? { ...c, pendingRequests: updatedRequests } : c));
 
-      try {
+      await safeFirestoreWrite(async () => {
         const chanRef = doc(db, 'customChannels', channel.id);
         await updateDoc(chanRef, { pendingRequests: updatedRequests });
 
@@ -2362,9 +2451,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
             status: 'pending'
           }
         });
-      } catch (e) {
-        console.warn('Firestore request update warning:', e);
-      }
+      });
 
       setReportSuccessToast('📩 Access Request sent to VIP Hub creator for approval!');
       setTimeout(() => setReportSuccessToast(null), 4000);
@@ -2588,7 +2675,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       }
     }
 
-    try {
+    await safeFirestoreWrite(async () => {
       await addDoc(collection(db, 'pendingApprovals'), {
         type: 'channel_deletion_request',
         title: `Request Channel Deletion: #${channel.name}`,
@@ -2604,9 +2691,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
         deletionRequested: true,
         deletionRequestedAtMs: nowMs
       }, { merge: true });
-    } catch (e) {
-      console.warn('Firestore deletion request warning:', e);
-    }
+    });
 
     setCustomChannels(prev => prev.map(c => c.id === channel.id ? { ...c, deletionRequested: true, deletionRequestedAtMs: nowMs } : c));
     if (managingChannel?.id === channel.id) {
@@ -2938,10 +3023,52 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     }
   };
 
-  // Sync chat messages with real-time Firebase Firestore & API fallback
+  // Sync chat messages with Realtime Database (WebSocket), Firestore & REST fallback
   useEffect(() => {
     let unsubscribeFirestore: (() => void) | null = null;
+    let unsubscribeRtdb: (() => void) | null = null;
 
+    // 1. Subscribe to Firebase Realtime Database (WebSocket stream, ~10ms latency)
+    try {
+      unsubscribeRtdb = subscribeRtdbMessages(activeChannel, (rtdbMsgs) => {
+        if (rtdbMsgs && rtdbMsgs.length > 0) {
+          const formattedRtdbMsgs: ChatMessage[] = rtdbMsgs.map(m => ({
+            id: m.id,
+            user: m.username || 'ViceCityPlayer_2026',
+            avatar: m.avatar || DEFAULT_GTA6_AVATAR,
+            channel: m.channel || activeChannel,
+            content: m.isDeleted ? 'This message was deleted' : m.text,
+            timestamp: m.timestamp,
+            isVip: m.isVip ?? true,
+            isMod: m.isMod || false,
+            isAdmin: m.isAdmin || false,
+            userLevel: m.userLevel || 'Member',
+            isDeleted: m.isDeleted || false,
+            deletedBy: m.deletedBy,
+            attachment: m.isDeleted ? undefined : m.attachment,
+            reactions: m.reactions || {}
+          }));
+
+          setMessages(prev => {
+            const newToAdd = formattedRtdbMsgs.filter(m =>
+              !prev.some(p => p.id === m.id || (p.content === m.content && p.user === m.user && String(p.timestamp) === String(m.timestamp)))
+            );
+            const updated = prev.map(p => {
+              const rtdbMatch = formattedRtdbMsgs.find(m => m.id === p.id);
+              if (rtdbMatch && rtdbMatch.isDeleted) {
+                return { ...p, isDeleted: true, content: 'This message was deleted', attachment: undefined };
+              }
+              return p;
+            });
+            return [...updated, ...newToAdd];
+          });
+        }
+      });
+    } catch (e) {
+      console.warn('RTDB messages subscription warning:', e);
+    }
+
+    // 2. Subscribe to Firestore chatMessages collection
     try {
       const chatRef = collection(db, 'chatMessages');
       const q = query(chatRef, where('channel', '==', activeChannel));
@@ -3027,6 +3154,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
 
     return () => {
       if (unsubscribeFirestore) unsubscribeFirestore();
+      if (unsubscribeRtdb) unsubscribeRtdb();
     };
   }, [activeChannel]);
 
@@ -3266,10 +3394,60 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     const currentUsername = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'ViceCityPlayer_2026';
     const currentAvatar = currentUser?.photoURL || DEFAULT_GTA6_AVATAR;
     const userLevel = isAdminUser ? 'Admin' : isStaffUser ? 'Staff' : isVipUser ? 'VIP' : 'Member';
+    const tempMsgId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // 1. Save to Firebase Firestore
-    let sentViaFirestore = false;
-    try {
+    // 0. Optimistic instant local UI render (0ms response guarantee)
+    const optimisticMsg: ChatMessage = {
+      id: tempMsgId,
+      user: currentUsername,
+      avatar: currentAvatar,
+      channel: activeChannel,
+      content: newText,
+      timestamp: formatChatTimestamp(nowIso),
+      isVip: isVipUser,
+      isMod: isStaffUser,
+      isAdmin: isAdminUser,
+      userLevel: userLevel,
+      attachment: currentAttachment || undefined,
+      reactions: {}
+    };
+
+    setMessages(prev => {
+      if (prev.some(m => m.content === optimisticMsg.content && m.user === optimisticMsg.user && m.timestamp === optimisticMsg.timestamp)) return prev;
+      return [...prev, optimisticMsg];
+    });
+
+    setMySentMessageIds(prev => {
+      const next = [...prev, tempMsgId];
+      try { localStorage.setItem('gta6_my_chat_msg_ids', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    // 1. Send to Firebase Realtime Database (~10ms instant WebSocket delivery if RTDB created)
+    const rtdbMsgId = await sendRtdbMessage({
+      username: currentUsername,
+      avatar: currentAvatar,
+      text: newText,
+      channel: activeChannel,
+      timestamp: nowIso,
+      isVip: isVipUser,
+      isMod: isStaffUser,
+      isAdmin: isAdminUser,
+      userLevel: userLevel,
+      attachment: currentAttachment || null,
+      reactions: {}
+    }).catch(() => null);
+
+    if (rtdbMsgId) {
+      setMySentMessageIds(prev => {
+        const next = [...prev, rtdbMsgId];
+        try { localStorage.setItem('gta6_my_chat_msg_ids', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+
+    // 2. Save to Firebase Firestore
+    await safeFirestoreWrite(async () => {
       const docRef = await addDoc(collection(db, 'chatMessages'), {
         username: currentUsername,
         avatar: currentAvatar,
@@ -3284,7 +3462,6 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
         reactions: {},
         createdAt: serverTimestamp()
       });
-      sentViaFirestore = true;
       if (docRef?.id) {
         setMySentMessageIds(prev => {
           const next = [...prev, docRef.id];
@@ -3377,58 +3554,37 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
           }
         }
       }
-    } catch (fsErr) {
-      console.warn('Could not post to Firestore directly, falling back to server API:', fsErr);
-    }
+      return true;
+    });
 
-    // 2. Only send to REST server API if Firestore post was not successful
-    if (!sentViaFirestore) {
-      try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: newText,
-            channel: activeChannel,
-            isVip: isVipUser,
-            isMod: isStaffUser,
-            isAdmin: isAdminUser,
-            userLevel: userLevel,
-            attachment: currentAttachment,
-            timestamp: nowIso
-          })
+    // 3. Also post to Express REST API server cache so memory state holds it
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: newText,
+          channel: activeChannel,
+          username: currentUsername,
+          avatar: currentAvatar,
+          isVip: isVipUser,
+          isMod: isStaffUser,
+          isAdmin: isAdminUser,
+          userLevel: userLevel,
+          attachment: currentAttachment,
+          timestamp: nowIso
+        })
+      });
+      const data = await res.json();
+      if (data?.success && data?.data?.id) {
+        setMySentMessageIds(prev => {
+          const next = [...prev, data.data.id];
+          try { localStorage.setItem('gta6_my_chat_msg_ids', JSON.stringify(next)); } catch {}
+          return next;
         });
-        const data = await res.json();
-        if (data.success && data.data) {
-          if (data.data.id) {
-            setMySentMessageIds(prev => {
-              const next = [...prev, data.data.id];
-              try { localStorage.setItem('gta6_my_chat_msg_ids', JSON.stringify(next)); } catch {}
-              return next;
-            });
-          }
-          const postedMsg: ChatMessage = {
-            id: data.data.id,
-            user: data.data.username || currentUsername,
-            avatar: data.data.avatar || currentAvatar,
-            channel: data.data.channel,
-            content: data.data.text,
-            timestamp: formatChatTimestamp(data.data.timestamp || nowIso),
-            isVip: data.data.isVip,
-            isMod: data.data.isMod || isStaffUser,
-            isAdmin: data.data.isAdmin || isAdminUser,
-            userLevel: userLevel,
-            attachment: data.data.attachment || currentAttachment,
-            reactions: {}
-          };
-          setMessages(prev => {
-            if (prev.some(m => m.id === postedMsg.id || (m.content === postedMsg.content && m.user === postedMsg.user && m.timestamp === postedMsg.timestamp))) return prev;
-            return [...prev, postedMsg];
-          });
-        }
-      } catch (err) {
-        console.error('Post Chat Error:', err);
       }
+    } catch (err) {
+      console.warn('REST API Chat Sync note:', err);
     }
 
     // 3. Trigger ViceSentinel AI Bot reply only when a command (!command) is typed or bot is tagged

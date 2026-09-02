@@ -6,6 +6,7 @@
 
 import { collection, doc, getDocs, getDoc, setDoc, deleteDoc, query, where, orderBy, limit, updateDoc, increment } from 'firebase/firestore';
 import { db } from './firebase';
+import { safeFirestoreWrite } from './firebase/firestoreCircuitBreaker';
 
 export interface CreatorLead {
   id: string;
@@ -225,7 +226,7 @@ export async function trackReferralConversionInFirestore(params: {
   discordId: string;
   conversionType: 'click' | 'application' | 'join';
 }): Promise<boolean> {
-  try {
+  return (await safeFirestoreWrite(async () => {
     const docId = `${params.serverSlug}_${params.vanityCode}`;
     const docRef = doc(db, 'marketing_referrals', docId);
     const snap = await getDoc(docRef);
@@ -270,10 +271,7 @@ export async function trackReferralConversionInFirestore(params: {
     }
 
     return true;
-  } catch (err) {
-    console.warn('Notice: Firestore referral tracking fallback to local simulation:', err);
-    return true;
-  }
+  }, true)) ?? true;
 }
 
 /**
@@ -442,16 +440,13 @@ export function calculateCampaignHealthScore(campaign: AgencyCampaign): {
  * FIRESTORE PERSISTENCE HELPERS
  */
 export async function saveAgencyCampaignToFirestore(campaign: AgencyCampaign): Promise<boolean> {
-  try {
+  return (await safeFirestoreWrite(async () => {
     const docRef = doc(db, 'agency_campaigns', campaign.id);
     const sanitized = JSON.parse(JSON.stringify(campaign));
     sanitized.updatedAt = Date.now();
     await setDoc(docRef, sanitized, { merge: true });
     return true;
-  } catch (err) {
-    console.warn('Notice: Firestore save fallback:', err);
-    return false;
-  }
+  }, true)) ?? false;
 }
 
 export async function fetchAgencyCampaignFromFirestore(campaignId: string): Promise<AgencyCampaign | null> {

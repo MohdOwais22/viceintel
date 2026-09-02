@@ -10,6 +10,7 @@ import {
   getDocs
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { safeFirestoreWrite, markFirestoreQuotaExhausted, isResourceExhaustedError } from './firebase/firestoreCircuitBreaker';
 import {
   StaffAuditLog,
   StaffActionType,
@@ -348,13 +349,11 @@ export async function logStaffActivity(params: LogStaffActivityParams): Promise<
   const sanitized = sanitizeFirestorePayload(logEntry);
 
   // 1. Persist directly to Firestore collection
-  try {
+  await safeFirestoreWrite(async () => {
     const docRef = doc(db, STAFF_LOGS_COLLECTION, logId);
     await setDoc(docRef, sanitized, { merge: true });
     console.log(`[StaffAuditLogger] Persisted ${params.actionType} by ${actorUsername} (${actorClearance}) to Firestore.`);
-  } catch (firestoreErr) {
-    console.warn('[StaffAuditLogger] Firestore direct save warning (will sync via API fallback):', firestoreErr);
-  }
+  });
 
   // 2. Sync to Server REST API endpoint
   try {
@@ -423,13 +422,16 @@ export function subscribeToStaffAuditLogs(
           const sorted = Array.from(mergedMap.values()).sort((a, b) => b.timestampMs - a.timestampMs);
           onUpdate(sorted);
         } else {
-          // If Firestore is empty, seed demo entries
+          // If Firestore is empty, show initial template logs in memory without firing auto-seeding writes
           onUpdate(INITIAL_STAFF_AUDIT_LOGS);
-          seedInitialStaffAuditLogs().catch(() => {});
         }
       },
       (error) => {
-        console.warn('[StaffAuditLogger] Real-time snapshot listener error, falling back to REST API:', error);
+        if (isResourceExhaustedError(error)) {
+          markFirestoreQuotaExhausted(error);
+        } else {
+          console.warn('[StaffAuditLogger] Real-time snapshot listener error, falling back to REST API:', error);
+        }
         // REST API Fallback
         fetch('/api/admin/staff-logs')
           .then(res => res.json())

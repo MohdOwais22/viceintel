@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { BUSINESSES_DATA } from '../data/businesses';
 import { Business } from '../types';
 import { getCachedBusinesses } from '../lib/offlineStorage';
+import { BUSINESSES_UPDATED_EVENT } from '../lib/businessStore';
+import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
 import { DollarSign, TrendingUp, Clock, ShieldCheck, Zap, AlertCircle, Printer, Wrench } from 'lucide-react';
 import { PrintReportModal, PrintReportData } from './PrintReportModal';
 
@@ -27,7 +29,24 @@ export const BusinessRoiCalculator: React.FC<BusinessRoiCalculatorProps> = ({ on
         }
       }
     });
+
+    const handleBusinessesUpdated = (e: CustomEvent<Business[]>) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setBusinessesList(e.detail);
+      }
+    };
+
+    window.addEventListener(BUSINESSES_UPDATED_EVENT as any, handleBusinessesUpdated);
+    return () => {
+      window.removeEventListener(BUSINESSES_UPDATED_EVENT as any, handleBusinessesUpdated);
+    };
   }, []);
+
+  useEffect(() => {
+    if (businessesList.length > 0) {
+      setSelectedBusiness((prev) => businessesList.find((b) => b.id === prev.id) || prev);
+    }
+  }, [businessesList]);
 
   const totalCapEx = selectedBusiness.purchasePrice + selectedBusiness.setupCost + (includeUpgrades ? selectedBusiness.maxUpgradesCost : 0);
   
@@ -164,7 +183,7 @@ export const BusinessRoiCalculator: React.FC<BusinessRoiCalculatorProps> = ({ on
                     }`}
                   >
                     <img
-                      src={biz.imageUrl}
+                      src={getCacheBustedImageUrl(biz.imageUrl, (biz as any).imageVersion || (biz as any).updatedAt)}
                       alt={biz.name}
                       className="w-14 h-14 aspect-square rounded-lg object-cover object-center shrink-0 border border-zinc-800/80 bg-zinc-950"
                       referrerPolicy="no-referrer"
@@ -226,7 +245,7 @@ export const BusinessRoiCalculator: React.FC<BusinessRoiCalculatorProps> = ({ on
           {/* Business Hero Image Banner */}
           <div className="relative h-44 md:h-48 w-full rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 group shrink-0">
             <img
-              src={selectedBusiness.imageUrl}
+              src={getCacheBustedImageUrl(selectedBusiness.imageUrl, (selectedBusiness as any).imageVersion || (selectedBusiness as any).updatedAt)}
               alt={selectedBusiness.name}
               className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
               referrerPolicy="no-referrer"

@@ -307,36 +307,39 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal, o
           </div>
 
           {/* BOTTOM BAR */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-zinc-500 pt-2">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-zinc-500 pt-2 border-t border-zinc-900 sm:border-t-0">
+            <div className="flex items-center gap-2 text-center sm:text-left">
               <span>© {new Date().getFullYear()} ViceIntel Network. Created for the global gaming community.</span>
             </div>
 
-            <div className="flex items-center gap-4 text-zinc-400">
+            <div className="flex flex-wrap items-center justify-center sm:justify-end gap-x-4 gap-y-2 text-zinc-400">
               <button
+                id="footer-nav-about-btn"
                 onClick={(e) => handleNav('about', e)}
-                className="text-zinc-300 hover:text-white font-medium transition cursor-pointer flex items-center gap-1.5"
+                className="text-zinc-300 hover:text-white font-medium transition cursor-pointer flex items-center gap-1.5 py-1 px-1.5 rounded-lg hover:bg-zinc-900 active:scale-95"
               >
                 <Info className="w-3.5 h-3.5 text-rose-400" />
                 <span>About Us</span>
               </button>
-              <span>•</span>
+              <span className="text-zinc-700 hidden sm:inline">•</span>
               <button
+                id="footer-nav-privacy-btn"
                 onClick={(e) => handleNav('privacy', e)}
-                className="text-zinc-300 hover:text-white font-medium transition cursor-pointer flex items-center gap-1.5"
+                className="text-zinc-300 hover:text-white font-medium transition cursor-pointer flex items-center gap-1.5 py-1 px-1.5 rounded-lg hover:bg-zinc-900 active:scale-95"
               >
                 <Shield className="w-3.5 h-3.5 text-rose-400" />
                 <span>Copyright & Privacy Policy</span>
               </button>
               {onOpenReportModal && (
                 <>
-                  <span>•</span>
+                  <span className="text-zinc-700 hidden sm:inline">•</span>
                   <button
+                    id="footer-nav-report-btn"
                     onClick={(e) => {
                       e.preventDefault();
                       onOpenReportModal();
                     }}
-                    className="text-rose-400 hover:text-rose-300 font-bold transition cursor-pointer flex items-center gap-1"
+                    className="text-rose-400 hover:text-rose-300 font-bold transition cursor-pointer flex items-center gap-1 py-1 px-1.5 rounded-lg hover:bg-zinc-900 active:scale-95"
                   >
                     <Bug className="w-3 h-3" />
                     <span>Report a Bug / Issue</span>

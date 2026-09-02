@@ -103,14 +103,14 @@ export interface Business {
   id: string;
   slug: string;
   name: string;
-  type: 'Nightclub' | 'Chop Shop' | 'Warehouse' | 'Counterfeit Cash' | 'Arcade' | 'Acid Lab';
+  type: string;
   location: string;
   purchasePrice: number;
   maxDailyIncome: number;
   setupCost: number;
   maxUpgradesCost: number;
   payoutFrequencyHours: number;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
+  difficulty: 'Easy' | 'Medium' | 'Hard' | string;
   riskRating?: string;
   description: string;
   imageUrl: string;
@@ -291,7 +291,7 @@ export interface ChatMessage {
   id: string;
   user: string;
   avatar: string;
-  channel: 'general' | 'tuning' | 'heists' | 'rp-servers';
+  channel: string;
   content: string;
   timestamp: string;
   isVip?: boolean;

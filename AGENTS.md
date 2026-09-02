@@ -24,6 +24,7 @@ All environment variables are declared in `.env.example` with fallback defaults 
 | `VIP_PRICE` | Client & Server | B2C VIP Monthly Pass price ($3.99/mo) |
 | `B2B_SPONSOR_PRICE` | Client & Server | B2B Sponsored RP Server Spot price ($49.00/mo) |
 | `DISCORD_CLIENT_ID` | Server & Client | Discord bot/widget integration client ID (`123456789012345678`) |
+| `DISCORD_INVITE_URL` | Client & Server | Official Community Discord server invite URL (Configurable in `.env`) |
 | `DATABASE_URL` | Server Only | Optional PostgreSQL connection string (`postgresql://...`) |
 | `DEFAULT_LOCALE` | Client & Server | Currency and date formatting locale (`en-US`) |
 | `ADMIN_PASSKEY` | Server & Client | Admin HQ authentication passkey (`VICE2026_L4`) |

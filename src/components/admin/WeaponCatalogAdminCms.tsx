@@ -11,6 +11,8 @@ import {
   WEAPONS_UPDATED_EVENT
 } from '../../lib/weaponStore';
 import { logStaffActivity } from '../../lib/staffAuditLogger';
+import { uploadImageAsset } from '../../lib/uploadService';
+import { getCacheBustedImageUrl } from '../../lib/imageCacheBuster';
 import {
   Crosshair,
   Plus,
@@ -29,7 +31,9 @@ import {
   Flame,
   Shield,
   Lock,
-  Wrench
+  Wrench,
+  Save,
+  Link as LinkIcon
 } from 'lucide-react';
 
 export const WeaponCatalogAdminCms: React.FC = () => {
@@ -78,6 +82,11 @@ export const WeaponCatalogAdminCms: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<Weapon | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
 
+  // Quick Image Upload Modal State
+  const [quickImageModalWpn, setQuickImageModalWpn] = useState<Weapon | null>(null);
+  const [quickImageUrlInput, setQuickImageUrlInput] = useState<string>('');
+  const quickFileInputRef = useRef<HTMLInputElement>(null);
+
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 4000);
@@ -118,46 +127,74 @@ export const WeaponCatalogAdminCms: React.FC = () => {
       return b.damage - a.damage;
     });
 
-  // Image compression utility for PC uploads
-  const processImageFile = (file: File) => {
+  // Upload asset to UploadThing CDN (No base64 data URLs)
+  const processImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       showNotification('⚠️ Please select a valid image file (PNG, JPG, WEBP).');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 600;
-        let width = img.width;
-        let height = img.height;
+    try {
+      showNotification('⏳ Uploading weapon image...');
+      const cdnUrl = await uploadImageAsset(file, 'weaponImage');
+      setFormData((prev) => ({ ...prev, imageUrl: cdnUrl }));
+      showNotification('✅ Weapon image uploaded and attached!');
+    } catch (err: any) {
+      showNotification(`❌ Upload failed: ${err?.message || 'Network error'}`);
+    }
+  };
 
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
+  const processQuickImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showNotification('⚠️ Please select a valid image file (PNG, JPG, WEBP).');
+      return;
+    }
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.80);
-        setFormData((prev) => ({ ...prev, imageUrl: dataUrl }));
-        showNotification('✅ Weapon image optimized and attached!');
+    try {
+      showNotification('⏳ Uploading weapon photo...');
+      const cdnUrl = await uploadImageAsset(file, 'weaponImage');
+      setQuickImageUrlInput(cdnUrl);
+      showNotification('✅ Photo uploaded and ready to save!');
+    } catch (err: any) {
+      showNotification(`❌ Upload failed: ${err?.message || 'Network error'}`);
+    }
+  };
+
+  const handleOpenQuickImage = (wpn: Weapon) => {
+    setQuickImageModalWpn(wpn);
+    setQuickImageUrlInput(wpn.imageUrl || '');
+  };
+
+  const handleSaveQuickImage = async () => {
+    if (!quickImageModalWpn) return;
+    const target = quickImageModalWpn;
+    const newUrl = quickImageUrlInput.trim() || target.imageUrl;
+
+    try {
+      const updatedWpn: Weapon = {
+        ...target,
+        imageUrl: newUrl,
+        imageVersion: Date.now(),
+        updatedAt: Date.now()
       };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+      const updatedList = await saveOrUpdateWeapon(updatedWpn);
+      setWeapons(updatedList);
+      setQuickImageModalWpn(null);
+      showNotification(`✅ Updated photo for "${target.name}" and synced to Cloud!`);
+
+      logStaffActivity({
+        actionType: 'CMS_CONTENT_UPDATE',
+        actionCategory: 'Content CMS',
+        targetId: target.id,
+        targetName: target.name,
+        targetType: 'weapon',
+        severity: 'LOW',
+        details: `Staff updated weapon image for "${target.name}" via Quick Image CMS.`
+      }).catch(() => {});
+    } catch (err) {
+      console.error('Quick image save error:', err);
+      showNotification('❌ Failed to update weapon photo.');
+    }
   };
 
   const handleOpenAdd = () => {
@@ -246,7 +283,9 @@ export const WeaponCatalogAdminCms: React.FC = () => {
       imageUrl:
         formData.imageUrl ||
         'https://images.unsplash.com/photo-1595590424283-b8f17842773f?w=800&q=80',
-      attachments: formData.attachments || []
+      attachments: formData.attachments || [],
+      imageVersion: editingWeapon?.imageVersion ? editingWeapon.imageVersion + 1 : Date.now(),
+      updatedAt: Date.now()
     };
 
     try {
@@ -445,7 +484,8 @@ export const WeaponCatalogAdminCms: React.FC = () => {
                   {/* Image Container */}
                   <div className="h-44 w-full bg-zinc-950 relative overflow-hidden">
                     <img
-                      src={wpn.imageUrl}
+                      key={`${wpn.id}-${wpn.imageVersion || wpn.updatedAt || wpn.imageUrl}`}
+                      src={getCacheBustedImageUrl(wpn.imageUrl, wpn.imageVersion || wpn.updatedAt)}
                       alt={wpn.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                     />
@@ -528,6 +568,14 @@ export const WeaponCatalogAdminCms: React.FC = () => {
 
                 {/* Card Footer Actions */}
                 <div className="p-4 pt-0 flex items-center justify-end gap-2 border-t border-zinc-800/40 mt-2">
+                  <button
+                    onClick={() => handleOpenQuickImage(wpn)}
+                    className="px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    title="Quick Upload Weapon Image"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Photo</span>
+                  </button>
                   <button
                     onClick={() => handleOpenEdit(wpn)}
                     className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
@@ -952,6 +1000,98 @@ export const WeaponCatalogAdminCms: React.FC = () => {
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Confirm Reset</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK IMAGE UPLOAD MODAL */}
+      {quickImageModalWpn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-amber-400" />
+                <h3 className="text-sm font-black text-white">
+                  Quick Photo Upload: {quickImageModalWpn.name}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickImageModalWpn(null)}
+                className="p-1.5 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Current/New Photo Preview */}
+            <div className="space-y-2">
+              <div className="relative h-44 w-full bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800">
+                <img
+                  src={quickImageUrlInput || quickImageModalWpn.imageUrl}
+                  alt={quickImageModalWpn.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1595590424283-b8f17842773f?w=800&q=80';
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* PC Upload Button */}
+            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-amber-500/40 hover:border-amber-400 rounded-2xl cursor-pointer bg-zinc-950/80 hover:bg-zinc-900 transition text-center p-2 group">
+              <Upload className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform mb-1" />
+              <span className="text-xs font-bold text-white">Upload New Photo from PC</span>
+              <span className="text-[9px] text-zinc-400">Click to browse your computer files</span>
+              <input
+                ref={quickFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    processQuickImageFile(file);
+                  }
+                }}
+              />
+            </label>
+
+            {/* Direct URL Input */}
+            <div>
+              <label className="text-[11px] font-bold text-zinc-300 block mb-1">
+                Or Direct Image URL
+              </label>
+              <div className="relative">
+                <LinkIcon className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="url"
+                  value={quickImageUrlInput}
+                  onChange={(e) => setQuickImageUrlInput(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setQuickImageModalWpn(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold hover:bg-zinc-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickImage}
+                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-black shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Photo</span>
               </button>
             </div>
           </div>

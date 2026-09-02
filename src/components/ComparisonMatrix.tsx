@@ -1,11 +1,14 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VEHICLES_DATA } from '../data/vehicles';
 import { WEAPONS_DATA } from '../data/weapons';
 import { Vehicle, Weapon } from '../types';
 import { UnitToggleSwitch } from './UnitToggleSwitch';
 import { getStoredUnitPreference, setStoredUnitPreference, formatSpeed, formatRange, convertSpeed, UnitSystem } from '../lib/unitConverter';
 import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
+import { getCachedVehicles, getCachedWeapons } from '../lib/offlineStorage';
+import { VEHICLES_UPDATED_EVENT } from '../lib/vehicleStore';
+import { WEAPONS_UPDATED_EVENT } from '../lib/weaponStore';
 import { Trophy, GitCompare, Gauge, Crosshair, Zap, DollarSign, ShieldAlert, Check, ShieldCheck, Flame } from 'lucide-react';
 
 interface ComparisonMatrixProps {
@@ -13,12 +16,22 @@ interface ComparisonMatrixProps {
   initialVehicleB?: Vehicle;
 }
 
+const getVehicleDisplayName = (v: Vehicle) => {
+  if (!v) return '';
+  if (v.name.toLowerCase().startsWith(v.brand.toLowerCase())) {
+    return v.name;
+  }
+  return `${v.brand} ${v.name}`;
+};
+
 export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
   initialVehicleA = VEHICLES_DATA[0],
   initialVehicleB = VEHICLES_DATA[1],
 }) => {
   const [compareMode, setCompareMode] = useState<'vehicles' | 'weapons'>('vehicles');
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(getStoredUnitPreference());
+  const [vehiclesList, setVehiclesList] = useState<Vehicle[]>(VEHICLES_DATA);
+  const [weaponsList, setWeaponsList] = useState<Weapon[]>(WEAPONS_DATA);
 
   const handleUnitChange = (newUnit: UnitSystem) => {
     setUnitSystem(newUnit);
@@ -32,6 +45,54 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
   // Weapon state
   const [weaponA, setWeaponA] = useState<Weapon>(WEAPONS_DATA[0]);
   const [weaponB, setWeaponB] = useState<Weapon>(WEAPONS_DATA[1]);
+
+  useEffect(() => {
+    getCachedVehicles().then((data) => {
+      if (data && data.length > 0) {
+        setVehiclesList(data);
+      }
+    });
+    getCachedWeapons().then((data) => {
+      if (data && data.length > 0) {
+        setWeaponsList(data);
+      }
+    });
+
+    const handleVehiclesUpdated = (e: CustomEvent<Vehicle[]>) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setVehiclesList(e.detail);
+      }
+    };
+
+    const handleWeaponsUpdated = (e: CustomEvent<Weapon[]>) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setWeaponsList(e.detail);
+      }
+    };
+
+    window.addEventListener(VEHICLES_UPDATED_EVENT as any, handleVehiclesUpdated);
+    window.addEventListener(WEAPONS_UPDATED_EVENT as any, handleWeaponsUpdated);
+    return () => {
+      window.removeEventListener(VEHICLES_UPDATED_EVENT as any, handleVehiclesUpdated);
+      window.removeEventListener(WEAPONS_UPDATED_EVENT as any, handleWeaponsUpdated);
+    };
+  }, []);
+
+  // Synchronize current selected vehicleA & vehicleB when vehiclesList updates from live database
+  useEffect(() => {
+    if (vehiclesList.length > 0) {
+      setVehicleA((prev) => vehiclesList.find((v) => v.id === prev.id) || prev);
+      setVehicleB((prev) => vehiclesList.find((v) => v.id === prev.id) || prev);
+    }
+  }, [vehiclesList]);
+
+  // Synchronize current selected weaponA & weaponB when weaponsList updates from live database
+  useEffect(() => {
+    if (weaponsList.length > 0) {
+      setWeaponA((prev) => weaponsList.find((w) => w.id === prev.id) || prev);
+      setWeaponB((prev) => weaponsList.find((w) => w.id === prev.id) || prev);
+    }
+  }, [weaponsList]);
 
   // Vehicle winners
   const getVehicleWinner = (stat: 'topSpeedMph' | 'acceleration' | 'braking' | 'handling' | 'price') => {
@@ -119,14 +180,14 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <select
                 value={vehicleA.id}
                 onChange={(e) => {
-                  const found = VEHICLES_DATA.find((v) => v.id === e.target.value);
+                  const found = vehiclesList.find((v) => v.id === e.target.value);
                   if (found) setVehicleA(found);
                 }}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500"
               >
-                {VEHICLES_DATA.map((v) => (
+                {vehiclesList.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.brand} {v.name} (${v.price.toLocaleString('en-US')})
+                    {getVehicleDisplayName(v)} (${v.price.toLocaleString('en-US')})
                   </option>
                 ))}
               </select>
@@ -138,14 +199,14 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <select
                 value={vehicleB.id}
                 onChange={(e) => {
-                  const found = VEHICLES_DATA.find((v) => v.id === e.target.value);
+                  const found = vehiclesList.find((v) => v.id === e.target.value);
                   if (found) setVehicleB(found);
                 }}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500"
               >
-                {VEHICLES_DATA.map((v) => (
+                {vehiclesList.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.brand} {v.name} (${v.price.toLocaleString('en-US')})
+                    {getVehicleDisplayName(v)} (${v.price.toLocaleString('en-US')})
                   </option>
                 ))}
               </select>
@@ -159,12 +220,12 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <select
                 value={weaponA.id}
                 onChange={(e) => {
-                  const found = WEAPONS_DATA.find((w) => w.id === e.target.value);
+                  const found = weaponsList.find((w) => w.id === e.target.value);
                   if (found) setWeaponA(found);
                 }}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500"
               >
-                {WEAPONS_DATA.map((w) => (
+                {weaponsList.map((w) => (
                   <option key={w.id} value={w.id}>
                     {w.name} - {w.category} (${w.price.toLocaleString('en-US')})
                   </option>
@@ -178,12 +239,12 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <select
                 value={weaponB.id}
                 onChange={(e) => {
-                  const found = WEAPONS_DATA.find((w) => w.id === e.target.value);
+                  const found = weaponsList.find((w) => w.id === e.target.value);
                   if (found) setWeaponB(found);
                 }}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500"
               >
-                {WEAPONS_DATA.map((w) => (
+                {weaponsList.map((w) => (
                   <option key={w.id} value={w.id}>
                     {w.name} - {w.category} (${w.price.toLocaleString('en-US')})
                   </option>

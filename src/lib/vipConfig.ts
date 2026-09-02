@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ENV } from './envConfig';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { safeFirestoreWrite, markFirestoreQuotaExhausted, isResourceExhaustedError } from './firebase/firestoreCircuitBreaker';
 
 export interface SystemPricingConfig {
   vipPrice: number;
@@ -69,7 +70,11 @@ export function initPricingListener() {
         notifyListeners();
       }
     }, (err) => {
-      console.warn('Pricing Firestore onSnapshot warning:', err);
+      if (isResourceExhaustedError(err)) {
+        markFirestoreQuotaExhausted(err);
+      } else {
+        console.warn('Pricing Firestore onSnapshot warning:', err);
+      }
     });
   } catch (e) {
     console.warn('Failed to attach pricing listener:', e);
@@ -197,12 +202,10 @@ export async function updatePricingConfigInFirestore(newConfig: Partial<SystemPr
   notifyListeners();
 
   // 2. Firestore Sync
-  try {
+  await safeFirestoreWrite(async () => {
     const docRef = doc(db, 'systemConfig', 'pricing');
     await setDoc(docRef, updated, { merge: true });
-  } catch (err) {
-    console.warn('Failed to update pricing in Firestore:', err);
-  }
+  });
 
   // 3. Server API Sync
   try {

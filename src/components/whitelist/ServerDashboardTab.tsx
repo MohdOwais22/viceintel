@@ -73,6 +73,7 @@ import {
 import { RP_SERVERS_DATA } from '../../data/rpServers';
 import { resolveApplicantAvatar } from '../../data/avatars';
 import { copyToClipboard } from '../../lib/copyUtils';
+import { uploadImageAsset } from '../../lib/uploadService';
 import { 
   getFormConfigBySlug, 
   saveFormConfig, 
@@ -301,8 +302,8 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
     return () => clearTimeout(t);
   }, [branding.bannerUrl]);
 
-  // Direct File Upload Handler
-  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
+  // Direct File Upload Handler (Uploads to UploadThing CDN, avoiding base64 data URLs)
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -312,24 +313,31 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
       return;
     }
 
-    if (file.size > 6 * 1024 * 1024) {
-      if (type === 'logo') setLogoErrorMsg('File size exceeds 6MB. Please compress your image.');
-      else setBannerErrorMsg('File size exceeds 6MB. Please compress your image.');
+    if (file.size > 4 * 1024 * 1024) {
+      if (type === 'logo') setLogoErrorMsg('File size exceeds 4MB. Please compress your image.');
+      else setBannerErrorMsg('File size exceeds 4MB. Please compress your image.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        if (type === 'logo') {
-          setBranding(prev => ({ ...prev, logoUrl: dataUrl }));
-        } else {
-          setBranding(prev => ({ ...prev, bannerUrl: dataUrl }));
-        }
+    try {
+      if (type === 'logo') {
+        setLogoErrorMsg(null);
+      } else {
+        setBannerErrorMsg(null);
       }
-    };
-    reader.readAsDataURL(file);
+
+      const endpoint = type === 'logo' ? 'avatar' : 'serverBanner';
+      const cdnUrl = await uploadImageAsset(file, endpoint);
+      
+      if (type === 'logo') {
+        setBranding(prev => ({ ...prev, logoUrl: cdnUrl }));
+      } else {
+        setBranding(prev => ({ ...prev, bannerUrl: cdnUrl }));
+      }
+    } catch (err: any) {
+      if (type === 'logo') setLogoErrorMsg(`Upload failed: ${err?.message || 'Network error'}`);
+      else setBannerErrorMsg(`Upload failed: ${err?.message || 'Network error'}`);
+    }
   };
 
 

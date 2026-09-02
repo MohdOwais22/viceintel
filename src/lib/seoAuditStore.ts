@@ -1,5 +1,6 @@
 import { doc, setDoc, deleteDoc, collection, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
+import { safeFirestoreWrite, markFirestoreQuotaExhausted, isResourceExhaustedError } from './firebase/firestoreCircuitBreaker';
 import { saveSeoOverride, getSeoOverride, CURATED_GTA6_OG_PRESETS, sanitizeFirestoreData } from './seoStore';
 import { setMetaTag, setCanonicalUrl, updatePageSeoMeta, getTabFromPath, TAB_TITLES, TAB_DESCRIPTIONS } from './seoRouting';
 import { SeoAuditReport, SeoIssue } from '../components/marketing/agency/types';
@@ -51,22 +52,6 @@ export function initAuditFixesRealtimeSync(): () => void {
           if (data && data.fixes && typeof data.fixes === 'object') {
             memoryResolvedIssues = { ...memoryResolvedIssues, ...data.fixes };
           }
-        } else {
-          // Fallback to legacy documents if bundle does not exist
-          const colRef = collection(db, 'seo_audit_fixes');
-          getDocs(colRef).then((snapshot) => {
-            const newMap: Record<string, AuditResolutionRecord> = {};
-            snapshot.docs.forEach((docSnap) => {
-              if (docSnap.id !== 'master_audit_fixes_bundle') {
-                const data = docSnap.data() as AuditResolutionRecord;
-                if (data && data.id) newMap[data.id] = data;
-              }
-            });
-            if (Object.keys(newMap).length > 0) {
-              memoryResolvedIssues = { ...memoryResolvedIssues, ...newMap };
-              setDoc(docRef, { fixes: memoryResolvedIssues, updatedAt: Date.now() }, { merge: true }).catch(() => {});
-            }
-          }).catch(() => {});
         }
 
         try {
@@ -78,7 +63,11 @@ export function initAuditFixesRealtimeSync(): () => void {
         subscribers.forEach((cb) => cb(memoryResolvedIssues));
       },
       (err) => {
-        console.warn('Firestore onSnapshot warning for seo_audit_fixes master bundle:', err);
+        if (isResourceExhaustedError(err)) {
+          markFirestoreQuotaExhausted(err);
+        } else {
+          console.warn('Firestore onSnapshot warning for seo_audit_fixes master bundle:', err);
+        }
       }
     );
 
@@ -118,15 +107,10 @@ export async function markIssueResolved(record: AuditResolutionRecord): Promise<
 
   subscribers.forEach((cb) => cb(memoryResolvedIssues));
 
-  const docId = `${record.targetUrl.replace(/[^a-zA-Z0-9]/g, '_')}_${record.id}`;
-  try {
-    const sanitized = sanitizeFirestoreData(record);
+  await safeFirestoreWrite(async () => {
     const docRef = doc(db, 'seo_audit_fixes', 'master_audit_fixes_bundle');
     await setDoc(docRef, { fixes: memoryResolvedIssues, updatedAt: Date.now() }, { merge: true });
-    setDoc(doc(db, 'seo_audit_fixes', docId), sanitized, { merge: true }).catch(() => {});
-  } catch (err) {
-    console.warn('Failed to save audit fix to Firestore (persisted locally):', err);
-  }
+  });
 }
 
 /**

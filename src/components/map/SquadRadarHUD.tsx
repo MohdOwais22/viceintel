@@ -13,9 +13,13 @@ import {
   Crosshair,
   Sparkles,
   Lock,
+  Unlock,
+  KeyRound,
+  UserX,
   X,
   ExternalLink,
   ShieldAlert,
+  ShieldCheck,
   Compass,
   Flame,
   ChevronRight,
@@ -28,9 +32,12 @@ export interface SquadRadarHUDProps {
   squadRoom: SquadRoom | null;
   currentUserId: string;
   isVipUser: boolean;
-  onCreateRoom: (isVip: boolean) => void;
-  onJoinRoom: (roomId: string) => void;
+  onCreateRoom: (isVip: boolean, passcode?: string) => void;
+  onJoinRoom: (roomId: string, passcode?: string) => void;
   onLeaveRoom: () => void;
+  onKickMember?: (targetUid: string) => void;
+  onToggleLockRoom?: (isLocked: boolean) => void;
+  onUpdatePasscode?: (passcode?: string) => void;
   onFocusMember: (uid: string, member: SquadMember) => void;
   followingMemberUid?: string | null;
   onToggleFollowMember?: (uid: string | null, member?: SquadMember) => void;
@@ -46,6 +53,9 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
   onCreateRoom,
   onJoinRoom,
   onLeaveRoom,
+  onKickMember,
+  onToggleLockRoom,
+  onUpdatePasscode,
   onFocusMember,
   followingMemberUid,
   onToggleFollowMember,
@@ -54,12 +64,21 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
   onOpenVipModal
 }) => {
   const [inputRoomCode, setInputRoomCode] = useState('');
+  const [inputPasscode, setInputPasscode] = useState('');
+  const [showPasscodePrompt, setShowPasscodePrompt] = useState(false);
+  const [pendingJoinRoomId, setPendingJoinRoomId] = useState('');
+  
+  // Host Passcode Settings State
+  const [showHostPasscodeConfig, setShowHostPasscodeConfig] = useState(false);
+  const [newHostPasscode, setNewHostPasscode] = useState('');
+
   const [copiedLink, setCopiedLink] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
 
   const connectedMembers = squadRoom?.members ? Object.entries(squadRoom.members) : [];
   const memberCount = connectedMembers.length;
   const maxCapacity = squadRoom?.isVipRoom ? 8 : 2;
+  const isHost = Boolean(squadRoom && squadRoom.hostUid === currentUserId);
 
   const handleCopyInviteLink = () => {
     if (!squadRoom?.roomId) return;
@@ -73,8 +92,18 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
   const handleJoinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputRoomCode.trim()) return;
-    onJoinRoom(inputRoomCode.trim().toUpperCase());
+    const code = inputRoomCode.trim().toUpperCase();
+    onJoinRoom(code, inputPasscode.trim() || undefined);
     setInputRoomCode('');
+    setInputPasscode('');
+  };
+
+  const handleSavePasscode = () => {
+    if (onUpdatePasscode) {
+      onUpdatePasscode(newHostPasscode.trim() || undefined);
+    }
+    setShowHostPasscodeConfig(false);
+    setNewHostPasscode('');
   };
 
   return (
@@ -106,8 +135,18 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                     </span>
                   )}
                 </div>
-                <p className="text-[10px] text-zinc-400 font-medium">
-                  {squadRoom ? `Room Code: ${squadRoom.roomId}` : 'Co-Op Party Map Sync'}
+                <p className="text-[10px] text-zinc-400 font-medium flex items-center gap-1.5">
+                  <span>{squadRoom ? `Room Code: ${squadRoom.roomId}` : 'Co-Op Party Map Sync'}</span>
+                  {squadRoom?.isLocked && (
+                    <span className="px-1.5 py-0.2 bg-rose-500/20 text-rose-300 border border-rose-500/40 rounded text-[9px] font-extrabold flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" /> Locked
+                    </span>
+                  )}
+                  {squadRoom?.passcode && (
+                    <span className="px-1.5 py-0.2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded text-[9px] font-extrabold flex items-center gap-1">
+                      <KeyRound className="w-2.5 h-2.5" /> PIN Protected
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -129,11 +168,21 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                   {/* Room Quick Bar & Share Button */}
                   <div className="p-3 bg-zinc-900/80 border border-zinc-800/90 rounded-xl flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                        Active Squad Session
+                      <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                        <span>Active Squad Session</span>
+                        {isHost && (
+                          <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-black border border-amber-500/40">
+                            👑 HOST
+                          </span>
+                        )}
                       </div>
-                      <div className="text-sm font-black text-rose-400 font-mono tracking-widest">
-                        {squadRoom.roomId}
+                      <div className="text-sm font-black text-rose-400 font-mono tracking-widest flex items-center gap-1.5">
+                        <span>{squadRoom.roomId}</span>
+                        {squadRoom.passcode && (
+                          <span className="text-[10px] text-cyan-400 bg-cyan-950/80 border border-cyan-800/80 px-1.5 py-0.5 rounded font-mono">
+                            PIN: {squadRoom.passcode}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] text-zinc-400">
                         Capacity: <span className="text-zinc-200 font-bold">{memberCount} / {maxCapacity} Players</span>
@@ -148,7 +197,7 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                         title="Copy Shareable Invite Link"
                       >
                         {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Share2 className="w-3.5 h-3.5" />}
-                        <span>{copiedLink ? 'Copied Link!' : 'Invite'}</span>
+                        <span>{copiedLink ? 'Copied!' : 'Invite'}</span>
                       </button>
 
                       <button
@@ -161,6 +210,74 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                       </button>
                     </div>
                   </div>
+
+                  {/* Host Security Toolbar (Lock Room & Passcode PIN) */}
+                  {isHost && (
+                    <div className="p-2.5 bg-zinc-900/90 border border-zinc-800 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between text-[10px] font-extrabold text-zinc-300 uppercase tracking-wider">
+                        <span className="flex items-center gap-1 text-amber-400">
+                          <ShieldCheck className="w-3.5 h-3.5" /> Host Security Controls
+                        </span>
+                        <span>{squadRoom.isLocked ? 'Room Locked' : 'Room Open'}</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onToggleLockRoom && onToggleLockRoom(!squadRoom.isLocked)}
+                          className={`py-1.5 px-2.5 rounded-lg text-[11px] font-extrabold transition flex items-center justify-center gap-1.5 cursor-pointer border ${
+                            squadRoom.isLocked
+                              ? 'bg-rose-600/20 text-rose-300 border-rose-500/50 hover:bg-rose-600/30'
+                              : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
+                          }`}
+                        >
+                          {squadRoom.isLocked ? <Lock className="w-3.5 h-3.5 text-rose-400" /> : <Unlock className="w-3.5 h-3.5 text-zinc-400" />}
+                          <span>{squadRoom.isLocked ? 'Unlock Room' : 'Lock Room'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewHostPasscode(squadRoom.passcode || '');
+                            setShowHostPasscodeConfig(!showHostPasscodeConfig);
+                          }}
+                          className={`py-1.5 px-2.5 rounded-lg text-[11px] font-extrabold transition flex items-center justify-center gap-1.5 cursor-pointer border ${
+                            squadRoom.passcode
+                              ? 'bg-cyan-600/20 text-cyan-300 border-cyan-500/50 hover:bg-cyan-600/30'
+                              : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
+                          }`}
+                        >
+                          <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>{squadRoom.passcode ? `PIN: ${squadRoom.passcode}` : 'Set Room PIN'}</span>
+                        </button>
+                      </div>
+
+                      {showHostPasscodeConfig && (
+                        <div className="pt-2 border-t border-zinc-800 space-y-2">
+                          <label className="block text-[10px] text-zinc-400 font-bold uppercase">
+                            Room Passcode PIN (Optional 4 Digits)
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              maxLength={6}
+                              value={newHostPasscode}
+                              onChange={(e) => setNewHostPasscode(e.target.value)}
+                              placeholder="e.g. 1234 (Blank to clear)"
+                              className="flex-1 px-2.5 py-1 bg-zinc-950 border border-zinc-700 rounded-lg text-xs font-mono font-bold text-zinc-100 focus:outline-none focus:border-cyan-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSavePasscode}
+                              className="py-1 px-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                            >
+                              Save PIN
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Connected Squad Roster */}
                   <div>
@@ -177,6 +294,7 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
                       {connectedMembers.map(([uid, member]) => {
                         const isSelf = uid === currentUserId;
+                        const isMemberHost = uid === squadRoom.hostUid;
                         return (
                           <div
                             key={uid}
@@ -195,6 +313,11 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                                       YOU
                                     </span>
                                   )}
+                                  {isMemberHost && (
+                                    <span className="text-[9px] font-extrabold text-amber-300 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/30">
+                                      👑 HOST
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[9px] text-zinc-400 font-mono truncate">
                                   Lat: {member.lat?.toFixed(3) || '0'}, Lng: {member.lng?.toFixed(3) || '0'}
@@ -203,6 +326,18 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
+                              {/* Host Kick Button */}
+                              {isHost && !isSelf && onKickMember && (
+                                <button
+                                  type="button"
+                                  onClick={() => onKickMember(uid)}
+                                  className="p-1.5 bg-zinc-800 hover:bg-rose-600/80 text-zinc-400 hover:text-white rounded-lg transition cursor-pointer"
+                                  title="Kick Player from Squad Room"
+                                >
+                                  <UserX className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+
                               {onToggleFollowMember && (
                                 <button
                                   type="button"
@@ -295,8 +430,8 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                     </button>
                   </div>
 
-                  <form onSubmit={handleJoinSubmit} className="pt-2 border-t border-zinc-800/80">
-                    <label className="block text-[10px] font-bold text-zinc-400 mb-1 uppercase tracking-wider">
+                  <form onSubmit={handleJoinSubmit} className="pt-2 border-t border-zinc-800/80 space-y-2">
+                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                       Join Existing Squad Room
                     </label>
                     <div className="flex gap-2">
@@ -304,7 +439,7 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                         type="text"
                         value={inputRoomCode}
                         onChange={(e) => setInputRoomCode(e.target.value)}
-                        placeholder="e.g. VC-9482"
+                        placeholder="Room Code (e.g. VC-9482)"
                         className="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs font-mono font-bold text-zinc-100 focus:outline-none focus:border-rose-500"
                       />
                       <button
@@ -313,6 +448,18 @@ export const SquadRadarHUD: React.FC<SquadRadarHUDProps> = ({
                       >
                         Join
                       </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <KeyRound className="w-3 h-3 text-zinc-400" />
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={inputPasscode}
+                        onChange={(e) => setInputPasscode(e.target.value)}
+                        placeholder="PIN Passcode (if room is protected)"
+                        className="w-full px-2.5 py-1.5 bg-zinc-900/80 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-300 focus:outline-none focus:border-cyan-500"
+                      />
                     </div>
                   </form>
                 </div>

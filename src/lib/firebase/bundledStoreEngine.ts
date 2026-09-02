@@ -2,6 +2,7 @@ import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import localforage from 'localforage';
 import { withItemVersioning } from '../imageCacheBuster';
+import { safeFirestoreWrite, markFirestoreQuotaExhausted, isResourceExhaustedError } from './firestoreCircuitBreaker';
 
 export interface BundledCatalog<T> {
   id: string;
@@ -182,6 +183,21 @@ export class BundledStoreEngine<T extends { id: string }> {
   }
 
   /**
+   * Merges loaded items with any default items that may have been newly added to code.
+   */
+  public mergeWithDefaults(loadedItems: T[]): T[] {
+    if (!Array.isArray(loadedItems) || loadedItems.length === 0) {
+      return this.defaultItems;
+    }
+    const loadedIds = new Set(loadedItems.map((i) => i.id));
+    const missingDefaults = this.defaultItems.filter((d) => !loadedIds.has(d.id));
+    if (missingDefaults.length === 0) {
+      return loadedItems;
+    }
+    return [...loadedItems, ...missingDefaults];
+  }
+
+  /**
    * Initializes real-time listener on the SINGLE bundled document.
    * Reads 1 document instead of N collection documents!
    */
@@ -193,18 +209,17 @@ export class BundledStoreEngine<T extends { id: string }> {
       const docRef = doc(db, this.bundleCollection, this.bundleDocId);
       this.unsubscribeListener = onSnapshot(docRef, async (docSnap) => {
         if (!docSnap.exists()) {
-          console.log(`[BundledEngine] Bundle doc ${this.bundleCollection}/${this.bundleDocId} is missing. Auto-seeding master bundle...`);
-          try {
-            await this.writeBundleToFirestore(this.defaultItems);
-          } catch (seedErr) {
-            console.warn(`[BundledEngine] Failed to seed bundle doc:`, seedErr);
-          }
+          // If remote bundle doesn't exist yet, populate in-memory and local store with defaults without firing network writes
+          this.inMemoryCache = this.defaultItems;
+          await this.localStore.setItem(this.storageKey, this.defaultItems);
+          window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: this.defaultItems }));
           return;
         }
 
         const items = await this.parseDocSnapItems(docSnap);
-        if (items && items.length > 0) {
-          const sorted = this.sortFn(items);
+        const merged = this.mergeWithDefaults(items);
+        if (merged && merged.length > 0) {
+          const sorted = this.sortFn(merged);
           this.inMemoryCache = sorted;
 
           // Save to local offline caches
@@ -217,7 +232,11 @@ export class BundledStoreEngine<T extends { id: string }> {
           window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
         }
       }, (err) => {
-        console.warn(`[BundledEngine] Real-time sync error for ${this.bundleCollection}:`, err);
+        if (isResourceExhaustedError(err)) {
+          markFirestoreQuotaExhausted(err);
+        } else {
+          console.warn(`[BundledEngine] Real-time sync error for ${this.bundleCollection}:`, err);
+        }
       });
     } catch (err) {
       console.warn(`[BundledEngine] Could not establish Firestore listener for ${this.bundleCollection}:`, err);
@@ -231,14 +250,18 @@ export class BundledStoreEngine<T extends { id: string }> {
     this.initializeSync();
 
     if (this.inMemoryCache && this.inMemoryCache.length > 0) {
+      const merged = this.mergeWithDefaults(this.inMemoryCache);
+      this.inMemoryCache = this.sortFn(merged);
       return this.inMemoryCache;
     }
 
     try {
       const cached = await this.localStore.getItem<T[]>(this.storageKey);
       if (cached && Array.isArray(cached) && cached.length > 0) {
-        this.inMemoryCache = cached;
-        return cached;
+        const merged = this.mergeWithDefaults(cached);
+        const sorted = this.sortFn(merged);
+        this.inMemoryCache = sorted;
+        return sorted;
       }
     } catch (err) {
       console.warn(`[BundledEngine] Error reading localforage for ${this.storageKey}:`, err);
@@ -250,9 +273,11 @@ export class BundledStoreEngine<T extends { id: string }> {
         if (rawLocal) {
           const parsed = JSON.parse(rawLocal);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            this.inMemoryCache = parsed;
-            await this.localStore.setItem(this.storageKey, parsed);
-            return parsed;
+            const merged = this.mergeWithDefaults(parsed);
+            const sorted = this.sortFn(merged);
+            this.inMemoryCache = sorted;
+            await this.localStore.setItem(this.storageKey, sorted);
+            return sorted;
           }
         }
       } catch (e) {}
@@ -273,8 +298,9 @@ export class BundledStoreEngine<T extends { id: string }> {
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const items = await this.parseDocSnapItems(docSnap);
-        if (items && items.length > 0) {
-          const sorted = this.sortFn(items);
+        const merged = this.mergeWithDefaults(items);
+        if (merged && merged.length > 0) {
+          const sorted = this.sortFn(merged);
           this.inMemoryCache = sorted;
           await this.localStore.setItem(this.storageKey, sorted);
           try {
@@ -425,7 +451,7 @@ export class BundledStoreEngine<T extends { id: string }> {
    */
   private async writeBundleToFirestore(items: T[]): Promise<void> {
     if (!db) return;
-    try {
+    await safeFirestoreWrite(async () => {
       this.currentVersion = (this.currentVersion || 0) + 1;
       const now = Date.now();
       const docRef = doc(db, this.bundleCollection, this.bundleDocId);
@@ -500,10 +526,7 @@ export class BundledStoreEngine<T extends { id: string }> {
       await setDoc(docRef, cleanedManifest);
 
       console.log(`[BundledEngine] Saved chunked bundle (v${this.currentVersion}) to Firestore for ${this.bundleCollection} (${items.length} items across ${chunks.length} chunks, total ~${Math.round(serializedItems.length / 1024)} KB)`);
-    } catch (fsErr) {
-      console.error(`[BundledEngine] Firestore bundle write failure for ${this.bundleCollection}:`, fsErr);
-      throw fsErr;
-    }
+    });
   }
 
   /**

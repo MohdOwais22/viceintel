@@ -1,5 +1,6 @@
 import { doc, getDoc, getDocs, setDoc, deleteDoc, collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from './firebase';
+import { safeFirestoreWrite, markFirestoreQuotaExhausted, isResourceExhaustedError } from './firebase/firestoreCircuitBreaker';
 import { SeoMetaOverride, ActiveTab } from '../types';
 import { TAB_TITLES, TAB_DESCRIPTIONS, TAB_TO_PATH, updatePageSeoMeta } from './seoRouting';
 
@@ -439,22 +440,6 @@ export function initSeoRealtimeSync(onActiveTabChanged?: () => void): () => void
           if (data && data.overrides && typeof data.overrides === 'object') {
             memoryOverrides = data.overrides;
           }
-        } else {
-          // Backwards compatibility fallback if bundle doesn't exist yet
-          const colRef = collection(db, 'seo_meta_overrides');
-          getDocs(colRef).then((snapshot) => {
-            const newMap: Record<string, SeoMetaOverride> = {};
-            snapshot.docs.forEach((d) => {
-              if (d.id !== 'master_seo_bundle') {
-                const item = d.data() as SeoMetaOverride;
-                if (item && item.sectionId) newMap[item.sectionId] = item;
-              }
-            });
-            if (Object.keys(newMap).length > 0) {
-              memoryOverrides = newMap;
-              setDoc(docRef, { overrides: newMap, updatedAt: Date.now() }, { merge: true }).catch(() => {});
-            }
-          }).catch(() => {});
         }
 
         try {
@@ -476,7 +461,11 @@ export function initSeoRealtimeSync(onActiveTabChanged?: () => void): () => void
         }
       },
       (err) => {
-        console.warn('Firestore onSnapshot warning for seo_meta_overrides master bundle:', err);
+        if (isResourceExhaustedError(err)) {
+          markFirestoreQuotaExhausted(err);
+        } else {
+          console.warn('Firestore onSnapshot warning for seo_meta_overrides master bundle:', err);
+        }
       }
     );
 
@@ -576,16 +565,11 @@ export async function saveSeoOverride(override: Partial<SeoMetaOverride> & { sec
   subscribers.forEach((cb) => cb(memoryOverrides));
 
   // Write directly to Firestore master bundle (1 write total - Thanh Le pattern)
-  try {
+  await safeFirestoreWrite(async () => {
     const docRef = doc(db, 'seo_meta_overrides', 'master_seo_bundle');
     await setDoc(docRef, { overrides: memoryOverrides, updatedAt: Date.now() }, { merge: true });
-    // Also update individual document for legacy compatibility
-    setDoc(doc(db, 'seo_meta_overrides', sectionId), sanitizedPayload, { merge: true }).catch(() => {});
-    return true;
-  } catch (err) {
-    console.error('Failed to write SEO override to Firestore:', err);
-    throw err;
-  }
+  });
+  return true;
 }
 
 /**
@@ -602,15 +586,11 @@ export async function deleteSeoOverride(sectionId: string): Promise<boolean> {
 
   subscribers.forEach((cb) => cb(memoryOverrides));
 
-  try {
+  await safeFirestoreWrite(async () => {
     const docRef = doc(db, 'seo_meta_overrides', 'master_seo_bundle');
     await setDoc(docRef, { overrides: memoryOverrides, updatedAt: Date.now() }, { merge: true });
-    deleteDoc(doc(db, 'seo_meta_overrides', sectionId)).catch(() => {});
-    return true;
-  } catch (err) {
-    console.error('Failed to delete SEO override from Firestore:', err);
-    throw err;
-  }
+  });
+  return true;
 }
 
 /**

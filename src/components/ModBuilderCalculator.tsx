@@ -1,7 +1,10 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VEHICLES_DATA } from '../data/vehicles';
 import { ModUpgradeOption, Vehicle, CommunityBuild } from '../types';
+import { getCachedVehicles } from '../lib/offlineStorage';
+import { VEHICLES_UPDATED_EVENT } from '../lib/vehicleStore';
+import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
 import { Wrench, DollarSign, Zap, Gauge, Shield, Plus, Check, RotateCcw, Share2, Printer, Sparkles, ThumbsUp, Search, Flame, ArrowUpDown, ChevronLeft, ChevronRight, Copy, Download, FileCode } from 'lucide-react';
 import { PrintReportModal, PrintReportData } from './PrintReportModal';
 
@@ -9,8 +12,42 @@ interface ModBuilderCalculatorProps {
   onSwitchTab?: (tab: string) => void;
 }
 
+const getVehicleDisplayName = (v: Vehicle) => {
+  if (!v) return '';
+  if (v.name.toLowerCase().startsWith(v.brand.toLowerCase())) {
+    return v.name;
+  }
+  return `${v.brand} ${v.name}`;
+};
+
 export const ModBuilderCalculator: React.FC<ModBuilderCalculatorProps> = ({ onSwitchTab }) => {
+  const [vehiclesList, setVehiclesList] = useState<Vehicle[]>(VEHICLES_DATA);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle>(VEHICLES_DATA[0]);
+
+  useEffect(() => {
+    getCachedVehicles().then((data) => {
+      if (data && data.length > 0) {
+        setVehiclesList(data);
+      }
+    });
+
+    const handleVehiclesUpdated = (e: CustomEvent<Vehicle[]>) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setVehiclesList(e.detail);
+      }
+    };
+
+    window.addEventListener(VEHICLES_UPDATED_EVENT as any, handleVehiclesUpdated);
+    return () => {
+      window.removeEventListener(VEHICLES_UPDATED_EVENT as any, handleVehiclesUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (vehiclesList.length > 0) {
+      setSelectedVehicle((prev) => vehiclesList.find((v) => v.id === prev.id) || prev);
+    }
+  }, [vehiclesList]);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [printReportData, setPrintReportData] = useState<PrintReportData | null>(null);
   const [cloneToast, setCloneToast] = useState<string | null>(null);
@@ -535,14 +572,14 @@ export const ModBuilderCalculator: React.FC<ModBuilderCalculatorProps> = ({ onSw
             <select
               value={selectedVehicle.id}
               onChange={(e) => {
-                const found = VEHICLES_DATA.find((v) => v.id === e.target.value);
+                const found = vehiclesList.find((v) => v.id === e.target.value);
                 if (found) setSelectedVehicle(found);
               }}
               className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
             >
-              {VEHICLES_DATA.filter((v) => v.isCustomizable).map((v) => (
+              {vehiclesList.filter((v) => v.isCustomizable !== false).map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.brand} {v.name} (${v.price.toLocaleString('en-US')})
+                  {getVehicleDisplayName(v)} (${v.price.toLocaleString('en-US')})
                 </option>
               ))}
             </select>
