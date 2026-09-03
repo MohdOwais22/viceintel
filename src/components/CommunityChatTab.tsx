@@ -72,7 +72,7 @@ import {
   Maximize2,
   Minimize2
 } from 'lucide-react';
-import { collection, addDoc, setDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, setDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, doc, serverTimestamp, updateDoc, deleteDoc, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { safeFirestoreWrite } from '../lib/firebase/firestoreCircuitBreaker';
 import {
@@ -1016,6 +1016,13 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     remoteAudioElementsRef.current = {};
   };
 
+  // Ensure all microphone tracks, VAD timers, audio contexts, and WebRTC peers are completely halted on component unmount
+  useEffect(() => {
+    return () => {
+      stopMicAndAudio();
+    };
+  }, []);
+
   const [voiceRooms, setVoiceRooms] = useState<Record<string, VoiceParticipant[]>>({
     general: [
       {
@@ -1285,7 +1292,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     // 2. Firestore fallback signal listener
     try {
       const signalsRef = collection(db, 'voiceComms', activeVoiceChannel, 'signals');
-      const q = query(signalsRef, orderBy('timestampMs', 'asc'));
+      const q = query(signalsRef, orderBy('timestampMs', 'asc'), limit(50));
 
       unsubFs = onSnapshot(q, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
@@ -1794,7 +1801,8 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
 
     // 2. Subscribe to Firestore custom channels
     try {
-      unsubChannels = onSnapshot(collection(db, 'customChannels'), (snapshot) => {
+      const channelsQuery = query(collection(db, 'customChannels'), limit(40));
+      unsubChannels = onSnapshot(channelsQuery, (snapshot) => {
         const fsChannels = snapshot.docs.map(d => {
           const data = d.data();
           return {
@@ -2110,8 +2118,8 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
   const [redeemedVouchersMap, setRedeemedVouchersMap] = useState<Record<string, { isRedeemed: boolean; redeemedByUsername?: string }>>({});
 
   useEffect(() => {
-    const giftCardsRef = collection(db, 'giftCards');
-    const unsub = onSnapshot(giftCardsRef, (snapshot) => {
+    const giftCardsQuery = query(collection(db, 'giftCards'), limit(50));
+    const unsub = onSnapshot(giftCardsQuery, (snapshot) => {
       const map: Record<string, { isRedeemed: boolean; redeemedByUsername?: string }> = {};
       snapshot.forEach((d) => {
         const data = d.data();
@@ -3071,7 +3079,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     // 2. Subscribe to Firestore chatMessages collection
     try {
       const chatRef = collection(db, 'chatMessages');
-      const q = query(chatRef, where('channel', '==', activeChannel));
+      const q = query(chatRef, where('channel', '==', activeChannel), limit(80));
 
       unsubscribeFirestore = onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {

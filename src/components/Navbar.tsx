@@ -42,7 +42,10 @@ import {
   Users,
   Database,
   CloudDownload,
-  RefreshCw
+  RefreshCw,
+  Siren,
+  CreditCard,
+  Building2
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -422,17 +425,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                   )}
                 </div>
 
-                {/* 4. 📍 VICE CITY MAP (STANDALONE DIRECT BUTTON) */}
+                {/* 4. 📍 VICE CITY MAP (STANDALONE DIRECT BUTTON - LOCKED FOR MAINTENANCE) */}
                 <button
                   onClick={() => handleSelectTab('map')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black tracking-wide transition-all duration-200 border cursor-pointer ${
                     activeTab === 'map'
                       ? 'bg-rose-500 text-white border-rose-400 shadow-md shadow-rose-500/40'
-                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/80 hover:border-rose-400 shadow-sm shadow-rose-500/20'
+                      : 'bg-zinc-900/90 hover:bg-zinc-850 text-zinc-300 hover:text-white border-zinc-700/80 hover:border-rose-500/50 shadow-sm'
                   }`}
+                  title="Vice City Map (Offline / Locked for Calibration)"
                 >
-                  <MapPin className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                  <MapPin className="w-3.5 h-3.5 text-rose-400" />
                   <span>Vice City Map</span>
+                  <span className="text-xs leading-none" title="Map Temporarily Locked">
+                    🔒
+                  </span>
                 </button>
               </div>
             </div>
@@ -538,17 +545,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-[10px] leading-tight tracking-tight">Home</span>
           </button>
 
-          {/* TAB 2: MAP */}
+          {/* TAB 2: MAP (LOCKED) */}
           <button
             onClick={() => handleSelectTab('map')}
-            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer w-full group ${
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer w-full group relative ${
               activeTab === 'map'
                 ? 'text-rose-400 font-bold bg-rose-500/10 border border-rose-500/20'
                 : 'text-zinc-400 hover:text-zinc-200 font-medium border border-transparent'
             }`}
           >
-            <MapPin className={`w-5 h-5 mb-0.5 transition-transform group-active:scale-95 ${activeTab === 'map' ? 'text-rose-400 animate-pulse' : 'text-zinc-400'}`} />
-            <span className="text-[10px] leading-tight tracking-tight">Map</span>
+            <MapPin className={`w-5 h-5 mb-0.5 transition-transform group-active:scale-95 ${activeTab === 'map' ? 'text-rose-400' : 'text-zinc-400'}`} />
+            <span className="text-[10px] leading-tight tracking-tight flex items-center gap-0.5">
+              Map
+              <span className="text-[9px]">🔒</span>
+            </span>
           </button>
 
           {/* TAB 3: VEHICLES */}

@@ -381,14 +381,14 @@ export const CustomWebhookBotAdminCms: React.FC = () => {
                 <span className="text-[10px] text-zinc-500 flex items-center gap-1">
                   <Cloud className={`w-3.5 h-3.5 ${isFirestoreSynced ? 'text-emerald-400' : 'text-zinc-500'}`} />
                   {isFirestoreSynced 
-                    ? 'Firestore synced (bot_guild_configs)' 
+                    ? 'Cloud synced (bot_guild_configs)' 
                     : announcementsWebhook || newsWebhook ? 'Local configured' : 'Using .env webhook'}
                 </span>
                 <button
                   type="button"
                   onClick={handleSaveWebhooks}
                   disabled={isSaving}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-semibold border border-cyan-500/30 transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-semibold border border-cyan-500/30 transition disabled:opacity-50 cursor-pointer"
                 >
                   {isSaving ? (
                     <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
@@ -397,7 +397,7 @@ export const CustomWebhookBotAdminCms: React.FC = () => {
                   ) : (
                     <ShieldCheck className="w-3.5 h-3.5" />
                   )}
-                  {isSaving ? 'Saving...' : isSaved ? 'Synced to Firestore!' : 'Save to Firestore'}
+                  {isSaving ? 'Saving...' : isSaved ? 'Synced to Cloud!' : 'Save Configuration'}
                 </button>
               </div>
             </div>
@@ -413,19 +413,19 @@ export const CustomWebhookBotAdminCms: React.FC = () => {
               Fire test payload embeds directly to Discord to verify your channel permissions and bot formatting.
             </p>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => handleTriggerTest('#verified-news', 'article_drop')}
                 disabled={isTestingNews}
-                className="flex items-center gap-2 p-3 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/40 border border-cyan-500/30 text-left transition group"
+                className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/40 border border-cyan-500/30 text-left transition group min-w-0 overflow-hidden cursor-pointer"
               >
-                <div className="p-2 rounded-md bg-cyan-500/20 text-cyan-400 group-hover:scale-105 transition-transform">
+                <div className="p-2 rounded-lg bg-cyan-500/20 text-cyan-400 group-hover:scale-105 transition-transform shrink-0">
                   <FileText className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="text-xs font-semibold text-cyan-200">#verified-news</div>
-                  <div className="text-[10px] text-zinc-400">Article Drop Alert</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-cyan-200 truncate tracking-tight" title="#verified-news">#verified-news</div>
+                  <div className="text-[10px] text-zinc-400 truncate">Article Drop Alert</div>
                 </div>
               </button>
 
@@ -433,14 +433,14 @@ export const CustomWebhookBotAdminCms: React.FC = () => {
                 type="button"
                 onClick={() => handleTriggerTest('#announcements', 'vehicle_drop')}
                 disabled={isTestingAnnouncements}
-                className="flex items-center gap-2 p-3 rounded-lg bg-blue-950/40 hover:bg-blue-900/40 border border-blue-500/30 text-left transition group"
+                className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl bg-blue-950/40 hover:bg-blue-900/40 border border-blue-500/30 text-left transition group min-w-0 overflow-hidden cursor-pointer"
               >
-                <div className="p-2 rounded-md bg-blue-500/20 text-blue-400 group-hover:scale-105 transition-transform">
+                <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400 group-hover:scale-105 transition-transform shrink-0">
                   <Car className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="text-xs font-semibold text-blue-200">#announcements</div>
-                  <div className="text-[10px] text-zinc-400">Vehicle Drop Alert</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-blue-200 truncate tracking-tight" title="#announcements">#announcements</div>
+                  <div className="text-[10px] text-zinc-400 truncate">Vehicle Drop Alert</div>
                 </div>
               </button>
 
@@ -448,14 +448,14 @@ export const CustomWebhookBotAdminCms: React.FC = () => {
                 type="button"
                 onClick={() => handleTriggerTest('#announcements', 'weapon_drop')}
                 disabled={isTestingAnnouncements}
-                className="flex items-center gap-2 p-3 rounded-lg bg-rose-950/40 hover:bg-rose-900/40 border border-rose-500/30 text-left transition group"
+                className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl bg-rose-950/40 hover:bg-rose-900/40 border border-rose-500/30 text-left transition group min-w-0 overflow-hidden cursor-pointer"
               >
-                <div className="p-2 rounded-md bg-rose-500/20 text-rose-400 group-hover:scale-105 transition-transform">
+                <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400 group-hover:scale-105 transition-transform shrink-0">
                   <Crosshair className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="text-xs font-semibold text-rose-200">#announcements</div>
-                  <div className="text-[10px] text-zinc-400">Weapon Drop Alert</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-rose-200 truncate tracking-tight" title="#announcements">#announcements</div>
+                  <div className="text-[10px] text-zinc-400 truncate">Weapon Drop Alert</div>
                 </div>
               </button>
 
@@ -463,14 +463,14 @@ export const CustomWebhookBotAdminCms: React.FC = () => {
                 type="button"
                 onClick={() => handleTriggerTest('#announcements', 'tuning_challenge')}
                 disabled={isTestingAnnouncements}
-                className="flex items-center gap-2 p-3 rounded-lg bg-amber-950/40 hover:bg-amber-900/40 border border-amber-500/30 text-left transition group"
+                className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl bg-amber-950/40 hover:bg-amber-900/40 border border-amber-500/30 text-left transition group min-w-0 overflow-hidden cursor-pointer"
               >
-                <div className="p-2 rounded-md bg-amber-500/20 text-amber-400 group-hover:scale-105 transition-transform">
+                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 group-hover:scale-105 transition-transform shrink-0">
                   <Trophy className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="text-xs font-semibold text-amber-200">#announcements</div>
-                  <div className="text-[10px] text-zinc-400">Championship Event</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-amber-200 truncate tracking-tight" title="#announcements">#announcements</div>
+                  <div className="text-[10px] text-zinc-400 truncate">Championship Event</div>
                 </div>
               </button>
             </div>
@@ -481,16 +481,16 @@ export const CustomWebhookBotAdminCms: React.FC = () => {
                 type="button"
                 onClick={handleTriggerAutomatedBlogJob}
                 disabled={isTriggeringAutoBlog}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-gradient-to-r from-pink-950/50 via-purple-950/40 to-cyan-950/50 hover:from-pink-900/60 hover:to-cyan-900/60 border border-pink-500/40 text-pink-200 text-xs font-medium transition group"
+                className="w-full flex items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-pink-950/50 via-purple-950/40 to-cyan-950/50 hover:from-pink-900/60 hover:to-cyan-900/60 border border-pink-500/40 text-pink-200 text-xs font-medium transition group cursor-pointer"
               >
-                <div className="flex items-center gap-2">
-                  <Sparkles className={`w-4 h-4 text-pink-400 ${isTriggeringAutoBlog ? 'animate-spin' : 'group-hover:rotate-12 transition-transform'}`} />
-                  <div className="text-left">
-                    <div className="font-semibold text-white">⚡ Trigger Autonomous AI Blog Pipeline & Discord Broadcast</div>
-                    <div className="text-[10px] text-zinc-400">Generates full article via Gemini cascade, saves to Firestore, & alerts #verified-news</div>
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <Sparkles className={`w-4 h-4 text-pink-400 shrink-0 ${isTriggeringAutoBlog ? 'animate-spin' : 'group-hover:rotate-12 transition-transform'}`} />
+                  <div className="text-left min-w-0 flex-1">
+                    <div className="font-semibold text-white text-xs truncate">⚡ Trigger Autonomous AI Blog Pipeline & Discord Broadcast</div>
+                    <div className="text-[10px] text-zinc-400 truncate">Generates full article via Gemini cascade, saves to cloud database, & alerts #verified-news</div>
                   </div>
                 </div>
-                <span className="text-[11px] px-2 py-0.5 rounded bg-pink-500/20 text-pink-300 font-mono">
+                <span className="shrink-0 text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 text-pink-300 font-mono font-bold border border-pink-500/30">
                   {isTriggeringAutoBlog ? 'Generating...' : 'Run Now'}
                 </span>
               </button>

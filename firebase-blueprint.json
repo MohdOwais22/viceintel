@@ -571,6 +571,48 @@
         "executionMs": { "type": "number" }
       },
       "required": ["id", "xml", "totalRoutes"]
+    },
+    "onDemandFeatureRequests": {
+      "title": "On-Demand Feature Requests",
+      "description": "Custom feature and script requests submitted by server owners, real-time synced to Admin HQ.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "serverSlug": { "type": "string" },
+        "serverName": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "priority": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string" },
+        "estimatedDays": { "type": "number" },
+        "developerNotes": { "type": "string" },
+        "deliveryUrl": { "type": "string" },
+        "requestedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastFollowupAt": { "type": "string", "format": "date-time" },
+        "lastFollowupSender": { "type": "string" },
+        "lastFollowupSnippet": { "type": "string" }
+      },
+      "required": ["serverSlug", "ownerUid", "title", "description"]
+    },
+    "featureFollowupMessages": {
+      "title": "Feature Request Follow-up Messages",
+      "description": "Real-time communication messages between the server owner and admin/staff engineering team regarding an on-demand feature request.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "requestId": { "type": "string" },
+        "serverSlug": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "senderGamerTag": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["owner", "admin", "staff"] },
+        "text": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "requestId", "senderUid", "senderGamerTag", "senderRole", "text", "createdAt"]
     }
   }
 }

@@ -67,10 +67,27 @@ import { auth, db } from '../lib/firebase';
 type MapTheme = 'leonida' | 'neon' | 'satellite' | 'night' | 'tactical';
 import { LeonidaMapLegend } from './map/LeonidaMapLegend';
 import { LEONIDA_LANDMARKS, LEONIDA_COUNTIES, LeonidaLandmark } from '../data/leonidaGeography';
+import { MapLockedScreen } from './map/MapLockedModal';
+
+// EMERGENCY LOCKDOWN SWITCH: Set to true to prevent any map rendering, Firestore listeners, or tile requests.
+export const IS_MAP_LOCKED = true;
 
 export const InteractiveMap: React.FC = () => {
-  // Mode Selection: 'classic' (State of Leonida Vector GIS Map) vs 'squad' (Live Squad Radar)
-  const [mapViewMode, setMapViewMode] = useState<'classic' | 'squad'>('classic');
+  // If map is locked, immediately return MapLockedScreen without loading map components or listeners
+  if (IS_MAP_LOCKED) {
+    return (
+      <MapLockedScreen
+        onNavigate={(tab) => {
+          if (typeof window !== 'undefined') {
+            window.location.href = `/${tab === 'home' ? '' : tab}`;
+          }
+        }}
+      />
+    );
+  }
+
+  // Mode Selection: 'classic' (Stylized Island Map) vs 'vector' (Full Vector GIS & Satellite Cartography Engine) vs 'squad' (Live Squad Radar)
+  const [mapViewMode, setMapViewMode] = useState<'classic' | 'vector' | 'squad'>('vector');
 
   // Squad Radar Real-Time Telemetry & Party Room State
   const [activeUser, setActiveUser] = useState<{
@@ -227,11 +244,18 @@ export const InteractiveMap: React.FC = () => {
     return () => unsub();
   }, [activeRoomId, activeUser.uid]);
 
-  // Check URL parameters for ?room=VC-XXXX or cached room on mount
+  // Check URL parameters for ?room=VC-XXXX or ?mode=vector|classic|squad or cached room on mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
+    const modeParam = params.get('mode') || params.get('engine') || params.get('view');
+
+    if (modeParam === 'vector' || modeParam === 'gis' || modeParam === 'satellite') {
+      setMapViewMode('vector');
+    } else if (modeParam === 'classic' || modeParam === 'island') {
+      setMapViewMode('classic');
+    }
 
     const initRoom = async () => {
       const targetRoom = roomParam ? roomParam.toUpperCase().trim() : await getCachedActiveRoom();
@@ -253,6 +277,9 @@ export const InteractiveMap: React.FC = () => {
         } else {
           if (result.requiresVip) {
             setShowVipUpgradeModal(true);
+          } else if (!result.requiresPasscode) {
+            // Clean up stale or non-existent cached room from local storage to prevent repeated reconnect attempts
+            clearCachedRoom().catch(() => {});
           }
           setStatusMessage(result.error || 'Failed to connect to room.');
           setTimeout(() => setStatusMessage(null), 4000);
@@ -495,7 +522,7 @@ export const InteractiveMap: React.FC = () => {
     }
   };
 
-  const handleViewModeChange = (mode: 'classic' | 'squad') => {
+  const handleViewModeChange = (mode: 'classic' | 'vector' | 'squad') => {
     setMapViewMode(mode);
   };
 
@@ -652,6 +679,22 @@ export const InteractiveMap: React.FC = () => {
           <div className="flex items-center gap-2 p-1.5 bg-zinc-950 border border-zinc-800 rounded-2xl shrink-0 overflow-x-auto">
             <button
               type="button"
+              onClick={() => handleViewModeChange('vector')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer ${
+                mapViewMode === 'vector'
+                  ? 'bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white font-extrabold shadow-lg border border-cyan-400/50'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Layers className="w-4 h-4 text-cyan-300" />
+              <span>📐 GIS Vector & Satellite Cartography</span>
+              <span className="px-1.5 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] font-extrabold rounded uppercase">
+                HD ENGINE
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => handleViewModeChange('classic')}
               className={`px-4 py-2.5 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer ${
                 mapViewMode === 'classic'
@@ -660,7 +703,7 @@ export const InteractiveMap: React.FC = () => {
               }`}
             >
               <Compass className="w-4 h-4" />
-              <span>🗺️ State of Leonida Interactive Island Map</span>
+              <span>🗺️ Stylized Island Map</span>
             </button>
 
             <button
@@ -727,8 +770,27 @@ export const InteractiveMap: React.FC = () => {
             onOpenVipModal={() => setShowVipUpgradeModal(true)}
           />
         </div>
+      ) : mapViewMode === 'vector' ? (
+        /* VIEW MODE 2: STATE OF LEONIDA VECTOR GIS & REAL SATELLITE ENGINE */
+        <div className="w-full space-y-6">
+          <RealLeonidaMap
+            activeLocation={activeLocation}
+            onSelectLocation={(loc) => setActiveLocation(loc)}
+            discoveredIds={discoveredIds}
+            onToggleDiscovered={toggleDiscovered}
+            squadRoom={squadRoom}
+            currentUserId={activeUser.uid}
+            currentUserDisplayName={activeUser.displayName}
+            currentUserColor={activeUser.color}
+            onUpdatePosition={handleUpdatePosition}
+            onAddWaypoint={handleAddWaypoint}
+            onAddPing={handleAddPing}
+            onRemoveWaypoint={handleRemoveWaypoint}
+            focusedMemberCoordinates={focusedCoordinates}
+          />
+        </div>
       ) : (
-        /* VIEW MODE 2: STATE OF LEONIDA VECTOR ISLAND MAP */
+        /* VIEW MODE 3: STATE OF LEONIDA STYLIZED ISLAND MAP */
         <div className="w-full space-y-6">
           <LeonidaIslandMap
             activeLocation={activeLocation}

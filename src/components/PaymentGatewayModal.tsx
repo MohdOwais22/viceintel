@@ -173,10 +173,34 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
     if (currentUser?.email && !emailInput) {
       setEmailInput(currentUser.email);
     }
-    if ((currentUser?.discordUsername || currentUser?.discordId) && !discordIdInput) {
-      setDiscordIdInput(currentUser.discordUsername || currentUser.discordId);
+    const connectedAccountTag = currentUser?.discordUsername || currentUser?.discordId || currentUser?.displayName || currentUser?.gamerTag || currentUser?.email?.split('@')[0] || '';
+    if (currentUser && connectedAccountTag) {
+      setDiscordIdInput(connectedAccountTag);
     }
   }, [checkoutPackage, currentUser]);
+
+  // Persist current server details draft to localStorage so ServerOnboardingWizard can auto-fill seamlessly
+  useEffect(() => {
+    if (serverNameInput.trim() || serverSlugInput.trim()) {
+      try {
+        const connectedTag = currentUser?.discordUsername || currentUser?.discordId || currentUser?.displayName || currentUser?.gamerTag || currentUser?.email?.split('@')[0] || '';
+        const draft = {
+          serverName: serverNameInput.trim(),
+          serverSlug: serverSlugInput.trim().toLowerCase(),
+          ownerDiscordId: currentUser ? connectedTag : (discordIdInput.trim() || connectedTag),
+          ownerEmail: currentUser?.email || emailInput.trim() || '',
+          ownerUid: currentUser?.uid || '',
+          timestamp: Date.now()
+        };
+        localStorage.setItem('viceintel_pending_server_onboarding', JSON.stringify(draft));
+        if (draft.serverSlug) {
+          localStorage.setItem(`vice_server_${draft.serverSlug}`, JSON.stringify(draft));
+        }
+      } catch (err) {
+        console.warn('Unable to persist server onboarding draft:', err);
+      }
+    }
+  }, [serverNameInput, serverSlugInput, discordIdInput, emailInput, currentUser]);
 
   // Real-time Slug Availability Checker
   useEffect(() => {
@@ -434,7 +458,7 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
 
     setIsProcessingPayment(true);
     setPaymentValidationError('');
-    setPaymentStepText('Registering 14-Day Free Pro Pass in Firestore registry...');
+    setPaymentStepText('Registering 14-Day Free Pro Pass in network registry...');
 
     try {
       const response = await fetch('/api/billing/claim-trial', {
@@ -562,7 +586,7 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
           : checkoutPackage.itemType === 'b2b_sponsor'
           ? 'Publishing Sponsored RP Server Listing to Network...'
           : checkoutPackage.itemType === 'server_pro_pass'
-          ? 'Provisioning Verified Server Owner License in Firestore...'
+          ? 'Provisioning Verified Server Owner License...'
           : checkoutPackage.itemType === 'spotlight_rental'
           ? 'Locking Top #1 Spotlight Banner in Server Directory...'
           : 'Generating official cryptographic Shark Card voucher key...'
@@ -891,8 +915,8 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
               </h4>
               <p className="text-xs text-slate-400 mt-1">
                 {paymentSuccessReceipt.trialActive
-                  ? 'Your full 14-day zero-risk pass is live across the network and synchronized in Firestore.'
-                  : 'Your payment was verified via 256-bit SSL and persisted to Firestore.'}
+                  ? 'Your full 14-day zero-risk pass is live across the network.'
+                  : 'Your payment was verified via 256-bit SSL encryption.'}
               </p>
             </div>
 
@@ -1053,17 +1077,29 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-extrabold uppercase text-slate-400 block mb-1">
-                      Discord ID / Username
-                    </label>
-                    <input
-                      id="unified-discord-id-input"
-                      type="text"
-                      value={discordIdInput}
-                      onChange={(e) => setDiscordIdInput(e.target.value)}
-                      placeholder="e.g. server_founder#0001"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-rose-500 transition"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-extrabold uppercase text-slate-400">
+                        Discord ID / Username
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <input
+                        id="unified-discord-id-input"
+                        type="text"
+                        value={currentUser ? (currentUser.discordUsername || currentUser.discordId || currentUser.displayName || currentUser.gamerTag || discordIdInput) : discordIdInput}
+                        onChange={(e) => {
+                          if (!currentUser) setDiscordIdInput(e.target.value);
+                        }}
+                        readOnly={Boolean(currentUser)}
+                        disabled={Boolean(currentUser)}
+                        placeholder="e.g. server_founder#0001"
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-xs transition ${
+                          currentUser
+                            ? 'bg-slate-900/90 border border-emerald-500/40 text-emerald-300 font-mono cursor-not-allowed select-none'
+                            : 'bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-rose-500'
+                        }`}
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="text-[11px] font-extrabold uppercase text-slate-400 block mb-1">

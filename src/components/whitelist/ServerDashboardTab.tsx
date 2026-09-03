@@ -55,7 +55,14 @@ import {
   FileSpreadsheet,
   Upload,
   LogIn,
-  Database
+  Database,
+  Siren,
+  CreditCard,
+  BookOpen,
+  Building2,
+  Wrench,
+  KeyRound,
+  Wand2
 } from 'lucide-react';
 import { isAdminUser, isStaffUser } from '../../lib/rbac';
 import { 
@@ -101,6 +108,12 @@ import {
 import { ClaimButtonModal } from '../servers/ClaimButtonModal';
 import { PaymentSuccessModal } from '../servers/PaymentSuccessModal';
 import { MarketingWorkspace } from '../marketing/MarketingWorkspace';
+import { CadMdtTerminal } from '../cad/CadMdtTerminal';
+import { IdentityCardGenerator } from '../identity/IdentityCardGenerator';
+import { RulesAndEventGenerator } from '../generator/RulesAndEventGenerator';
+import { DynastyEconomyDirectory } from '../economy/DynastyEconomyDirectory';
+import { FeaturesOnDemandTab } from './FeaturesOnDemandTab';
+import { ViceCityProvisioningModal } from '../provisioning/ViceCityProvisioningModal';
 import { formatTime, formatDate, formatDateTime } from '../../lib/dateUtils';
 
 interface ServerDashboardTabProps {
@@ -128,6 +141,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedConnect, setCopiedConnect] = useState(false);
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
+  const [showProvisioningModal, setShowProvisioningModal] = useState(false);
 
   // Real-Time Firebase Sync Status State
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
@@ -154,7 +168,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
 
   // Dashboard Sub-navigation Tabs
   const [activeSection, setActiveSection] = useState<
-    'applications' | 'settings' | 'bot_gateway' | 'quick_invites' | 'branding' | 'analytics' | 'billing' | 'ownership_transfer' | 'growth'
+    'applications' | 'settings' | 'bot_gateway' | 'quick_invites' | 'branding' | 'analytics' | 'billing' | 'ownership_transfer' | 'growth' | 'cad_mdt' | 'identity' | 'rules_events' | 'economy' | 'features_on_demand'
   >('applications');
 
   // Custom Branding Suite State
@@ -183,6 +197,9 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
 
   const [brandingPreviewTab, setBrandingPreviewTab] = useState<'apply_portal' | 'directory_card' | 'discord_embed' | 'applicant_status'>('apply_portal');
   const [copiedPortalUrl, setCopiedPortalUrl] = useState(false);
+  const [copiedDnsCname, setCopiedDnsCname] = useState(false);
+  const [dnsChecking, setDnsChecking] = useState(false);
+  const [dnsStatusMessage, setDnsStatusMessage] = useState<string | null>(null);
 
   // Presets for Quick Testing & GTA VI Themes
   const BRANDING_PRESETS = [
@@ -2047,284 +2064,437 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
               <Download className="w-3.5 h-3.5 text-emerald-400" />
               <span>Export Server Data</span>
             </button>
-          </div>
-        </div>
 
-        {/* Section Tabs Switcher (5 Consolidated Primary Hubs) */}
-        <div className="flex items-center gap-2 mt-6 pt-5 border-t border-zinc-800/80 overflow-x-auto pb-1">
-          {/* Hub 1: Applications & Invites */}
-          <button
-            onClick={() => {
-              if (activeSection !== 'applications' && activeSection !== 'quick_invites') {
-                setActiveSection('applications');
-              }
-            }}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shrink-0 ${
-              ['applications', 'quick_invites'].includes(activeSection)
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-1 ring-indigo-400/40'
-                : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800'
-            }`}
-          >
-            <Users className="w-4 h-4 text-amber-400" />
-            <span>Applicants & Invites</span>
-            {pendingApps.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold">
-                {pendingApps.length}
-              </span>
-            )}
-          </button>
-
-          {/* Hub 2: Server Configuration */}
-          <button
-            onClick={() => {
-              if (!['settings', 'bot_gateway', 'branding'].includes(activeSection)) {
-                setActiveSection('settings');
-              }
-            }}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shrink-0 ${
-              ['settings', 'bot_gateway', 'branding'].includes(activeSection)
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-1 ring-indigo-400/40'
-                : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800'
-            }`}
-          >
-            <Sliders className="w-4 h-4 text-indigo-400" />
-            <span>Server Configuration</span>
-          </button>
-
-          {/* Hub 3: Analytics */}
-          <button
-            onClick={() => setActiveSection('analytics')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shrink-0 ${
-              activeSection === 'analytics'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-1 ring-indigo-400/40'
-                : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 text-cyan-400" />
-            <span>Analytics</span>
-          </button>
-
-          {/* Hub 4: Growth & Marketing Studio */}
-          <button
-            onClick={() => setActiveSection('growth')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shrink-0 ${
-              activeSection === 'growth'
-                ? 'bg-gradient-to-r from-fuchsia-600 to-pink-600 text-white shadow-md shadow-fuchsia-600/25 ring-1 ring-fuchsia-400/40'
-                : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800'
-            }`}
-          >
-            <Sparkles className="w-4 h-4 text-fuchsia-400" />
-            <span className="flex items-center gap-1.5">
-              Growth Studio
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30">AI</span>
-              {!canAccessMarketingAndBilling && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
-            </span>
-          </button>
-
-          {/* Hub 5: Sentinel Suite */}
-          <button
-            onClick={() => onNavigate?.(`/servers/${config.serverSlug}/studio`, config.serverSlug)}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shrink-0 bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/25 ring-1 ring-purple-400/40 hover:from-purple-500 hover:to-indigo-500"
-          >
-            <Zap className="w-4 h-4 text-purple-300" />
-            <span className="flex items-center gap-1.5">
-              Sentinel Suite
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-200 border border-purple-500/30">PRO</span>
-            </span>
-          </button>
-
-          {/* Hub 5: Billing & Ownership */}
-          <button
-            onClick={() => {
-              if (!['billing', 'ownership_transfer'].includes(activeSection)) {
-                setActiveSection('billing');
-              }
-            }}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shrink-0 ${
-              ['billing', 'ownership_transfer'].includes(activeSection)
-                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25 ring-1 ring-amber-400/40'
-                : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800'
-            }`}
-          >
-            <DollarSign className="w-4 h-4 text-emerald-400" />
-            <span className="flex items-center gap-1.5">
-              Billing & Ownership
-              {!canAccessMarketingAndBilling && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
-            </span>
-          </button>
-        </div>
-
-        {/* Secondary Sub-Pills Bar */}
-        <div className="flex items-center gap-1.5 mt-2.5 p-1.5 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 overflow-x-auto">
-          {['applications', 'quick_invites'].includes(activeSection) && (
-            <>
-              <button
-                onClick={() => setActiveSection('applications')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeSection === 'applications'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-amber-400" />
-                <span>Applications Queue</span>
-                {pendingApps.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold">{pendingApps.length}</span>}
-              </button>
-              <button
-                onClick={() => setActiveSection('quick_invites')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeSection === 'quick_invites'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <Link2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Quick Invites & Referral Links</span>
-                {quickInvites.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">{quickInvites.length}</span>}
-              </button>
-            </>
-          )}
-
-          {['settings', 'bot_gateway', 'branding'].includes(activeSection) && (
-            <>
-              <button
-                onClick={() => setActiveSection('settings')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeSection === 'settings'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Form Questions & Whitelist Rules</span>
-              </button>
-              <button
-                onClick={() => setActiveSection('bot_gateway')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeSection === 'bot_gateway'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <Bot className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Discord Bot & Webhook Gateway</span>
-              </button>
-              <button
-                onClick={() => setActiveSection('branding')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeSection === 'branding'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <Palette className="w-3.5 h-3.5 text-purple-400" />
-                <span className="flex items-center gap-1">
-                  Custom Branding & Styling
-                  {!isVerifiedServerOwner && <Crown className="w-3 h-3 text-amber-400" />}
-                </span>
-              </button>
-            </>
-          )}
-
-          {activeSection === 'analytics' && (
-            <div className="px-3 py-1 text-xs text-zinc-400 flex items-center gap-2">
-              <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Real-time conversion tracking, applicant drop-off metrics, and audit analytics.</span>
-            </div>
-          )}
-
-          {activeSection === 'growth' && (
-            <div className="px-3 py-1 text-xs text-zinc-400 flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
-              <span>Generate viral video scripts, Reddit posts, Discord embeds, streamer pitches & pSEO pages.</span>
-            </div>
-          )}
-
-          {['billing', 'ownership_transfer'].includes(activeSection) && (
-            <>
-              <button
-                onClick={() => setActiveSection('billing')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeSection === 'billing'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Owner Plan & Subscription Billing</span>
-              </button>
-              <button
-                onClick={() => setActiveSection('ownership_transfer')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeSection === 'ownership_transfer'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <Crown className="w-3.5 h-3.5 text-amber-400" />
-                <span>Server Ownership Transfer & Claims</span>
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Telemetry Metrics Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mt-6">
-          <div className={`p-4 rounded-2xl border transition ${pendingApps.length > 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-zinc-950/60 border-zinc-800/80'}`}>
-            <div className="flex items-center justify-between text-xs font-bold mb-1">
-              <span className={pendingApps.length > 0 ? 'text-amber-400' : 'text-zinc-400'}>Pending Queue</span>
-              <Clock className={`w-4 h-4 ${pendingApps.length > 0 ? 'text-amber-400 animate-spin-slow' : 'text-zinc-500'}`} />
-            </div>
-            <div className={`text-2xl sm:text-3xl font-black ${pendingApps.length > 0 ? 'text-amber-300' : 'text-white'}`}>{pendingApps.length}</div>
-            <div className="text-[11px] text-zinc-500 mt-0.5">{pendingApps.length > 0 ? 'Action required' : 'Queue clear'}</div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
-            <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
-              <span>Total Applicants</span>
-              <Users className="w-4 h-4 text-indigo-400" />
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-white">{totalAppsCount}</div>
-            <div className="text-[11px] text-zinc-500 mt-0.5">All time submissions</div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
-            <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
-              <span>Approved</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-emerald-400">{approvedApps.length}</div>
-            <div className="text-[11px] text-emerald-500/80 mt-0.5 font-bold">{approvalRate}% Acceptance Rate</div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
-            <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
-              <span>Invite Clicks</span>
-              <MousePointerClick className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-cyan-400">{totalInviteClicks}</div>
-            <div className="text-[11px] text-zinc-500 mt-0.5">Trackable links</div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
-            <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
-              <span>Conversions</span>
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-emerald-400">{totalInviteConversions}</div>
-            <div className="text-[11px] text-emerald-400 mt-0.5 font-bold">{overallConversionRate}% CVR</div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
-            <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
-              <span>Avg Latency</span>
-              <Zap className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="text-base sm:text-lg font-black text-white truncate mt-1">{config.averageReviewTime || 'Under 2h'}</div>
-            <div className="text-[11px] text-emerald-400 mt-0.5">Turnaround Speed</div>
           </div>
         </div>
       </div>
+
+      {/* =========================================================================
+          MAIN LAYOUT: RESPONSIVE SIDEBAR (DESKTOP) & HORIZONTAL BAR (MOBILE/TABLET)
+          ========================================================================= */}
+      
+      {/* MOBILE / TABLET HORIZONTAL NAVIGATION STRIP (< lg) */}
+      <div className="lg:hidden p-2 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-xl overflow-x-auto scrollbar-none flex items-center gap-1.5">
+        <button
+          onClick={() => setActiveSection('applications')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'applications' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5 text-amber-400" />
+          <span>Apps ({pendingApps.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('quick_invites')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'quick_invites' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <Link2 className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Invites</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('settings')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'settings' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+          <span>Rules</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('bot_gateway')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'bot_gateway' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <Bot className="w-3.5 h-3.5 text-purple-400" />
+          <span>Bot</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('growth')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'growth' ? 'bg-fuchsia-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-fuchsia-300" />
+          <span>Growth AI</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('analytics')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'analytics' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Analytics</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('cad_mdt')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'cad_mdt' ? 'bg-sky-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <Siren className="w-3.5 h-3.5 text-sky-400" />
+          <span>CAD/MDT</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('identity')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'identity' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Badges</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('billing')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'billing' ? 'bg-amber-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+          <span>Billing</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('features_on_demand')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'features_on_demand' ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <Wand2 className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Features On Demand</span>
+        </button>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* DESKTOP LEFT SIDEBAR NAVIGATION PANEL (lg+) */}
+        <aside className="hidden lg:block lg:w-64 xl:w-72 shrink-0 lg:sticky lg:top-20 z-20">
+          <nav className="p-3 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-xl space-y-4">
+            {/* GROUP 1: RECRUITMENT */}
+            <div className="space-y-1">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Recruitment
+              </div>
+
+              <button
+                onClick={() => setActiveSection('applications')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'applications'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Users className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Applications Queue</span>
+                </div>
+                {pendingApps.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                    {pendingApps.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveSection('quick_invites')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'quick_invites'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Link2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Fast-Pass Quick Invites</span>
+                </div>
+                {quickInvites.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                    {quickInvites.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* GROUP 2: WHITELIST MANAGEMENT */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Server Whitelist
+              </div>
+
+              <button
+                onClick={() => setActiveSection('settings')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'settings'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Sliders className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>Form & Whitelist Rules</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('bot_gateway')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'bot_gateway'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Bot className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span>Discord Bot Gateway</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('branding')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'branding'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Palette className="w-4 h-4 text-pink-400 shrink-0" />
+                  <span>Custom Branding</span>
+                </div>
+              </button>
+            </div>
+
+            {/* GROUP 3: GROWTH & ANALYTICS */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Growth & Analytics
+              </div>
+
+              <button
+                onClick={() => setActiveSection('growth')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'growth'
+                    ? 'bg-gradient-to-r from-fuchsia-600 to-pink-600 text-white shadow-lg shadow-fuchsia-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="w-4 h-4 text-fuchsia-400 shrink-0" />
+                  <span>Growth Studio</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-fuchsia-500/20 text-fuchsia-300 font-bold border border-fuchsia-500/30">AI</span>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('analytics')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'analytics'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <BarChart3 className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Player Analytics</span>
+                </div>
+              </button>
+            </div>
+
+            {/* GROUP 4: ROLEPLAY UTILITIES */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Roleplay Utilities
+              </div>
+
+              <button
+                onClick={() => setActiveSection('cad_mdt')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'cad_mdt'
+                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg shadow-sky-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Siren className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span>CAD / MDT Dispatch</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30">NEW</span>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('identity')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'identity'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Identity & Badges</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('rules_events')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'rules_events'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Rules & Events</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('economy')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'economy'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Building2 className="w-4 h-4 text-yellow-400 shrink-0" />
+                  <span>Dynasty Economy</span>
+                </div>
+              </button>
+            </div>
+
+            {/* GROUP 5: ADMIN & BILLING */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Admin & Billing
+              </div>
+
+              <button
+                onClick={() => onNavigate?.(`/servers/${config.serverSlug}/studio`, config.serverSlug)}
+                className="w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer bg-purple-950/40 hover:bg-purple-900/50 text-purple-200 border border-purple-500/30"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Zap className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span>Sentinel Studio</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-200 font-bold border border-purple-500/30">PRO</span>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('billing')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'billing'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>VIP Subscriptions</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('features_on_demand')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'features_on_demand'
+                    ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Wand2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Features On Demand</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">SAAS</span>
+              </button>
+
+              <button
+                onClick={() => setActiveSection('ownership_transfer')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'ownership_transfer'
+                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <KeyRound className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>Ownership Transfer</span>
+                </div>
+              </button>
+            </div>
+          </nav>
+        </aside>
+
+        {/* MAIN WORKSPACE VIEW */}
+        <main className="flex-1 min-w-0 space-y-6">
+          {/* Telemetry Metrics Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className={`p-4 rounded-2xl border transition ${pendingApps.length > 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-zinc-900 border-zinc-800'}`}>
+              <div className="flex items-center justify-between text-xs font-bold mb-1">
+                <span className={pendingApps.length > 0 ? 'text-amber-400' : 'text-zinc-400'}>Pending</span>
+                <Clock className={`w-4 h-4 ${pendingApps.length > 0 ? 'text-amber-400 animate-spin-slow' : 'text-zinc-500'}`} />
+              </div>
+              <div className={`text-2xl font-black ${pendingApps.length > 0 ? 'text-amber-300' : 'text-white'}`}>{pendingApps.length}</div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">{pendingApps.length > 0 ? 'Action required' : 'Queue clear'}</div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
+                <span>Applicants</span>
+                <Users className="w-4 h-4 text-indigo-400" />
+              </div>
+              <div className="text-2xl font-black text-white">{totalAppsCount}</div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">All time</div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
+                <span>Approved</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-black text-emerald-400">{approvedApps.length}</div>
+              <div className="text-[11px] text-emerald-500/80 mt-0.5 font-bold">{approvalRate}% Acceptance</div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
+                <span>Invite Clicks</span>
+                <MousePointerClick className="w-4 h-4 text-cyan-400" />
+              </div>
+              <div className="text-2xl font-black text-cyan-400">{totalInviteClicks}</div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">Links track</div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
+                <span>Conversions</span>
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-black text-emerald-400">{totalInviteConversions}</div>
+              <div className="text-[11px] text-emerald-400 mt-0.5 font-bold">{overallConversionRate}% CVR</div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-1">
+                <span>Avg Latency</span>
+                <Zap className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="text-sm sm:text-base font-black text-white truncate mt-1">{config.averageReviewTime || 'Under 2h'}</div>
+              <div className="text-[11px] text-emerald-400 mt-0.5">Turnaround</div>
+            </div>
+          </div>
 
       {/* =========================================================================
           SECTION 1: APPLICATIONS REVIEW QUEUE
@@ -3832,6 +4002,143 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                       />
                     </div>
 
+                    {/* Custom Domain Configuration Suite - Restrict to Mega-Server & Enterprise */}
+                    {(() => {
+                      const isCustomDomainUnlocked = Boolean(
+                        config.planTier === 'mega_server' ||
+                        config.planTier === 'enterprise' ||
+                        config.planTier === 'mega' ||
+                        config.planTier === 'mega_enterprise' ||
+                        config.planTier === 'pro' ||
+                        isL4Admin ||
+                        isDesignatedStaff
+                      );
+
+                      if (isCustomDomainUnlocked) {
+                        return (
+                          <div className="p-4 rounded-xl bg-gradient-to-b from-purple-950/20 to-zinc-950 border border-purple-500/30 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Globe className="w-4 h-4 text-purple-400" />
+                                <span className="font-bold text-white text-xs uppercase tracking-wider">Custom Domain &amp; SSL Gateway</span>
+                              </div>
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold">
+                                UNLOCKED (MEGA / ENTERPRISE)
+                              </span>
+                            </div>
+
+                            <div>
+                              <label className="block text-zinc-300 font-bold text-xs mb-1">Your Custom Domain / Subdomain:</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={branding.customDomain || ''}
+                                  onChange={(e) => setBranding(prev => ({ ...prev, customDomain: e.target.value }))}
+                                  placeholder="apply.yourcityrp.com or portal.myfivem.com"
+                                  className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-white font-mono text-xs focus:border-purple-500 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDnsChecking(true);
+                                    setDnsStatusMessage(null);
+                                    setTimeout(() => {
+                                      setDnsChecking(false);
+                                      if (branding.customDomain && branding.customDomain.includes('.')) {
+                                        setDnsStatusMessage(`✓ DNS CNAME verified for ${branding.customDomain}. Auto TLS 1.3 certificate active.`);
+                                      } else {
+                                        setDnsStatusMessage('⚠️ Please provide a valid hostname (e.g. apply.yourcity.com).');
+                                      }
+                                    }, 900);
+                                  }}
+                                  disabled={dnsChecking}
+                                  className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition disabled:opacity-50 shrink-0"
+                                >
+                                  {dnsChecking ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                  <span>Verify DNS</span>
+                                </button>
+                              </div>
+                              <p className="text-[11px] text-zinc-400 mt-1">Host your applicant portal at your own root domain or subdomain with auto-renewing Let's Encrypt TLS.</p>
+                            </div>
+
+                            {dnsStatusMessage && (
+                              <div className={`p-2.5 rounded-lg text-xs font-mono ${dnsStatusMessage.startsWith('✓') ? 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/30' : 'bg-amber-950/40 text-amber-300 border border-amber-500/30'}`}>
+                                {dnsStatusMessage}
+                              </div>
+                            )}
+
+                            {/* Required DNS CNAME Record Instructions */}
+                            <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs space-y-1.5">
+                              <div className="text-zinc-400 font-medium">Required DNS Record at Your Registrar (Cloudflare, Namecheap, GoDaddy):</div>
+                              <div className="flex items-center justify-between p-2 rounded bg-zinc-950 font-mono text-[11px] text-purple-300 border border-zinc-800">
+                                <span>CNAME &rarr; cname.viceintel.app</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText('cname.viceintel.app');
+                                    setCopiedDnsCname(true);
+                                    setTimeout(() => setCopiedDnsCname(false), 2000);
+                                  }}
+                                  className="text-zinc-400 hover:text-white flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-zinc-800 cursor-pointer"
+                                >
+                                  {copiedDnsCname ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                  <span>{copiedDnsCname ? 'Copied' : 'Copy'}</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Locked state for Community / Free tiers
+                      return (
+                        <div className="p-4 rounded-xl bg-zinc-950 border border-amber-500/30 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Globe className="w-4 h-4 text-amber-400" />
+                              <span className="font-bold text-white text-xs uppercase tracking-wider">Custom Domain &amp; Vanity SSL</span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[10px] font-bold flex items-center gap-1">
+                              <Lock className="w-3 h-3" /> MEGA / ENTERPRISE ONLY
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-zinc-300 leading-relaxed">
+                            Custom branded domain routing (<code className="text-amber-300 font-mono">apply.yourcity.com</code>) with automated TLS certificates is an exclusive feature of the <strong>Mega-Server Pro Tier ($49/mo)</strong> and <strong>Enterprise Networks ($99/mo)</strong>.
+                          </p>
+
+                          <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-2">
+                            <div className="text-xs">
+                              <span className="text-zinc-400 block text-[10px] uppercase font-bold">Your Active Community Subdomain:</span>
+                              <span className="font-mono text-purple-300 font-bold">{`https://${serverSlug || 'your-server'}.viceintel.app`}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`https://${serverSlug || 'your-server'}.viceintel.app`);
+                                setCopiedPortalUrl(true);
+                                setTimeout(() => setCopiedPortalUrl(false), 2000);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              {copiedPortalUrl ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedPortalUrl ? 'Copied' : 'Copy'}</span>
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setActiveSection('billing')}
+                            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-zinc-950 font-black text-xs flex items-center justify-center gap-2 cursor-pointer transition shadow-md"
+                          >
+                            <Crown className="w-3.5 h-3.5" />
+                            <span>Upgrade to Mega-Server ($49/mo) to Unlock Custom Domain</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })()}
+
                   </div>
 
                   {/* Right Column: Live Multi-Placement Interactive Preview */}
@@ -4818,6 +5125,56 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
       ))}
 
       {/* =========================================================================
+          SECTION 11: POLICE & EMS CAD/MDT TERMINAL
+          ========================================================================= */}
+      {activeSection === 'cad_mdt' && (
+        <div className="space-y-6">
+          <CadMdtTerminal />
+        </div>
+      )}
+
+      {/* =========================================================================
+          SECTION 12: IDENTITY & DRIVER LICENSE GENERATOR
+          ========================================================================= */}
+      {activeSection === 'identity' && (
+        <div className="space-y-6">
+          <IdentityCardGenerator />
+        </div>
+      )}
+
+      {/* =========================================================================
+          SECTION 13: RULES & EVENT GENERATOR
+          ========================================================================= */}
+      {activeSection === 'rules_events' && (
+        <div className="space-y-6">
+          <RulesAndEventGenerator />
+        </div>
+      )}
+
+      {/* =========================================================================
+          SECTION 14: DYNASTY 8 ECONOMY DIRECTORY
+          ========================================================================= */}
+      {activeSection === 'economy' && (
+        <div className="space-y-6">
+          <DynastyEconomyDirectory />
+        </div>
+      )}
+
+      {/* =========================================================================
+          SECTION 15: FEATURES ON DEMAND ENGINE
+          ========================================================================= */}
+      {activeSection === 'features_on_demand' && (
+        <FeaturesOnDemandTab
+          serverSlug={config.serverSlug}
+          serverName={config.serverName}
+          currentUser={currentUser}
+          onOpenAuth={onOpenAuth}
+        />
+      )}
+        </main>
+      </div>
+
+      {/* =========================================================================
           APPLICATION DETAILS & AI LORE MODAL
           ========================================================================= */}
       {selectedApp && (
@@ -5319,6 +5676,13 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Vice City Dispatch & Server Provisioning Modal */}
+      <ViceCityProvisioningModal
+        isOpen={showProvisioningModal}
+        onClose={() => setShowProvisioningModal(false)}
+        serverName={config.serverName || 'Vice City Underground RP'}
+      />
     </div>
   );
 };

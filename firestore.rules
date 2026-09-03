@@ -215,6 +215,15 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // 19. On-Demand Custom Feature Requests (Synced SaaS Engine)
+    match /onDemandFeatureRequests/{requestId} {
+      allow read, write: if true;
+
+      match /followups/{messageId} {
+        allow read, write: if true;
+      }
+    }
+
     // Default catch-all for any unmapped collections
     match /{document=**} {
       allow read, write: if true;

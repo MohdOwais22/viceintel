@@ -26,6 +26,26 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { ENV } from '../lib/envConfig';
 import { validateServerSlug, checkSlugAvailabilityApi } from '../lib/whitelist-service';
 
+export const isDiscordSnowflakeValid = (id: string): boolean => {
+  const trimmed = id.trim();
+  return /^\d{17,21}$/.test(trimmed);
+};
+
+export const isDiscordWebhookUrlValid = (url: string): boolean => {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      (parsed.hostname.includes('discord.com') || parsed.hostname.includes('discordapp.com') || parsed.hostname.includes('discord.gg')) &&
+      parsed.pathname.includes('/api/webhooks/')
+    );
+  } catch {
+    return false;
+  }
+};
+
 interface ServerOnboardingWizardProps {
   initialServerSlug?: string;
   onNavigate?: (tab: string, targetId?: string) => void;
@@ -33,6 +53,9 @@ interface ServerOnboardingWizardProps {
     uid: string;
     displayName?: string;
     email?: string;
+    discordUsername?: string;
+    discordId?: string;
+    gamerTag?: string;
   } | null;
   onOpenAuth?: () => void;
 }
@@ -61,7 +84,7 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
   const [serverRegion, setServerRegion] = useState('NA East');
   const [serverMaxPlayers, setServerMaxPlayers] = useState('128');
   const [serverFramework, setServerFramework] = useState('FiveM');
-  const [connectString, setConnectString] = useState('');
+  const [connectString, setConnectString] = useState('connect ');
   const [serverTags, setServerTags] = useState('');
   const [discordGuildId, setDiscordGuildId] = useState('');
   const [whitelistedRoleId, setWhitelistedRoleId] = useState('');
@@ -143,6 +166,70 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
       }
     }
   }, []);
+
+  // Pre-fill Server Name, Slug, and Config from LocalStorage or Firestore so user NEVER re-types anything
+  useEffect(() => {
+    let loadedName = '';
+    let loadedSlug = initialServerSlug || '';
+
+    try {
+      const pendingRaw = localStorage.getItem('viceintel_pending_server_onboarding');
+      if (pendingRaw) {
+        const pending = JSON.parse(pendingRaw);
+        if (pending.serverName) loadedName = pending.serverName;
+        if (pending.serverSlug) loadedSlug = pending.serverSlug;
+      }
+
+      if (loadedSlug && !loadedName) {
+        const keyRaw = localStorage.getItem(`vice_server_${loadedSlug}`);
+        if (keyRaw) {
+          const sData = JSON.parse(keyRaw);
+          if (sData.serverName) loadedName = sData.serverName;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to parse onboarding cache:', err);
+    }
+
+    if (loadedName && !serverName) {
+      setServerName(loadedName);
+    }
+    if (loadedSlug && !serverSlug) {
+      setServerSlug(loadedSlug);
+      setIsSlugManuallyEdited(true);
+      setSlugStatus('valid');
+    }
+
+    // Async Firestore check to pull existing server / form record
+    const targetSlug = loadedSlug || initialServerSlug || serverSlug;
+    if (targetSlug && db) {
+      const cleanTargetSlug = targetSlug.toLowerCase().trim();
+      const serverId = `srv_${cleanTargetSlug.replace(/[^a-z0-9]/g, '')}`;
+      Promise.all([
+        getDoc(doc(db, 'servers', cleanTargetSlug)).catch(() => null),
+        getDoc(doc(db, 'servers', serverId)).catch(() => null),
+        getDoc(doc(db, 'whitelist_forms', cleanTargetSlug)).catch(() => null),
+        getDoc(doc(db, 'whitelist_forms', serverId)).catch(() => null)
+      ]).then(([s1, s2, f1, f2]) => {
+        const match = s1?.exists() ? s1.data() : s2?.exists() ? s2.data() : f1?.exists() ? f1.data() : f2?.exists() ? f2.data() : null;
+        if (match) {
+          const fn = match.serverName || match.name || match.communityName || '';
+          const fs = match.serverSlug || match.slug || match.customSlug || cleanTargetSlug;
+          if (fn) setServerName(fn);
+          if (fs) {
+            setServerSlug(fs);
+            setIsSlugManuallyEdited(true);
+            setSlugStatus('valid');
+          }
+          if (match.discordGuildId) setDiscordGuildId(match.discordGuildId);
+          if (match.whitelistedRoleId) setWhitelistedRoleId(match.whitelistedRoleId);
+          if (match.discordWebhookUrl) setDiscordWebhookUrl(match.discordWebhookUrl);
+          if (match.description) setServerDescription(match.description);
+          if (match.connectUrl) setConnectString(match.connectUrl);
+        }
+      }).catch(() => {});
+    }
+  }, [initialServerSlug]);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -438,10 +525,22 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
                   <input
                     type="text"
                     value={connectString}
-                    onChange={(e) => setConnectString(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setConnectString('connect ');
+                      } else if (!val.toLowerCase().startsWith('connect')) {
+                        setConnectString(`connect ${val}`);
+                      } else {
+                        setConnectString(val);
+                      }
+                    }}
                     className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
                     placeholder="e.g. connect play.vicecity.rp"
                   />
+                  <span className="text-[11px] text-slate-500 mt-1 block">
+                    F8 console command pre-written (e.g. <code className="text-cyan-400 font-mono">connect play.vicecity.rp</code>)
+                  </span>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
@@ -558,46 +657,124 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
               </div>
 
               <div className="space-y-4">
+                {/* Guild ID */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Discord Guild (Server) ID
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Discord Guild (Server) ID *
+                    </label>
+                    {discordGuildId.trim() && (
+                      isDiscordSnowflakeValid(discordGuildId) ? (
+                        <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Valid ID Format
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> Must be 17-20 digits
+                        </span>
+                      )
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={discordGuildId}
                     onChange={(e) => setDiscordGuildId(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
+                    className={`w-full px-4 py-3 rounded-xl bg-slate-950 border text-white font-mono text-sm focus:outline-none transition ${
+                      !discordGuildId.trim()
+                        ? 'border-slate-700 focus:border-cyan-500'
+                        : isDiscordSnowflakeValid(discordGuildId)
+                        ? 'border-emerald-500/80 bg-emerald-950/20 text-emerald-200 focus:border-emerald-400'
+                        : 'border-rose-500/80 bg-rose-950/20 text-rose-200 focus:border-rose-400'
+                    }`}
                     placeholder="e.g. 1198765432109876543"
                   />
-                  <span className="text-[11px] text-slate-500 mt-1 block">Right click your Discord server icon &rarr; Copy Server ID</span>
+                  {discordGuildId.trim() && !isDiscordSnowflakeValid(discordGuildId) ? (
+                    <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Invalid Server ID. Letters and special characters are not allowed. Must be 17-20 numeric digits.
+                    </p>
+                  ) : (
+                    <span className="text-[11px] text-slate-500 mt-1 block">Right click your Discord server icon &rarr; Copy Server ID</span>
+                  )}
                 </div>
 
+                {/* Whitelisted Role ID */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Whitelisted Member Role ID (To Assign on Approval)
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Whitelisted Member Role ID (To Assign on Approval) *
+                    </label>
+                    {whitelistedRoleId.trim() && (
+                      isDiscordSnowflakeValid(whitelistedRoleId) ? (
+                        <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Valid Role Format
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> Must be 17-20 digits
+                        </span>
+                      )
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={whitelistedRoleId}
                     onChange={(e) => setWhitelistedRoleId(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
+                    className={`w-full px-4 py-3 rounded-xl bg-slate-950 border text-white font-mono text-sm focus:outline-none transition ${
+                      !whitelistedRoleId.trim()
+                        ? 'border-slate-700 focus:border-cyan-500'
+                        : isDiscordSnowflakeValid(whitelistedRoleId)
+                        ? 'border-emerald-500/80 bg-emerald-950/20 text-emerald-200 focus:border-emerald-400'
+                        : 'border-rose-500/80 bg-rose-950/20 text-rose-200 focus:border-rose-400'
+                    }`}
                     placeholder="e.g. 1198765432109876550"
                   />
-                  <span className="text-[11px] text-slate-500 mt-1 block">Right click the &apos;Citizen&apos; or &apos;Whitelisted&apos; role in Server Settings &rarr; Roles &rarr; Copy Role ID</span>
+                  {whitelistedRoleId.trim() && !isDiscordSnowflakeValid(whitelistedRoleId) ? (
+                    <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Invalid Role ID. Letters and special characters are not allowed. Must be 17-20 numeric digits.
+                    </p>
+                  ) : (
+                    <span className="text-[11px] text-slate-500 mt-1 block">Right click the &apos;Citizen&apos; or &apos;Whitelisted&apos; role in Server Settings &rarr; Roles &rarr; Copy Role ID</span>
+                  )}
                 </div>
 
+                {/* Webhook URL */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Staff Review Queue Discord Webhook URL
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Staff Review Queue Discord Webhook URL *
+                    </label>
+                    {discordWebhookUrl.trim() && (
+                      isDiscordWebhookUrlValid(discordWebhookUrl) ? (
+                        <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Valid Webhook URL
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> Invalid Webhook Endpoint
+                        </span>
+                      )
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={discordWebhookUrl}
                     onChange={(e) => setDiscordWebhookUrl(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
-                    placeholder="https://discord.com/api/webhooks/..."
+                    className={`w-full px-4 py-3 rounded-xl bg-slate-950 border text-white font-mono text-sm focus:outline-none transition ${
+                      !discordWebhookUrl.trim()
+                        ? 'border-slate-700 focus:border-cyan-500'
+                        : isDiscordWebhookUrlValid(discordWebhookUrl)
+                        ? 'border-emerald-500/80 bg-emerald-950/20 text-emerald-200 focus:border-emerald-400'
+                        : 'border-rose-500/80 bg-rose-950/20 text-rose-200 focus:border-rose-400'
+                    }`}
+                    placeholder="https://discord.com/api/webhooks/123456789/abcdef..."
                   />
-                  <span className="text-[11px] text-slate-500 mt-1 block">Incoming applications and staff actions will post rich embeds to this channel</span>
+                  {discordWebhookUrl.trim() && !isDiscordWebhookUrlValid(discordWebhookUrl) ? (
+                    <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Must be a valid Discord Webhook URL (e.g. https://discord.com/api/webhooks/...).
+                    </p>
+                  ) : (
+                    <span className="text-[11px] text-slate-500 mt-1 block">Incoming applications and staff actions will post rich embeds to this channel</span>
+                  )}
                 </div>
               </div>
 
@@ -610,7 +787,11 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
                 </button>
                 <button
                   onClick={() => setCurrentStep(3)}
-                  disabled={!discordGuildId || !whitelistedRoleId || !discordWebhookUrl}
+                  disabled={
+                    !isDiscordSnowflakeValid(discordGuildId) ||
+                    !isDiscordSnowflakeValid(whitelistedRoleId) ||
+                    !isDiscordWebhookUrlValid(discordWebhookUrl)
+                  }
                   className="w-full sm:w-auto px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   <span>Next: Form & AI Lore Grader</span>

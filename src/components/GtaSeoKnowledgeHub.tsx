@@ -49,7 +49,7 @@ import { copyToClipboard } from '../lib/copyUtils';
 import { ENV } from '../lib/envConfig';
 import { updateArticleSeoMeta } from '../lib/seoRouting';
 import { GameDealsBox } from './affiliates/GameDealsBox';
-import { formatAutoCrawlTime, formatDate, formatDateTime } from '../lib/dateUtils';
+import { formatAutoCrawlTime, formatDate, formatDateTime, formatArticleDate, formatShortArticleDate } from '../lib/dateUtils';
 
 interface GtaSeoKnowledgeHubProps {
   onNavigateTab?: (tab: any) => void;
@@ -68,8 +68,11 @@ export const GtaSeoKnowledgeHub: React.FC<GtaSeoKnowledgeHubProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [allPages, setAllPages] = useState<SeoKeywordPage[]>(SEO_KEYWORD_PAGES);
-  const [activePage, setActivePage] = useState<SeoKeywordPage | null>(SEO_KEYWORD_PAGES[0]);
+  const [allPages, setAllPages] = useState<SeoKeywordPage[]>(() => deduplicateKnowledgeArticles(SEO_KEYWORD_PAGES, []));
+  const [activePage, setActivePage] = useState<SeoKeywordPage | null>(() => {
+    const initPages = deduplicateKnowledgeArticles(SEO_KEYWORD_PAGES, []);
+    return initPages[0] || SEO_KEYWORD_PAGES[0];
+  });
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
   const [showJsonLdModal, setShowJsonLdModal] = useState<boolean>(false);
   const [isCrawling, setIsCrawling] = useState<boolean>(false);
@@ -143,35 +146,56 @@ export const GtaSeoKnowledgeHub: React.FC<GtaSeoKnowledgeHubProps> = ({
         },
         body: JSON.stringify({ force: true })
       });
-      const data = await res.json();
-      if (data.success && data.generatedPage) {
+
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        const textResp = await res.text().catch(() => '');
+        data = { success: false, message: textResp || `Server returned HTTP ${res.status}` };
+      }
+
+      if (data && data.success && data.generatedPage) {
         setSearchQuery('');
         setSelectedCategory('All');
         setAllPages((prev) => {
-          return deduplicateKnowledgeArticles(SEO_KEYWORD_PAGES, [data.generatedPage, ...prev]);
+          try {
+            return deduplicateKnowledgeArticles(SEO_KEYWORD_PAGES, [data.generatedPage, ...prev]);
+          } catch (dedupeErr) {
+            return [data.generatedPage, ...prev];
+          }
         });
         setActivePage(data.generatedPage);
         setLastCrawlFormatted(formatAutoCrawlTime(Date.now()));
 
         const summary = data.generatedPage?.updatedAssetsSummary;
-        let notice = `⚡ Live GTA 6 News Engine updated! "${data.generatedPage.title}" added to index.`;
+        let notice = `⚡ Live GTA 6 News Engine updated! "${data.generatedPage.title || data.generatedPage.h1 || 'New article'}" added to index.`;
         if (summary) {
           notice += ` Synced: +${summary.vehiclesAdded || 0} Vehicles, +${summary.weaponsAdded || 0} Weapons, +${summary.mapLocationsAdded || 0} Map Locations.`;
+        }
+        if (data.discordStatus) {
+          if (data.discordStatus.success) {
+            notice += ` 📢 Broadcasted to Discord ${data.discordStatus.channel || '#verified-news'}.`;
+          } else if (data.discordStatus.message) {
+            notice += ` ℹ️ (Discord: ${data.discordStatus.message})`;
+          }
         }
         setLastCrawlNotice(notice);
 
         // Smoothly bring the active article into view
         setTimeout(() => {
-          const el = document.getElementById('active-article-viewport');
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
+          try {
+            const el = document.getElementById('active-article-viewport');
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          } catch (_) {}
         }, 120);
       } else {
-        setLastCrawlNotice(`⚠️ ${data.message || data.error || 'Could not auto-generate news briefing. Please try again.'}`);
+        setLastCrawlNotice(`⚠️ ${data?.message || data?.error || 'Could not auto-generate news briefing. Please try again.'}`);
       }
     } catch (err: any) {
-      console.error('Failed to run Midnight Spider:', err);
+      console.warn('Midnight Spider notice:', err);
       setLastCrawlNotice(`⚠️ Error running Midnight Spider: ${err?.message || 'Network error'}`);
     } finally {
       setIsCrawling(false);
@@ -620,7 +644,11 @@ export const GtaSeoKnowledgeHub: React.FC<GtaSeoKnowledgeHubProps> = ({
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-zinc-500 font-sans">{page.readingTime || '4 min read'}</span>
+                        <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-sans">
+                          <span>{formatShortArticleDate(page)}</span>
+                          <span>•</span>
+                          <span>{page.readingTime || '4 min read'}</span>
+                        </div>
                       </div>
 
                       <h3 className={`text-xs font-bold transition line-clamp-1 ${
@@ -847,7 +875,7 @@ export const GtaSeoKnowledgeHub: React.FC<GtaSeoKnowledgeHubProps> = ({
                     <span>{activePage.category}</span>
                   </span>
                   <span className="text-xs text-zinc-400 font-sans">
-                    Updated: <strong className="text-zinc-300 font-normal">{activePage.lastUpdated ? (activePage.lastUpdated.includes('T') ? formatAutoCrawlTime(activePage.lastUpdated) : activePage.lastUpdated) : 'Recently'}</strong>
+                    Updated: <strong className="text-zinc-200 font-medium">{formatArticleDate(activePage)}</strong>
                   </span>
                 </div>
 

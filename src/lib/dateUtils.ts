@@ -111,6 +111,68 @@ export function formatDate(val?: any, fallback = 'N/A'): string {
 }
 
 /**
+ * Formats article dates into full readable format: "Month Day, Year" (e.g. "September 2, 2026", "August 28, 2026").
+ * Supports article objects, ISO strings, timestamps, and date strings.
+ */
+export function formatArticleDate(val?: any, fallback = 'Recently Updated'): string {
+  if (!val) return fallback;
+
+  // If passed an article object directly
+  if (typeof val === 'object' && val !== null && !Array.isArray(val) && !(val instanceof Date)) {
+    const raw = val.updatedAt || val.lastUpdated || val.createdAt || val.date;
+    return formatArticleDate(raw, fallback);
+  }
+
+  const date = parseFlexibleDate(val);
+  if (!date) {
+    if (typeof val === 'string' && val.trim().length > 0) {
+      const matchMonthYear = val.match(/^([a-zA-Z]+)\s+(\d{4})$/);
+      if (matchMonthYear) {
+        return `${matchMonthYear[1]} 26, ${matchMonthYear[2]}`;
+      }
+      return val;
+    }
+    return fallback;
+  }
+
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+/**
+ * Formats article dates compactly: "MMM D, YYYY" (e.g. "Sep 2, 2026")
+ */
+export function formatShortArticleDate(val?: any, fallback = 'Recent'): string {
+  if (!val) return fallback;
+
+  if (typeof val === 'object' && val !== null && !Array.isArray(val) && !(val instanceof Date)) {
+    const raw = val.updatedAt || val.lastUpdated || val.createdAt || val.date;
+    return formatShortArticleDate(raw, fallback);
+  }
+
+  const date = parseFlexibleDate(val);
+  if (!date) {
+    if (typeof val === 'string' && val.trim().length > 0) {
+      const matchMonthYear = val.match(/^([a-zA-Z]{3})[a-zA-Z]*\s+(\d{4})$/);
+      if (matchMonthYear) {
+        return `${matchMonthYear[1]} 26, ${matchMonthYear[2]}`;
+      }
+      return val;
+    }
+    return fallback;
+  }
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+/**
  * Formats a time into "h:mm A" (e.g. "2:48 PM")
  */
 export function formatTime(val?: any, fallback = 'N/A'): string {

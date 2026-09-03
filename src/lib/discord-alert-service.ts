@@ -120,11 +120,11 @@ export async function fetchWebhooksFromFirestore(): Promise<GlobalBotWebhookConf
   try {
     const docRef = doc(db, 'bot_guild_configs', 'global_alerts');
     const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
+    if (docSnap && docSnap.exists()) {
       const data = docSnap.data() as GlobalBotWebhookConfig;
       if (data) {
-        if (data.announcementsWebhook) cachedFirestoreWebhooks.announcementsWebhook = data.announcementsWebhook;
-        if (data.newsWebhook) cachedFirestoreWebhooks.newsWebhook = data.newsWebhook;
+        if (data.announcementsWebhook) cachedFirestoreWebhooks.announcementsWebhook = data.announcementsWebhook.trim();
+        if (data.newsWebhook) cachedFirestoreWebhooks.newsWebhook = data.newsWebhook.trim();
         if (typeof data.autoPseoBroadcast === 'boolean') cachedFirestoreWebhooks.autoPseoBroadcast = data.autoPseoBroadcast;
         if (typeof data.autoBlogBroadcast === 'boolean') cachedFirestoreWebhooks.autoBlogBroadcast = data.autoBlogBroadcast;
         if (data.updatedAt) cachedFirestoreWebhooks.updatedAt = data.updatedAt;
@@ -134,15 +134,17 @@ export async function fetchWebhooksFromFirestore(): Promise<GlobalBotWebhookConf
       }
     }
   } catch (err) {
-    // Silent fail / offline fallback
+    // Silent fallback to local storage or env
   }
 
   // Fallback to local storage if in browser
   if (typeof window !== 'undefined') {
-    const savedAnnouncements = localStorage.getItem('gtavi_discord_announcements_webhook');
-    const savedNews = localStorage.getItem('gtavi_discord_news_webhook');
-    if (savedAnnouncements) cachedFirestoreWebhooks.announcementsWebhook = savedAnnouncements;
-    if (savedNews) cachedFirestoreWebhooks.newsWebhook = savedNews;
+    try {
+      const savedAnnouncements = localStorage.getItem('gtavi_discord_announcements_webhook');
+      const savedNews = localStorage.getItem('gtavi_discord_news_webhook');
+      if (savedAnnouncements) cachedFirestoreWebhooks.announcementsWebhook = savedAnnouncements.trim();
+      if (savedNews) cachedFirestoreWebhooks.newsWebhook = savedNews.trim();
+    } catch (_) {}
   }
 
   isFirestoreWebhooksLoaded = true;
@@ -175,8 +177,12 @@ export async function saveWebhooksToFirestore(config: {
     }
 
     // 1. Write directly to Firestore
-    const docRef = doc(db, 'bot_guild_configs', 'global_alerts');
-    await setDoc(docRef, payload, { merge: true });
+    try {
+      const docRef = doc(db, 'bot_guild_configs', 'global_alerts');
+      await setDoc(docRef, payload, { merge: true });
+    } catch (dbErr) {
+      console.warn('[saveWebhooksToFirestore] Firestore write warning:', dbErr);
+    }
 
     // 2. Update local memory cache
     cachedFirestoreWebhooks.announcementsWebhook = payload.announcementsWebhook;
@@ -189,8 +195,10 @@ export async function saveWebhooksToFirestore(config: {
 
     // 3. Update localStorage if browser
     if (typeof window !== 'undefined') {
-      if (payload.announcementsWebhook) localStorage.setItem('gtavi_discord_announcements_webhook', payload.announcementsWebhook);
-      if (payload.newsWebhook) localStorage.setItem('gtavi_discord_news_webhook', payload.newsWebhook);
+      try {
+        if (payload.announcementsWebhook) localStorage.setItem('gtavi_discord_announcements_webhook', payload.announcementsWebhook);
+        if (payload.newsWebhook) localStorage.setItem('gtavi_discord_news_webhook', payload.newsWebhook);
+      } catch (_) {}
       
       // Also notify backend server to update process.env & server memory cache
       try {
@@ -224,57 +232,120 @@ export const EMBED_COLORS = {
   LEAK_VERIFIED: 0xA855F7,       // Neon Violet #A855F7
 };
 
+function isValidWebhookUrl(url: any): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  return (
+    trimmed.startsWith('https://discord.com/api/webhooks/') ||
+    trimmed.startsWith('https://discordapp.com/api/webhooks/') ||
+    trimmed.startsWith('https://canary.discord.com/api/webhooks/') ||
+    trimmed.startsWith('https://ptb.discord.com/api/webhooks/') ||
+    (trimmed.startsWith('http://') || trimmed.startsWith('https://'))
+  );
+}
+
+/**
+ * Helper to check all possible server environment variable keys for webhooks
+ */
+function getProcessEnvWebhook(keys: string[]): string {
+  if (typeof process !== 'undefined' && process.env) {
+    for (const key of keys) {
+      const val = process.env[key];
+      if (isValidWebhookUrl(val)) return val!.trim();
+    }
+  }
+  return '';
+}
+
 /**
  * Get active Webhook URL for a specific target channel.
- * Checks custom override -> Cloud Firestore cached config -> runtime environment variables -> localStorage.
+ * Checks custom override -> Cloud Firestore cached config -> runtime environment variables -> localStorage -> universal fallback.
  */
 export function resolveWebhookUrl(targetChannel: AlertTargetChannel, customUrl?: string): string {
-  if (customUrl && customUrl.startsWith('https://discord.com/api/webhooks/')) {
-    return customUrl;
+  if (customUrl && isValidWebhookUrl(customUrl)) {
+    return customUrl.trim();
   }
 
-  const normalized = targetChannel.toLowerCase().replace('#', '').trim();
+  const normalized = targetChannel ? targetChannel.toLowerCase().replace('#', '').trim() : '';
   const isNews = normalized === 'verified-news' || normalized === 'news' || normalized === 'breaking-news';
   const isAnnouncements = normalized === 'announcements' || normalized === 'database-drops' || normalized === 'updates';
 
   // 1. Check in-memory Firestore cache
-  if (isNews && cachedFirestoreWebhooks.newsWebhook && cachedFirestoreWebhooks.newsWebhook.startsWith('https://discord.com/api/webhooks/')) {
-    return cachedFirestoreWebhooks.newsWebhook;
+  if (isNews && isValidWebhookUrl(cachedFirestoreWebhooks.newsWebhook)) {
+    return cachedFirestoreWebhooks.newsWebhook.trim();
   }
-  if (isAnnouncements && cachedFirestoreWebhooks.announcementsWebhook && cachedFirestoreWebhooks.announcementsWebhook.startsWith('https://discord.com/api/webhooks/')) {
-    return cachedFirestoreWebhooks.announcementsWebhook;
+  if (isAnnouncements && isValidWebhookUrl(cachedFirestoreWebhooks.announcementsWebhook)) {
+    return cachedFirestoreWebhooks.announcementsWebhook.trim();
   }
 
   // 2. Check process.env (Node server) or import.meta.env (client)
   if (isNews) {
-    if (ENV.DISCORD_VERIFIED_NEWS_WEBHOOK_URL && ENV.DISCORD_VERIFIED_NEWS_WEBHOOK_URL.startsWith('http')) {
-      return ENV.DISCORD_VERIFIED_NEWS_WEBHOOK_URL;
+    const envNews = getProcessEnvWebhook([
+      'DISCORD_VERIFIED_NEWS_WEBHOOK_URL',
+      'DISCORD_NEWS_WEBHOOK_URL',
+      'DISCORD_NEWS_WEBHOOK',
+      'DISCORD_FEED_WEBHOOK_URL',
+      'DISCORD_WEBHOOK_URL',
+      'DISCORD_WEBHOOK'
+    ]);
+    if (envNews) return envNews;
+
+    if (isValidWebhookUrl(ENV.DISCORD_VERIFIED_NEWS_WEBHOOK_URL)) {
+      return ENV.DISCORD_VERIFIED_NEWS_WEBHOOK_URL.trim();
     }
   }
 
   if (isAnnouncements) {
-    if (ENV.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL && ENV.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL.startsWith('http')) {
-      return ENV.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL;
+    const envAnnounce = getProcessEnvWebhook([
+      'DISCORD_ANNOUNCEMENTS_WEBHOOK_URL',
+      'DISCORD_ANNOUNCEMENTS_WEBHOOK',
+      'DISCORD_WEBHOOK_URL',
+      'DISCORD_WEBHOOK',
+      'DISCORD_ALERTS_WEBHOOK_URL',
+      'DISCORD_BOT_WEBHOOK_URL'
+    ]);
+    if (envAnnounce) return envAnnounce;
+
+    if (isValidWebhookUrl(ENV.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL)) {
+      return ENV.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL.trim();
     }
   }
 
   // 3. Check browser localStorage
   if (typeof window !== 'undefined') {
-    const savedAnnouncements = localStorage.getItem('gtavi_discord_announcements_webhook');
-    const savedNews = localStorage.getItem('gtavi_discord_news_webhook');
-    if (isNews && savedNews && savedNews.startsWith('http')) {
-      return savedNews;
-    }
-    if (isAnnouncements && savedAnnouncements && savedAnnouncements.startsWith('http')) {
-      return savedAnnouncements;
-    }
-    if (savedAnnouncements && savedAnnouncements.startsWith('http')) {
-      return savedAnnouncements;
-    }
+    try {
+      const savedAnnouncements = localStorage.getItem('gtavi_discord_announcements_webhook');
+      const savedNews = localStorage.getItem('gtavi_discord_news_webhook');
+      if (isNews && isValidWebhookUrl(savedNews)) {
+        return savedNews!.trim();
+      }
+      if (isAnnouncements && isValidWebhookUrl(savedAnnouncements)) {
+        return savedAnnouncements!.trim();
+      }
+      if (isValidWebhookUrl(savedNews)) return savedNews!.trim();
+      if (isValidWebhookUrl(savedAnnouncements)) return savedAnnouncements!.trim();
+    } catch (_) {}
   }
 
-  // 4. Fallbacks
-  return cachedFirestoreWebhooks.announcementsWebhook || cachedFirestoreWebhooks.newsWebhook || ENV.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL || ENV.DISCORD_VERIFIED_NEWS_WEBHOOK_URL || '';
+  // 4. Universal Fallbacks: If news channel was requested but only announcements is configured (or vice versa), use whatever webhook is available!
+  const genericEnv = getProcessEnvWebhook([
+    'DISCORD_VERIFIED_NEWS_WEBHOOK_URL',
+    'DISCORD_NEWS_WEBHOOK_URL',
+    'DISCORD_ANNOUNCEMENTS_WEBHOOK_URL',
+    'DISCORD_WEBHOOK_URL',
+    'DISCORD_WEBHOOK',
+    'DISCORD_BOT_WEBHOOK_URL',
+    'DISCORD_FEED_WEBHOOK_URL',
+    'EMAIL_WEBHOOK_URL'
+  ]);
+  if (genericEnv) return genericEnv;
+
+  if (isValidWebhookUrl(cachedFirestoreWebhooks.newsWebhook)) return cachedFirestoreWebhooks.newsWebhook.trim();
+  if (isValidWebhookUrl(cachedFirestoreWebhooks.announcementsWebhook)) return cachedFirestoreWebhooks.announcementsWebhook.trim();
+  if (isValidWebhookUrl(ENV.DISCORD_VERIFIED_NEWS_WEBHOOK_URL)) return ENV.DISCORD_VERIFIED_NEWS_WEBHOOK_URL.trim();
+  if (isValidWebhookUrl(ENV.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL)) return ENV.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL.trim();
+
+  return '';
 }
 
 /**
@@ -386,7 +457,15 @@ export function buildDiscordAlertEmbed(payload: DiscordAlertPayload): DiscordEmb
  */
 export async function dispatchDiscordAlert(payload: DiscordAlertPayload): Promise<WebhookDispatchResult> {
   const targetChannel = payload.targetChannel || '#announcements';
-  const webhookUrl = resolveWebhookUrl(targetChannel, payload.webhookUrl);
+
+  // Make sure Firestore webhook settings are loaded if not loaded yet
+  if (!isFirestoreWebhooksLoaded) {
+    try {
+      await fetchWebhooksFromFirestore();
+    } catch (_) {}
+  }
+
+  let webhookUrl = resolveWebhookUrl(targetChannel, payload.webhookUrl);
 
   const embed = buildDiscordAlertEmbed(payload);
   const nowIso = new Date().toISOString();
@@ -407,31 +486,37 @@ export async function dispatchDiscordAlert(payload: DiscordAlertPayload): Promis
       });
 
       const data = await res.json();
-      const result: WebhookDispatchResult = {
-        success: data.success || false,
-        targetChannel: String(targetChannel),
-        dispatchedAt: nowIso,
-        statusText: data.message || (data.success ? 'Delivered via ViceIntel API Bot' : data.error || 'Failed to dispatch'),
-        statusCode: res.status,
-        webhookUsed: webhookUrl ? (webhookUrl.slice(0, 35) + '...') : 'Configured Backend Webhook Relay',
-        error: data.success ? undefined : (data.error || 'Dispatch error'),
-        embed
-      };
+      if (data && data.success) {
+        const result: WebhookDispatchResult = {
+          success: true,
+          targetChannel: String(targetChannel),
+          dispatchedAt: nowIso,
+          statusText: data.message || 'Delivered to Discord channel via ViceIntel API Relay',
+          statusCode: res.status,
+          webhookUsed: webhookUrl ? (webhookUrl.slice(0, 35) + '...') : 'Configured Backend Webhook Relay',
+          embed
+        };
 
-      recordDispatchHistory(result, payload);
-      return result;
+        recordDispatchHistory(result, payload);
+        return result;
+      }
     } catch (err: any) {
       console.warn('[Discord Alert Service] Client fetch exception, attempting direct fallback:', err);
     }
   }
 
-  // Server-side direct dispatch to Discord Webhook
+  // Check webhook URL again after potential resolution
+  if (!webhookUrl || !webhookUrl.startsWith('http')) {
+    webhookUrl = resolveWebhookUrl(targetChannel, payload.webhookUrl);
+  }
+
+  // Server-side or direct browser fallback dispatch to Discord Webhook
   if (!webhookUrl || !webhookUrl.startsWith('http')) {
     const fallbackResult: WebhookDispatchResult = {
       success: false,
       targetChannel: String(targetChannel),
       dispatchedAt: nowIso,
-      statusText: `No webhook configured for channel ${targetChannel}. Configure DISCORD_ANNOUNCEMENTS_WEBHOOK_URL or DISCORD_VERIFIED_NEWS_WEBHOOK_URL in .env.`,
+      statusText: `No active Discord webhook configured for ${targetChannel}. Configure in Admin Control Panel (Bot & Webhooks) or DISCORD_VERIFIED_NEWS_WEBHOOK_URL in .env.`,
       webhookUsed: 'None',
       error: 'WEBHOOK_NOT_CONFIGURED',
       embed
@@ -451,11 +536,12 @@ export async function dispatchDiscordAlert(payload: DiscordAlertPayload): Promis
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(discordBody)
+      body: JSON.stringify(discordBody),
+      signal: AbortSignal.timeout(6000)
     });
 
     const isSuccess = response.status >= 200 && response.status < 300;
-    const responseText = isSuccess ? 'Delivered to Discord Webhook' : await response.text();
+    const responseText = isSuccess ? 'Delivered to Discord Webhook' : await response.text().catch(() => `HTTP ${response.status}`);
 
     const result: WebhookDispatchResult = {
       success: isSuccess,

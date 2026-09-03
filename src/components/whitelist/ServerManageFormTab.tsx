@@ -35,6 +35,7 @@ import {
   normalizeServerSlug
 } from '../../lib/whitelist-service';
 import { copyToClipboard } from '../../lib/copyUtils';
+import { isDiscordSnowflakeValid, isDiscordWebhookUrlValid } from '../ServerOnboardingWizard';
 import { Lock, LogIn, Crown } from 'lucide-react';
 import { ClaimButtonModal } from '../servers/ClaimButtonModal';
 import { PaymentSuccessModal } from '../servers/PaymentSuccessModal';
@@ -944,51 +945,126 @@ export const ServerManageFormTab: React.FC<ServerManageFormTabProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-bold text-zinc-300 block mb-1.5">
-                  Discord Webhook URL
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-zinc-300 block">
+                    Discord Webhook URL
+                  </label>
+                  {config.discordWebhookUrl?.trim() && (
+                    isDiscordWebhookUrlValid(config.discordWebhookUrl) ? (
+                      <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Valid Webhook
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Invalid Webhook URL
+                      </span>
+                    )
+                  )}
+                </div>
                 <input
                   type="url"
                   value={config.discordWebhookUrl}
                   onChange={(e) => setConfig({ ...config, discordWebhookUrl: e.target.value })}
                   placeholder="https://discord.com/api/webhooks/1234567890/abcdef..."
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-mono focus:border-indigo-500 focus:outline-none"
+                  className={`w-full bg-zinc-950 border rounded-xl p-3 text-xs text-white font-mono focus:outline-none transition ${
+                    !config.discordWebhookUrl?.trim()
+                      ? 'border-zinc-800 focus:border-indigo-500'
+                      : isDiscordWebhookUrlValid(config.discordWebhookUrl)
+                      ? 'border-emerald-500/70 bg-emerald-950/20 text-emerald-200 focus:border-emerald-400'
+                      : 'border-rose-500/70 bg-rose-950/20 text-rose-200 focus:border-rose-400'
+                  }`}
                 />
-                <span className="text-[11px] text-zinc-500 block mt-1">
-                  In Discord: Server Settings &gt; Integrations &gt; Webhooks &gt; New Webhook &gt; Copy Webhook URL.
-                </span>
+                {config.discordWebhookUrl?.trim() && !isDiscordWebhookUrlValid(config.discordWebhookUrl) ? (
+                  <p className="text-[11px] text-rose-400 block mt-1 font-medium">
+                    Must be a valid Discord Webhook endpoint (e.g. https://discord.com/api/webhooks/...).
+                  </p>
+                ) : (
+                  <span className="text-[11px] text-zinc-500 block mt-1">
+                    In Discord: Server Settings &gt; Integrations &gt; Webhooks &gt; New Webhook &gt; Copy Webhook URL.
+                  </span>
+                )}
               </div>
 
               <div>
-                <label className="text-xs font-bold text-zinc-300 block mb-1.5">
-                  Discord Guild ID (Server ID)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-zinc-300 block">
+                    Discord Guild ID (Server ID)
+                  </label>
+                  {config.discordGuildId?.trim() && (
+                    isDiscordSnowflakeValid(config.discordGuildId) ? (
+                      <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Valid Guild ID
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Must be 17-20 digits
+                      </span>
+                    )
+                  )}
+                </div>
                 <input
                   type="text"
                   value={config.discordGuildId}
                   onChange={(e) => setConfig({ ...config, discordGuildId: e.target.value })}
                   placeholder="e.g. 109876543210987654"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-mono focus:border-indigo-500 focus:outline-none"
+                  className={`w-full bg-zinc-950 border rounded-xl p-3 text-xs text-white font-mono focus:outline-none transition ${
+                    !config.discordGuildId?.trim()
+                      ? 'border-zinc-800 focus:border-indigo-500'
+                      : isDiscordSnowflakeValid(config.discordGuildId)
+                      ? 'border-emerald-500/70 bg-emerald-950/20 text-emerald-200 focus:border-emerald-400'
+                      : 'border-rose-500/70 bg-rose-950/20 text-rose-200 focus:border-rose-400'
+                  }`}
                 />
-                <span className="text-[11px] text-zinc-500 block mt-1">
-                  Enable Developer Mode in Discord, right click your server icon and select "Copy Server ID".
-                </span>
+                {config.discordGuildId?.trim() && !isDiscordSnowflakeValid(config.discordGuildId) ? (
+                  <p className="text-[11px] text-rose-400 block mt-1 font-medium">
+                    Invalid Guild ID. Letters and special characters are not allowed. Must be 17-20 digits.
+                  </p>
+                ) : (
+                  <span className="text-[11px] text-zinc-500 block mt-1">
+                    Enable Developer Mode in Discord, right click your server icon and select "Copy Server ID".
+                  </span>
+                )}
               </div>
 
               <div>
-                <label className="text-xs font-bold text-zinc-300 block mb-1.5">
-                  Whitelisted Role ID (Granted on Approval)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-zinc-300 block">
+                    Whitelisted Role ID (Granted on Approval)
+                  </label>
+                  {config.discordRoleId?.trim() && (
+                    isDiscordSnowflakeValid(config.discordRoleId) ? (
+                      <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Valid Role ID
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Must be 17-20 digits
+                      </span>
+                    )
+                  )}
+                </div>
                 <input
                   type="text"
                   value={config.discordRoleId}
                   onChange={(e) => setConfig({ ...config, discordRoleId: e.target.value })}
                   placeholder="e.g. 109876543210987655"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-mono focus:border-indigo-500 focus:outline-none"
+                  className={`w-full bg-zinc-950 border rounded-xl p-3 text-xs text-white font-mono focus:outline-none transition ${
+                    !config.discordRoleId?.trim()
+                      ? 'border-zinc-800 focus:border-indigo-500'
+                      : isDiscordSnowflakeValid(config.discordRoleId)
+                      ? 'border-emerald-500/70 bg-emerald-950/20 text-emerald-200 focus:border-emerald-400'
+                      : 'border-rose-500/70 bg-rose-950/20 text-rose-200 focus:border-rose-400'
+                  }`}
                 />
-                <span className="text-[11px] text-zinc-500 block mt-1">
-                  Role ID of the "Whitelisted Citizen" role in your Discord server.
-                </span>
+                {config.discordRoleId?.trim() && !isDiscordSnowflakeValid(config.discordRoleId) ? (
+                  <p className="text-[11px] text-rose-400 block mt-1 font-medium">
+                    Invalid Role ID. Letters and special characters are not allowed. Must be 17-20 digits.
+                  </p>
+                ) : (
+                  <span className="text-[11px] text-zinc-500 block mt-1">
+                    Role ID of the "Whitelisted Citizen" role in your Discord server.
+                  </span>
+                )}
               </div>
             </div>
 

@@ -189,11 +189,16 @@ export function mergeTwoArticles(primary: any, secondary: any): any {
   if (!primary) return secondary;
   if (!secondary) return primary;
 
-  // Resolve dates: keep the latest timestamp
+  // Resolve dates: keep the latest timestamp or set to current timestamp on merge
   const datePrimary = parseArticleDate(primary);
   const dateSecondary = parseArticleDate(secondary);
-  const latestDateIso = dateSecondary > datePrimary ? (secondary.lastUpdated || secondary.updatedAt) : (primary.lastUpdated || primary.updatedAt);
-  const latestDateStr = latestDateIso ? (typeof latestDateIso === 'string' && latestDateIso.includes('T') ? latestDateIso.split('T')[0] : latestDateIso) : primary.lastUpdated;
+  const nowIso = new Date().toISOString();
+  const latestDateIso = (dateSecondary >= datePrimary)
+    ? (secondary.updatedAt || secondary.lastUpdated || nowIso)
+    : (primary.updatedAt || primary.lastUpdated || nowIso);
+  const latestDateStr = typeof latestDateIso === 'string' && latestDateIso.includes('T')
+    ? latestDateIso.split('T')[0]
+    : latestDateIso;
 
   // Prefer the longer/more detailed title or update with merged indicators
   const title = (primary.title && primary.title.length >= (secondary.title?.length || 0)) ? primary.title : secondary.title;
@@ -334,8 +339,8 @@ export function mergeTwoArticles(primary: any, secondary: any): any {
     metaTitle,
     metaDescription,
     summary,
-    lastUpdated: latestDateStr,
-    badgeText: primary.isPillar ? primary.badgeText : (primary.badgeText || '⚡ UPDATED INTEL'),
+    lastUpdated: latestDateStr || nowIso,
+    badgeText: primary.isPillar ? primary.badgeText : (primary.badgeText || '⚡ CONSOLIDATED INTEL'),
     keywords: allKeywords,
     contentSections: mergedSections.length > 0 ? mergedSections : primarySections,
     faqs: mergedFaqs,
@@ -343,7 +348,8 @@ export function mergeTwoArticles(primary: any, secondary: any): any {
     isMerged: true,
     mergedCount: prevMergedCount + 1,
     mergedArticleIds: mergedIds,
-    updatedAt: new Date().toISOString()
+    mergedAt: nowIso,
+    updatedAt: nowIso
   };
 }
 
@@ -353,7 +359,11 @@ export function mergeTwoArticles(primary: any, secondary: any): any {
 export function parseArticleDate(article: any): number {
   if (!article) return 0;
   
-  // Direct ISO strings or timestamps
+  // If mergedAt or updatedAt is set, check it first for latest freshness
+  if (article.mergedAt) {
+    const t = new Date(article.mergedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
   if (article.updatedAt) {
     const t = new Date(article.updatedAt).getTime();
     if (!isNaN(t) && t > 0) return t;
@@ -494,25 +504,17 @@ export function processPseoArticlesWithMergeAndPrune(
     }
   }
 
-  // 3. Separate pillar guides and news articles, sort chronologically
-  const pillarList: SeoKeywordPage[] = [];
-  const newsList: SeoKeywordPage[] = [];
+  // 3. Sort all articles chronologically by parsed timestamp descending
+  // This guarantees that the latest fetched or newly merged articles always appear at the very TOP
+  const allFinalArticles: SeoKeywordPage[] = Array.from(finalMap.values());
 
-  for (const art of finalMap.values()) {
-    if (art.id && (art.id.startsWith('page-gta6-') || art.isPillar === true || art.badgeText === '🏎️ Fast Cars' || art.badgeText === '🔫 Gun Benchmarks')) {
-      pillarList.push(art);
-    } else {
-      newsList.push(art);
-    }
-  }
-
-  newsList.sort((a, b) => {
+  allFinalArticles.sort((a, b) => {
     const timeA = parseArticleDate(a);
     const timeB = parseArticleDate(b);
     return timeB - timeA;
   });
 
-  const finalArticles = [...newsList, ...pillarList];
+  const finalArticles = allFinalArticles;
 
   return {
     finalArticles,

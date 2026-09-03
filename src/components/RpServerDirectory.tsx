@@ -89,7 +89,7 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
   
   // Whitelist Simulator & Filter State
   const [practiceModalServer, setPracticeModalServer] = useState<RpServer | null>(null);
-  const [activeFilterTab, setActiveFilterTab] = useState<'all' | 'whitelisted' | 'open_public'>('all');
+  const [activeFilterTab, setActiveFilterTab] = useState<'all' | 'whitelisted' | 'open_public' | 'my_servers'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -599,6 +599,13 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
     if (activeFilterTab === 'open_public') {
       if (!(!s.isWhitelisted || s.whitelistMode === 'open_public')) return false;
     }
+    if (activeFilterTab === 'my_servers') {
+      const isMine =
+        (s.ownerUid && currentUser?.uid && s.ownerUid === currentUser.uid) ||
+        (s.ownerDiscordId && currentUser && (s.ownerDiscordId === currentUser.displayName || s.ownerDiscordId === currentUser.uid)) ||
+        (s.claimedByDiscordId && currentUser && (s.claimedByDiscordId === currentUser.displayName || s.claimedByDiscordId === currentUser.uid));
+      if (!isMine) return false;
+    }
 
     // Category / Genre filter
     if (selectedCategory !== 'all') {
@@ -664,6 +671,11 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
   const peakServersCount = servers.filter(s => s.isPeakTraffic || s.status === 'busy').length;
   const whitelistedCount = servers.filter(s => s.isWhitelisted).length;
   const publicCount = servers.filter(s => !s.isWhitelisted || s.whitelistMode === 'open_public').length;
+  const myServersCount = uniqueServers.filter(s =>
+    (s.ownerUid && currentUser?.uid && s.ownerUid === currentUser.uid) ||
+    (s.ownerDiscordId && currentUser && (s.ownerDiscordId === currentUser.displayName || s.ownerDiscordId === currentUser.uid)) ||
+    (s.claimedByDiscordId && currentUser && (s.claimedByDiscordId === currentUser.displayName || s.claimedByDiscordId === currentUser.uid))
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -1019,6 +1031,22 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
             >
               🎮 Public (No Whitelist Required) ({publicCount})
             </button>
+
+            <button
+              id="filter-tab-my-servers"
+              onClick={() => {
+                setActiveFilterTab('my_servers');
+                setCurrentPage(1);
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeFilterTab === 'my_servers'
+                  ? 'bg-amber-500 text-zinc-950 shadow-md font-black'
+                  : 'bg-zinc-900 text-amber-400 hover:text-amber-300 border border-amber-500/30 hover:border-amber-500/60'
+              }`}
+            >
+              <Server className="w-3.5 h-3.5 text-amber-400" />
+              <span>Your Servers ({myServersCount})</span>
+            </button>
           </div>
 
           {/* Directory Search Input */}
@@ -1187,22 +1215,38 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
           ))
         ) : paginatedServers.length === 0 ? (
           <div className="col-span-1 md:col-span-2 p-12 text-center rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-            <Server className="w-10 h-10 text-zinc-600 mx-auto" />
-            <h3 className="text-sm font-bold text-white">No RP Servers Found</h3>
+            <Server className="w-10 h-10 text-amber-500 mx-auto" />
+            <h3 className="text-sm font-bold text-white">
+              {activeFilterTab === 'my_servers' ? 'No Deployed Servers Found' : 'No RP Servers Found'}
+            </h3>
             <p className="text-xs text-zinc-400 max-w-sm mx-auto">
-              No community listings match your active filters or search query "{searchQuery}".
+              {activeFilterTab === 'my_servers'
+                ? "You haven't registered or claimed any RP servers under your account yet."
+                : `No community listings match your active filters or search query "${searchQuery}".`}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setActiveFilterTab('all');
-                setCurrentPage(1);
-              }}
-              className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-amber-400 transition cursor-pointer"
-            >
-              Clear Directory Filters
-            </button>
+            <div className="flex items-center justify-center gap-2 pt-1">
+              {activeFilterTab === 'my_servers' ? (
+                <button
+                  type="button"
+                  onClick={handleOpenSubmitModal}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-xs font-black text-zinc-950 transition cursor-pointer shadow-lg shadow-amber-500/20"
+                >
+                  + List Your RP Server
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setActiveFilterTab('all');
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-amber-400 transition cursor-pointer"
+                >
+                  Clear Directory Filters
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           paginatedServers.map((server, idx) => {

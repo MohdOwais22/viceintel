@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
@@ -25,7 +25,7 @@ import { CharactersTab } from './components/CharactersTab';
 import { ComparisonMatrix } from './components/ComparisonMatrix';
 import { ModBuilderCalculator } from './components/ModBuilderCalculator';
 import { BusinessRoiCalculator } from './components/BusinessRoiCalculator';
-import { InteractiveMap } from './components/InteractiveMap';
+import { MapLockedModal, MapLockedScreen } from './components/map/MapLockedModal';
 import { RpServerDirectory } from './components/RpServerDirectory';
 import { MonetizationTab } from './components/MonetizationTab';
 import { CommunityChatTab } from './components/CommunityChatTab';
@@ -39,6 +39,10 @@ import { TuningChallengesTab } from './components/challenges/TuningChallengesTab
 import { HandlingEditorTab } from './components/HandlingEditorTab';
 import { EconomyBalancerTab } from './components/EconomyBalancerTab';
 import { ScriptsGeneratorStudio } from './components/scripts/ScriptsGeneratorStudio';
+import { CadMdtTerminal } from './components/cad/CadMdtTerminal';
+import { IdentityCardGenerator } from './components/identity/IdentityCardGenerator';
+import { RulesAndEventGenerator } from './components/generator/RulesAndEventGenerator';
+import { DynastyEconomyDirectory } from './components/economy/DynastyEconomyDirectory';
 import { GtaSeoKnowledgeHub } from './components/GtaSeoKnowledgeHub';
 import { AdminAccessGuard } from './components/AdminAccessGuard';
 import { AuthModal } from './components/AuthModal';
@@ -94,6 +98,12 @@ export default function App() {
   const [isAiAdvisorOpen, setIsAiAdvisorOpen] = useState<boolean>(false);
   const [isOfflineSyncOpen, setIsOfflineSyncOpen] = useState<boolean>(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+  const [isMapLockedModalOpen, setIsMapLockedModalOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname.startsWith('/map') || window.location.search.includes('tab=map');
+    }
+    return false;
+  });
   const [isVipActive, setIsVipActive] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isStaff, setIsStaff] = useState<boolean>(false);
@@ -122,6 +132,9 @@ export default function App() {
 
     window.scrollTo(0, 0);
     setActiveTab(newTab);
+    if (newTab === 'map') {
+      setIsMapLockedModalOpen(true);
+    }
     if (newTab !== 'profile') {
       setProfileSubTab('overview');
     }
@@ -220,29 +233,24 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Periodically save current session state (activeTab, chat channel, voice modal status) to localStorage
+  // Save current session state (activeTab, chat channel, voice modal status) to localStorage on state changes
   useEffect(() => {
-    const saveSessionState = () => {
-      try {
-        const sessionData = {
-          activeTab,
-          activeChatChannel,
-          isVoiceModalOpen,
-          updatedAt: new Date().toISOString()
-        };
-        localStorage.setItem('gtavi_app_session_state', JSON.stringify(sessionData));
-      } catch (err) {
-        console.warn('Unable to persist session state to localStorage:', err);
-      }
-    };
-
-    saveSessionState();
-    const interval = setInterval(saveSessionState, 2500);
-    return () => clearInterval(interval);
+    try {
+      const sessionData = {
+        activeTab,
+        activeChatChannel,
+        isVoiceModalOpen,
+        updatedAt: new Date().toISOString()
+      };
+      localStorage.setItem('gtavi_app_session_state', JSON.stringify(sessionData));
+    } catch (err) {
+      console.warn('Unable to persist session state to localStorage:', err);
+    }
   }, [activeTab, activeChatChannel, isVoiceModalOpen]);
   
   // Firebase Auth State
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [userProfileRecord, setUserProfileRecord] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -408,6 +416,7 @@ export default function App() {
       unsub = onSnapshot(doc(db, 'userProfiles', currentUser.uid), (snap) => {
         if (snap.exists()) {
           const data = snap.data();
+          setUserProfileRecord(data);
           const now = Date.now();
           
           // Single VIP check parameter: isVip
@@ -482,6 +491,19 @@ export default function App() {
 
     return () => unsub();
   }, [currentUser]);
+
+  const fullCurrentUser = useMemo(() => {
+    if (!currentUser) return null;
+    return {
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || userProfileRecord?.username || userProfileRecord?.gamerTag || currentUser.email?.split('@')[0],
+      email: currentUser.email || undefined,
+      discordUsername: userProfileRecord?.discordUsername || userProfileRecord?.discordTag || undefined,
+      discordId: userProfileRecord?.discordId || userProfileRecord?.ownerDiscordId || undefined,
+      discordConnected: Boolean(userProfileRecord?.discordUsername || userProfileRecord?.discordId),
+      gamerTag: userProfileRecord?.gamerTag || userProfileRecord?.username || undefined
+    };
+  }, [currentUser, userProfileRecord]);
 
   // Daily Reward Ready State & Local Toast Notification
   const [profileSubTab, setProfileSubTab] = useState<'overview' | 'daily-reward' | 'avatars' | 'vip' | 'notifications' | 'security' | 'staff'>('overview');
@@ -570,8 +592,6 @@ export default function App() {
     };
 
     checkRewardExpiry();
-    const interval = setInterval(checkRewardExpiry, 30000); // Check every 30 seconds
-    return () => clearInterval(interval);
   }, [currentUser, hasDismissedRewardToast]);
 
   // Notifications State
@@ -1040,8 +1060,27 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'cad-mdt' && (
+              <CadMdtTerminal />
+            )}
+
+            {activeTab === 'identity' && (
+              <IdentityCardGenerator />
+            )}
+
+            {(activeTab === 'rules-generator' || activeTab === 'generator') && (
+              <RulesAndEventGenerator />
+            )}
+
+            {activeTab === 'economy' && (
+              <DynastyEconomyDirectory />
+            )}
+
             {activeTab === 'map' && (
-              <InteractiveMap />
+              <MapLockedScreen
+                onOpenModal={() => setIsMapLockedModalOpen(true)}
+                onNavigate={handleTabChange}
+              />
             )}
 
             {activeTab === 'blog' && (
@@ -1361,11 +1400,7 @@ export default function App() {
               <ForServersPage
                 onNavigate={handleTabChange}
                 onOpenAuth={() => setIsAuthOpen(true)}
-                currentUser={currentUser ? {
-                  uid: currentUser.uid,
-                  displayName: currentUser.displayName || currentUser.email?.split('@')[0],
-                  email: currentUser.email || undefined
-                } : null}
+                currentUser={fullCurrentUser}
               />
             )}
 
@@ -1373,11 +1408,7 @@ export default function App() {
               <ServerOnboardingWizard
                 initialServerSlug={currentServerSlug}
                 onNavigate={handleTabChange}
-                currentUser={currentUser ? {
-                  uid: currentUser.uid,
-                  displayName: currentUser.displayName || currentUser.email?.split('@')[0],
-                  email: currentUser.email || undefined
-                } : null}
+                currentUser={fullCurrentUser}
                 onOpenAuth={() => setIsAuthOpen(true)}
               />
             )}
@@ -1461,6 +1492,18 @@ export default function App() {
         currentUser={currentUser}
         activeTab={activeTab}
         isVipActive={isVipActive}
+      />
+
+      {/* Map Locked Security & Maintenance Modal */}
+      <MapLockedModal
+        isOpen={isMapLockedModalOpen || activeTab === 'map'}
+        onClose={() => {
+          setIsMapLockedModalOpen(false);
+          if (activeTab === 'map') {
+            handleTabChange('home');
+          }
+        }}
+        onNavigate={handleTabChange}
       />
 
       {/* Quick 1-Click Floating Report Trigger */}

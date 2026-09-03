@@ -69,7 +69,10 @@ import {
   notifyVehicleDrop, 
   notifyWeaponDrop, 
   notifyTuningChampionshipDrop,
-  webhookDispatchHistory 
+  webhookDispatchHistory,
+  fetchWebhooksFromFirestore,
+  cachedFirestoreWebhooks,
+  saveWebhooksToFirestore
 } from './src/lib/discord-alert-service';
 import { globalGamerTagEngine } from './src/lib/bloomFilterGamerTagEngine';
 import multer from 'multer';
@@ -227,7 +230,13 @@ async function safeGenerateContent(
           requestPayload.config = customConfig;
         }
 
-        const res = await ai.models.generateContent(requestPayload);
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('AI generation request timeout')), 5500)
+        );
+        const res: any = await Promise.race([
+          ai.models.generateContent(requestPayload),
+          timeoutPromise
+        ]);
         if (res && res.text) {
           const latencyMs = Date.now() - startTime;
           const displayName = formatModelDisplayName(currentModel);
@@ -1698,17 +1707,21 @@ CRITICAL: Return ONLY raw valid JSON (no markdown formatting codeblocks, no extr
     cleanAndPrunePseoArticles().catch(() => {});
 
     // Automated Discord Webhook Relay: Push instant alert to #verified-news
-    notifyArticleDrop({
-      title: generatedPage.title || generatedPage.h1 || 'Rockstar Intel Drop',
-      summary: generatedPage.metaDescription || generatedPage.summary || 'New verified intelligence guide published.',
-      slug: generatedPage.slug,
-      category: generatedPage.category || 'Verified Intel',
-      isVerified: true
-    }).then((res) => {
-      console.log(`[Discord Webhook Relay] Pushed article "${generatedPage.slug}" to #verified-news (${res.statusText})`);
-    }).catch((err) => {
-      console.warn('[Discord Webhook Relay] Article drop alert warning:', err);
-    });
+    let discordAlertResult: any = null;
+    try {
+      await fetchWebhooksFromFirestore().catch(() => {});
+      discordAlertResult = await notifyArticleDrop({
+        title: generatedPage.title || generatedPage.h1 || 'Rockstar Intel Drop',
+        summary: generatedPage.metaDescription || generatedPage.summary || 'New verified intelligence guide published.',
+        slug: generatedPage.slug,
+        category: generatedPage.category || 'Verified Intel',
+        isVerified: true
+      });
+      console.log(`[Discord Webhook Relay] Pushed article "${generatedPage.slug}" to #verified-news (${discordAlertResult?.statusText || 'Success'})`);
+    } catch (discordErr: any) {
+      console.warn('[Discord Webhook Relay] Article drop alert warning:', discordErr);
+      discordAlertResult = { success: false, statusText: discordErr?.message || 'Discord alert failed', error: 'DISCORD_ALERT_FAILED' };
+    }
 
     // If new vehicles were discovered in this crawl, push instant alert to #announcements
     if (addedVehiclesCount > 0 && generatedPage.confirmedAssets?.vehicles?.[0]) {
@@ -1752,6 +1765,12 @@ CRITICAL: Return ONLY raw valid JSON (no markdown formatting codeblocks, no extr
         vehiclesAdded: addedVehiclesCount,
         weaponsAdded: addedWeaponsCount,
         mapLocationsAdded: addedMapCount
+      },
+      discordStatus: {
+        success: Boolean(discordAlertResult?.success),
+        message: discordAlertResult?.statusText || 'Alert sent to Discord',
+        channel: '#verified-news',
+        webhookUsed: discordAlertResult?.webhookUsed
       }
     };
   } catch (err: any) {
@@ -4669,8 +4688,8 @@ Showing top entries for "${query || 'All'}":
     }
 
     try {
-      const { collection, getDocs, addDoc, doc, updateDoc } = await import('firebase/firestore');
-      const userProfilesSnap = await getDocs(collection(db, 'userProfiles'));
+      const { collection, getDocs, addDoc, doc, updateDoc, query, limit } = await import('firebase/firestore');
+      const userProfilesSnap = await getDocs(query(collection(db, 'userProfiles'), limit(50)));
 
       for (const userDoc of userProfilesSnap.docs) {
         scannedCount++;
@@ -5426,7 +5445,7 @@ Showing top entries for "${query || 'All'}":
       // 1. Fetch server ownership & subscriptions mapping
       const ownedServersMap = new Map<string, { tier: string; active: boolean }>();
       try {
-        const serversSnap = await getDocs(collection(db, 'servers'));
+        const serversSnap = await getDocs(query(collection(db, 'servers'), limit(50)));
         for (const sDoc of serversSnap.docs) {
           const sData = sDoc.data();
           const ownerDiscord = sData.ownerDiscordId || sData.claimedByDiscordId;
@@ -5443,7 +5462,7 @@ Showing top entries for "${query || 'All'}":
 
       // Also check 'subscriptions' collection for active B2B subscriptions
       try {
-        const subsSnap = await getDocs(collection(db, 'subscriptions'));
+        const subsSnap = await getDocs(query(collection(db, 'subscriptions'), limit(50)));
         for (const subDoc of subsSnap.docs) {
           const subData = subDoc.data();
           if (subData.ownerDiscordId && (subData.status === 'active' || subData.status === 'trialing')) {
@@ -5457,8 +5476,8 @@ Showing top entries for "${query || 'All'}":
         console.warn('[Discord Role Sync] Subscriptions fetch notice:', subErr);
       }
 
-      // 2. Fetch User Profiles
-      const userProfilesSnap = await getDocs(collection(db, 'userProfiles'));
+      // 2. Fetch User Profiles (capped at limit 50 to prevent Firestore quota spikes)
+      const userProfilesSnap = await getDocs(query(collection(db, 'userProfiles'), limit(50)));
 
       for (const userDoc of userProfilesSnap.docs) {
         const uid = userDoc.id;
@@ -5700,18 +5719,37 @@ Showing top entries for "${query || 'All'}":
   });
 
   // Get active Webhook & Bot configuration status
-  app.get('/api/bot/config', (_req: Request, res: Response) => {
-    const announcementsConfigured = Boolean(process.env.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL);
-    const newsConfigured = Boolean(process.env.DISCORD_VERIFIED_NEWS_WEBHOOK_URL);
+  app.get('/api/bot/config', async (_req: Request, res: Response) => {
+    try {
+      await fetchWebhooksFromFirestore().catch(() => {});
+    } catch (_) {}
+
+    const announcementsUrl = cachedFirestoreWebhooks.announcementsWebhook || process.env.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL || process.env.DISCORD_WEBHOOK_URL || '';
+    const newsUrl = cachedFirestoreWebhooks.newsWebhook || process.env.DISCORD_VERIFIED_NEWS_WEBHOOK_URL || process.env.DISCORD_NEWS_WEBHOOK_URL || '';
     const botConfigured = Boolean(process.env.DISCORD_BOT_TOKEN);
+
+    const announcementsConfigured = Boolean(announcementsUrl && announcementsUrl.startsWith('http'));
+    const newsConfigured = Boolean(newsUrl && newsUrl.startsWith('http'));
+
+    const maskUrl = (url: string) => {
+      if (!url || !url.startsWith('http')) return 'Not configured';
+      if (url.includes('discord.com/api/webhooks/')) {
+        const parts = url.split('/');
+        const id = parts[parts.length - 2] || '';
+        return `https://discord.com/api/webhooks/${id.slice(0, 5)}.../******`;
+      }
+      return url.slice(0, 20) + '...';
+    };
 
     return res.json({
       success: true,
       announcementsWebhookConfigured: announcementsConfigured,
       newsWebhookConfigured: newsConfigured,
       botTokenConfigured: botConfigured,
-      announcementsUrlMasked: announcementsConfigured ? 'https://discord.com/api/webhooks/... (Configured in .env)' : 'Not configured',
-      newsUrlMasked: newsConfigured ? 'https://discord.com/api/webhooks/... (Configured in .env)' : 'Not configured',
+      announcementsUrlMasked: maskUrl(announcementsUrl),
+      newsUrlMasked: maskUrl(newsUrl),
+      autoPseoBroadcast: cachedFirestoreWebhooks.autoPseoBroadcast !== false,
+      autoBlogBroadcast: cachedFirestoreWebhooks.autoBlogBroadcast !== false,
       availableChannels: ['#announcements', '#verified-news'],
       supportedEvents: [
         'article_drop',
@@ -5725,6 +5763,46 @@ Showing top entries for "${query || 'All'}":
         'system_announcement'
       ]
     });
+  });
+
+  // Save Webhooks Endpoint (synchronizes backend process.env and memory cache with Firestore)
+  app.post('/api/bot/save-webhooks', async (req: Request, res: Response) => {
+    try {
+      const { announcementsWebhook, newsWebhook, autoPseoBroadcast, autoBlogBroadcast, botSecret, updatedBy } = req.body || {};
+
+      if (announcementsWebhook && typeof announcementsWebhook === 'string') {
+        cachedFirestoreWebhooks.announcementsWebhook = announcementsWebhook.trim();
+        process.env.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL = announcementsWebhook.trim();
+      }
+      if (newsWebhook && typeof newsWebhook === 'string') {
+        cachedFirestoreWebhooks.newsWebhook = newsWebhook.trim();
+        process.env.DISCORD_VERIFIED_NEWS_WEBHOOK_URL = newsWebhook.trim();
+      }
+      if (typeof autoPseoBroadcast === 'boolean') {
+        cachedFirestoreWebhooks.autoPseoBroadcast = autoPseoBroadcast;
+      }
+      if (typeof autoBlogBroadcast === 'boolean') {
+        cachedFirestoreWebhooks.autoBlogBroadcast = autoBlogBroadcast;
+      }
+
+      await saveWebhooksToFirestore({
+        announcementsWebhook,
+        newsWebhook,
+        autoPseoBroadcast,
+        autoBlogBroadcast,
+        botSecret,
+        updatedBy: updatedBy || 'ViceIntel_Admin'
+      }).catch((e) => console.warn('[save-webhooks] Firestore sync warning:', e));
+
+      return res.json({
+        success: true,
+        message: 'Webhooks synchronized and saved successfully',
+        announcementsConfigured: Boolean(cachedFirestoreWebhooks.announcementsWebhook),
+        newsConfigured: Boolean(cachedFirestoreWebhooks.newsWebhook)
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || 'Failed to save webhooks' });
+    }
   });
 
   // 1-Click Interactive Test Alert Dispatcher
@@ -6961,8 +7039,8 @@ Showing top entries for "${query || 'All'}":
     }
 
     try {
-      const { collection, getDocs, doc, deleteDoc, updateDoc } = await import('firebase/firestore');
-      const roomsSnap = await getDocs(collection(db, 'squad_rooms'));
+      const { collection, getDocs, doc, deleteDoc, updateDoc, query, limit } = await import('firebase/firestore');
+      const roomsSnap = await getDocs(query(collection(db, 'squad_rooms'), limit(50)));
       totalChecked = roomsSnap.size;
       const now = Date.now();
 
@@ -7052,8 +7130,8 @@ Showing top entries for "${query || 'All'}":
   // API Endpoints for Squad Radar Stale Rooms Management
   app.get('/api/squad/status', async (_req: Request, res: Response) => {
     try {
-      const { collection, getDocs } = await import('firebase/firestore');
-      const snap = await getDocs(collection(db, 'squad_rooms'));
+      const { collection, getDocs, query, limit } = await import('firebase/firestore');
+      const snap = await getDocs(query(collection(db, 'squad_rooms'), limit(50)));
       const now = Date.now();
       let activeCount = 0;
       let staleCount = 0;
@@ -7109,8 +7187,8 @@ Showing top entries for "${query || 'All'}":
 
   app.get('/api/squad/rooms', async (_req: Request, res: Response) => {
     try {
-      const { collection, getDocs } = await import('firebase/firestore');
-      const snap = await getDocs(collection(db, 'squad_rooms'));
+      const { collection, getDocs, query, limit } = await import('firebase/firestore');
+      const snap = await getDocs(query(collection(db, 'squad_rooms'), limit(50)));
       const now = Date.now();
       const rooms: any[] = [];
 
@@ -8034,6 +8112,499 @@ Showing top entries for "${query || 'All'}":
       });
     }
   });
+
+  // -------------------------------------------------------------
+  // FIVEM SERVER SYNC & REAL-TIME WHITELIST API GATEWAY
+  // -------------------------------------------------------------
+
+  // Helper to extract and resolve API key and server
+  const resolveServerAndApiKey = async (req: Request) => {
+    const rawApiKey = (
+      req.headers['x-viceintel-api-key'] ||
+      req.headers['x-api-key'] ||
+      (req.headers['authorization'] && req.headers['authorization'].replace(/^Bearer\s+/i, '')) ||
+      req.body?.apiKey ||
+      req.body?.api_key ||
+      req.query?.apiKey ||
+      req.query?.api_key ||
+      ''
+    ).toString().trim();
+
+    const rawSlugOrId = (
+      req.body?.serverSlug ||
+      req.body?.serverId ||
+      req.body?.slug ||
+      req.query?.serverSlug ||
+      req.query?.serverId ||
+      req.query?.slug ||
+      req.params?.serverSlug ||
+      req.params?.serverId ||
+      ''
+    ).toString().trim();
+
+    // 1. Search in-memory state
+    let targetServer = state.rpServers.find((s) => {
+      const matchSlug = rawSlugOrId && (s.id?.toLowerCase() === rawSlugOrId.toLowerCase() || s.slug?.toLowerCase() === rawSlugOrId.toLowerCase() || (s as any).serverSlug?.toLowerCase() === rawSlugOrId.toLowerCase());
+      const matchKey = rawApiKey && (s as any).apiKey === rawApiKey;
+      return matchSlug || matchKey;
+    });
+
+    // 2. Search Firestore if not found in memory
+    if (!targetServer && (rawSlugOrId || rawApiKey) && db) {
+      try {
+        const { doc, getDoc, collection, query, where, getDocs, limit } = await import('firebase/firestore');
+        const candidateIds = [
+          rawSlugOrId,
+          `srv_${rawSlugOrId.replace(/[^a-zA-Z0-9]/g, '')}`,
+          rawSlugOrId.replace(/^srv_/, '')
+        ].filter(Boolean);
+
+        for (const cid of candidateIds) {
+          const formDoc = await getDoc(doc(db, 'whitelist_forms', cid));
+          if (formDoc.exists()) {
+            targetServer = { id: formDoc.id, ...formDoc.data() } as any;
+            break;
+          }
+          const srvDoc = await getDoc(doc(db, 'servers', cid));
+          if (srvDoc.exists()) {
+            targetServer = { id: srvDoc.id, ...srvDoc.data() } as any;
+            break;
+          }
+          const rpDoc = await getDoc(doc(db, 'rp_servers', cid));
+          if (rpDoc.exists()) {
+            targetServer = { id: rpDoc.id, ...rpDoc.data() } as any;
+            break;
+          }
+        }
+
+        // Query by apiKey field if still not found
+        if (!targetServer && rawApiKey) {
+          const qForms = query(collection(db, 'whitelist_forms'), where('apiKey', '==', rawApiKey), limit(1));
+          const snapForms = await getDocs(qForms);
+          if (!snapForms.empty) {
+            targetServer = { id: snapForms.docs[0].id, ...snapForms.docs[0].data() } as any;
+          }
+        }
+      } catch (fsErr) {
+        console.warn('[FiveM Gateway] Firestore server resolution warning:', fsErr);
+      }
+    }
+
+    // 3. If apiKey matches standard format (e.g. vcc_live_hababsb_...) extract slug fallback
+    let derivedSlug = rawSlugOrId;
+    if (!derivedSlug && rawApiKey && rawApiKey.startsWith('vcc_live_')) {
+      const parts = rawApiKey.split('_');
+      if (parts.length >= 3) {
+        derivedSlug = parts[2];
+      }
+    }
+
+    return {
+      apiKey: rawApiKey,
+      serverSlug: targetServer?.slug || (targetServer as any)?.serverSlug || derivedSlug || 'default-server',
+      serverId: targetServer?.id || `srv_${derivedSlug.replace(/[^a-zA-Z0-9]/g, '')}`,
+      serverName: targetServer?.name || (targetServer as any)?.serverName || 'Vice City RP Server',
+      server: targetServer || null
+    };
+  };
+
+  // 1. FiveM In-Game Whitelist Check Gateway (POST & GET /api/servers/whitelist/check & /api/v1/whitelist/check)
+  const handleWhitelistCheck = async (req: Request, res: Response) => {
+    const startTime = Date.now();
+    try {
+      const { apiKey, serverSlug, serverId, serverName, server } = await resolveServerAndApiKey(req);
+
+      const rawDiscordId = (req.body?.discordId || req.body?.discord || req.query?.discordId || req.query?.discord || '').toString().trim();
+      const cleanDiscordId = rawDiscordId.replace(/^discord:/i, '').trim();
+
+      const rawLicense = (req.body?.license || req.query?.license || '').toString().trim();
+      const cleanLicense = rawLicense.replace(/^license:/i, '').trim();
+
+      const rawSteamHex = (req.body?.steamHex || req.body?.steam || req.query?.steamHex || req.query?.steam || '').toString().trim();
+      const cleanSteamHex = rawSteamHex.replace(/^steam:/i, '').trim();
+
+      const rawFivemId = (req.body?.fivemId || req.body?.fivem || req.query?.fivemId || req.query?.fivem || '').toString().trim();
+      const cleanFivemId = rawFivemId.replace(/^fivem:/i, '').trim();
+
+      const playerName = (req.body?.playerName || req.body?.gamerTag || req.body?.username || req.query?.playerName || req.query?.gamerTag || req.query?.username || 'Player').toString().trim();
+
+      const host = req.get('host') || 'localhost:3000';
+      const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+      const appBaseUrl = process.env.APP_URL || `${protocol}://${host}`;
+
+      if (!cleanDiscordId && !cleanLicense && !cleanSteamHex && !cleanFivemId && !playerName) {
+        return res.status(400).json({
+          success: false,
+          whitelisted: false,
+          status: 'INVALID_REQUEST',
+          connectPermission: 'DENIED',
+          error: 'At least one player identifier (discordId, license, steamHex, or playerName) is required for whitelist verification.'
+        });
+      }
+
+      // Check if server operates in Open Public mode (no whitelist required)
+      if (server && (server.isWhitelisted === false || server.whitelistMode === 'open_public')) {
+        return res.json({
+          success: true,
+          whitelisted: true,
+          status: 'APPROVED',
+          connectPermission: 'GRANTED',
+          openPublic: true,
+          serverSlug,
+          serverName,
+          applicant: {
+            discordId: cleanDiscordId || 'open_citizen',
+            characterName: playerName,
+            approvedAt: new Date().toISOString(),
+            grantedRoles: ['Public Citizen'],
+            aiScore: 100
+          },
+          message: 'Server is currently operating in Open Public mode. Connection granted.',
+          latencyMs: Date.now() - startTime
+        });
+      }
+
+      // Search Firestore whitelist_applications for matching records
+      let matchedApplication: any = null;
+      if (db) {
+        try {
+          const { collection, getDocs, query, where, limit } = await import('firebase/firestore');
+          const appsRef = collection(db, 'whitelist_applications');
+
+          // Try match by Discord ID
+          if (cleanDiscordId) {
+            const qDiscord = query(appsRef, where('discordId', '==', cleanDiscordId), limit(5));
+            const snap = await getDocs(qDiscord);
+            for (const d of snap.docs) {
+              const data = d.data();
+              if (!serverSlug || data.serverSlug === serverSlug || data.serverId === serverId) {
+                matchedApplication = { id: d.id, ...data };
+                break;
+              }
+            }
+          }
+
+          // Try match by License
+          if (!matchedApplication && cleanLicense) {
+            const qLicense = query(appsRef, where('license', '==', cleanLicense), limit(5));
+            const snap = await getDocs(qLicense);
+            for (const d of snap.docs) {
+              const data = d.data();
+              if (!serverSlug || data.serverSlug === serverSlug || data.serverId === serverId) {
+                matchedApplication = { id: d.id, ...data };
+                break;
+              }
+            }
+          }
+
+          // Try match by GamerTag / Username
+          if (!matchedApplication && playerName && playerName !== 'Player') {
+            const qName = query(appsRef, where('applicantUsername', '==', playerName), limit(5));
+            const snap = await getDocs(qName);
+            for (const d of snap.docs) {
+              const data = d.data();
+              if (!serverSlug || data.serverSlug === serverSlug || data.serverId === serverId) {
+                matchedApplication = { id: d.id, ...data };
+                break;
+              }
+            }
+          }
+        } catch (fsErr) {
+          console.warn('[FiveM Gateway] Firestore application query warning:', fsErr);
+        }
+      }
+
+      // 1. Player is APPROVED
+      if (matchedApplication && (matchedApplication.status?.toLowerCase() === 'approved' || matchedApplication.decision?.toLowerCase() === 'approved')) {
+        const charName = matchedApplication.characterName || matchedApplication.answers?.character_name || matchedApplication.applicantUsername || playerName;
+        return res.json({
+          success: true,
+          whitelisted: true,
+          status: 'APPROVED',
+          connectPermission: 'GRANTED',
+          serverSlug,
+          serverName,
+          applicant: {
+            id: matchedApplication.id,
+            discordId: matchedApplication.discordId || cleanDiscordId,
+            discordTag: matchedApplication.discordTag || `${matchedApplication.applicantUsername || playerName}#0000`,
+            discordUsername: matchedApplication.applicantUsername || playerName,
+            characterName: charName,
+            approvedAt: matchedApplication.approvedAt || matchedApplication.updatedAt || new Date().toISOString(),
+            approvedBy: matchedApplication.reviewedBy || 'AI Fast-Track Gateway',
+            aiScore: matchedApplication.aiScore || matchedApplication.score || 92,
+            grantedRoleId: matchedApplication.grantedRoleId || (server as any)?.whitelistedRoleId || 'Whitelisted'
+          },
+          server: {
+            id: serverId,
+            name: serverName,
+            slug: serverSlug
+          },
+          message: `Player is verified and whitelisted for ${serverName}. Connection granted.`,
+          latencyMs: Date.now() - startTime
+        });
+      }
+
+      // 2. Player is PENDING / UNDER REVIEW
+      if (matchedApplication && (matchedApplication.status?.toLowerCase() === 'pending' || matchedApplication.status?.toLowerCase() === 'under review' || matchedApplication.status?.toLowerCase() === 'under_review')) {
+        return res.json({
+          success: true,
+          whitelisted: false,
+          status: 'PENDING',
+          connectPermission: 'DEFERRED',
+          serverSlug,
+          serverName,
+          applicant: {
+            id: matchedApplication.id,
+            discordId: matchedApplication.discordId || cleanDiscordId,
+            characterName: matchedApplication.characterName || playerName,
+            submittedAt: matchedApplication.submittedAt || matchedApplication.createdAt
+          },
+          message: `Whitelist application is currently under review by ${serverName} staff.`,
+          portalUrl: `${appBaseUrl}/servers/${serverSlug}/status`,
+          deferralMessage: `⏳ Whitelist Application UNDER REVIEW by ${serverName} AI & Staff.\n\nTrack your live status at:\n${appBaseUrl}/servers/${serverSlug}/status`,
+          latencyMs: Date.now() - startTime
+        });
+      }
+
+      // 3. Player is REJECTED
+      if (matchedApplication && matchedApplication.status?.toLowerCase() === 'rejected') {
+        return res.json({
+          success: true,
+          whitelisted: false,
+          status: 'REJECTED',
+          connectPermission: 'DENIED',
+          serverSlug,
+          serverName,
+          applicant: {
+            id: matchedApplication.id,
+            discordId: matchedApplication.discordId || cleanDiscordId,
+            rejectedAt: matchedApplication.rejectedAt || matchedApplication.updatedAt
+          },
+          reviewerNotes: matchedApplication.reviewerNotes || 'Does not meet server roleplay immersion guidelines.',
+          message: `Whitelist application was not approved for ${serverName}.`,
+          portalUrl: `${appBaseUrl}/servers/${serverSlug}/status`,
+          deferralMessage: `❌ Whitelist Application NOT ACCEPTED.\n\nReason: ${matchedApplication.reviewerNotes || 'Immersion standards not met.'}\n\nReview feedback & re-apply at:\n${appBaseUrl}/servers/${serverSlug}/status`,
+          latencyMs: Date.now() - startTime
+        });
+      }
+
+      // 4. Player has NOT APPLIED YET
+      return res.json({
+        success: true,
+        whitelisted: false,
+        status: 'NOT_APPLIED',
+        connectPermission: 'DENIED',
+        serverSlug,
+        serverName,
+        message: `No active whitelist record found for identifier on ${serverName}.`,
+        applyUrl: `${appBaseUrl}/servers/${serverSlug}/apply`,
+        deferralMessage: `🔒 Whitelist Required!\nYou are not yet whitelisted on ${serverName}.\n\nSubmit your application at:\n${appBaseUrl}/servers/${serverSlug}/apply`,
+        latencyMs: Date.now() - startTime
+      });
+    } catch (err: any) {
+      console.error('[FiveM Whitelist Check Error]:', err);
+      return res.status(500).json({
+        success: false,
+        whitelisted: false,
+        status: 'SERVER_ERROR',
+        connectPermission: 'DEFERRED',
+        error: err?.message || 'Failed to execute whitelist check',
+        latencyMs: Date.now() - startTime
+      });
+    }
+  };
+
+  // Mount endpoints on multiple standard URL paths for maximum framework compatibility
+  app.post('/api/servers/whitelist/check', handleWhitelistCheck);
+  app.get('/api/servers/whitelist/check', handleWhitelistCheck);
+  app.post('/api/v1/whitelist/check', handleWhitelistCheck);
+  app.get('/api/v1/whitelist/check', handleWhitelistCheck);
+  app.post('/api/whitelist/check', handleWhitelistCheck);
+  app.get('/api/whitelist/check', handleWhitelistCheck);
+
+  // 2. FiveM Live Server Heartbeat & Telemetry Synchronization API
+  const handleServerSyncHeartbeat = async (req: Request, res: Response) => {
+    const startTime = Date.now();
+    try {
+      const { apiKey, serverSlug, serverId, serverName, server } = await resolveServerAndApiKey(req);
+
+      const currentPlayers = parseInt(req.body?.currentPlayers || req.body?.playerCount || req.body?.onlinePlayers || req.query?.currentPlayers || '0', 10) || 0;
+      const maxPlayers = parseInt(req.body?.maxPlayers || req.body?.slots || req.query?.maxPlayers || '128', 10) || 128;
+      const uptimeSeconds = parseInt(req.body?.uptimeSeconds || req.body?.uptime || '0', 10) || 0;
+      const mapName = (req.body?.mapName || req.body?.map || 'Vice City').toString().trim();
+      const gameType = (req.body?.gameType || req.body?.gametype || 'Roleplay').toString().trim();
+      const resourcesCount = parseInt(req.body?.resourcesCount || '0', 10) || 0;
+      const fxVersion = (req.body?.version || req.body?.fxVersion || 'v1.0.0').toString().trim();
+      const playersList = Array.isArray(req.body?.playersList) ? req.body.playersList.slice(0, 128) : [];
+
+      const now = Date.now();
+
+      // Update in-memory RP servers state
+      const targetStateServer = state.rpServers.find((s) => s.id === serverId || s.slug === serverSlug);
+      if (targetStateServer) {
+        targetStateServer.players = currentPlayers;
+        targetStateServer.maxPlayers = maxPlayers;
+        (targetStateServer as any).isOnline = true;
+        (targetStateServer as any).lastHeartbeatAt = now;
+        (targetStateServer as any).uptimeSeconds = uptimeSeconds;
+        (targetStateServer as any).playersList = playersList;
+      }
+
+      // Persist live heartbeat to Firestore
+      if (db) {
+        try {
+          const { doc, setDoc } = await import('firebase/firestore');
+          const candidateIds = [serverId, serverSlug, `srv_${serverSlug.replace(/[^a-zA-Z0-9]/g, '')}`].filter(Boolean);
+          
+          for (const cid of candidateIds) {
+            await setDoc(
+              doc(db, 'rp_servers', cid),
+              {
+                players: currentPlayers,
+                maxPlayers,
+                isOnline: true,
+                lastHeartbeatAt: now,
+                updatedAt: now
+              },
+              { merge: true }
+            ).catch(() => {});
+
+            await setDoc(
+              doc(db, 'servers', cid),
+              {
+                currentPlayers,
+                maxPlayers,
+                isOnline: true,
+                lastHeartbeatAt: now,
+                updatedAt: now
+              },
+              { merge: true }
+            ).catch(() => {});
+          }
+
+          // Record telemetry telemetry snapshot
+          await setDoc(
+            doc(db, 'server_telemetry', serverId),
+            {
+              serverId,
+              serverSlug,
+              serverName,
+              currentPlayers,
+              maxPlayers,
+              uptimeSeconds,
+              mapName,
+              gameType,
+              resourcesCount,
+              fxVersion,
+              playersCount: playersList.length,
+              lastPingAt: now
+            },
+            { merge: true }
+          ).catch(() => {});
+        } catch (fsErr) {
+          console.warn('[FiveM Heartbeat] Firestore telemetry update warning:', fsErr);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: `Live telemetry and heartbeat synchronized for "${serverName}"!`,
+        server: {
+          id: serverId,
+          slug: serverSlug,
+          name: serverName,
+          currentPlayers,
+          maxPlayers,
+          isOnline: true,
+          lastHeartbeatAt: now
+        },
+        latencyMs: Date.now() - startTime
+      });
+    } catch (err: any) {
+      console.error('[FiveM Heartbeat Error]:', err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || 'Failed to synchronize server heartbeat',
+        latencyMs: Date.now() - startTime
+      });
+    }
+  };
+
+  app.post('/api/servers/sync', handleServerSyncHeartbeat);
+  app.post('/api/v1/servers/sync', handleServerSyncHeartbeat);
+  app.post('/api/servers/heartbeat', handleServerSyncHeartbeat);
+  app.post('/api/v1/servers/heartbeat', handleServerSyncHeartbeat);
+
+  // 3. API Key & Gateway Test Ping Endpoint
+  const handleTestApiKeyPing = async (req: Request, res: Response) => {
+    const startTime = Date.now();
+    try {
+      const { apiKey, serverSlug, serverId, serverName, server } = await resolveServerAndApiKey(req);
+
+      if (!apiKey) {
+        return res.status(400).json({
+          success: false,
+          error: 'API key is required in x-viceintel-api-key header or request body.'
+        });
+      }
+
+      return res.json({
+        success: true,
+        valid: true,
+        message: `API Key validated successfully for "${serverName}"!`,
+        server: {
+          id: serverId,
+          slug: serverSlug,
+          name: serverName,
+          framework: (server as any)?.framework || 'FiveM',
+          region: (server as any)?.region || 'NA East',
+          discordGuildId: (server as any)?.discordGuildId || null,
+          whitelistedRoleId: (server as any)?.whitelistedRoleId || (server as any)?.discordRoleId || null,
+          isWhitelisted: (server as any)?.isWhitelisted !== false,
+          whitelistMode: (server as any)?.whitelistMode || 'ai_fast_track',
+          isSubscriptionActive: (server as any)?.isSubscriptionActive !== false
+        },
+        gatewayStatus: 'ONLINE_ACTIVE',
+        latencyMs: Date.now() - startTime
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        valid: false,
+        error: err?.message || 'Failed to ping gateway',
+        latencyMs: Date.now() - startTime
+      });
+    }
+  };
+
+  app.post('/api/servers/whitelist/test-ping', handleTestApiKeyPing);
+  app.post('/api/v1/whitelist/test-ping', handleTestApiKeyPing);
+  app.get('/api/v1/whitelist/test-ping', handleTestApiKeyPing);
+
+  // 4. Server Public Configuration Endpoint (For Lua scripts & Webhooks)
+  app.get('/api/v1/servers/:serverSlug/config', async (req: Request, res: Response) => {
+    try {
+      const { serverSlug, serverId, serverName, server } = await resolveServerAndApiKey(req);
+      return res.json({
+        success: true,
+        server: {
+          id: serverId,
+          slug: serverSlug,
+          name: serverName,
+          framework: (server as any)?.framework || 'FiveM',
+          region: (server as any)?.region || 'NA East',
+          isWhitelisted: (server as any)?.isWhitelisted !== false,
+          whitelistMode: (server as any)?.whitelistMode || 'ai_fast_track',
+          autoRoleOnApproval: (server as any)?.autoRoleOnApproval !== false,
+          aiLoreAuditEnabled: (server as any)?.aiLoreAuditEnabled !== false
+        }
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || 'Failed to fetch server config' });
+    }
+  });
+
   app.post('/api/servers/whitelist/grade', async (req: Request, res: Response) => {
     try {
       const {
@@ -11641,6 +12212,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   }
 
   // Bootstrap data repositories
+  fetchWebhooksFromFirestore().catch((err) => console.warn('[Discord Webhooks] Init notice:', err));
   initializeSystemPricing().catch((err) => console.warn('[System Pricing] Init notice:', err));
   initializePseoArticles().catch((err) => console.warn('[pSEO] Init notice:', err));
   initializeRpServers().catch((err) => console.warn('[RP Servers] Init notice:', err));

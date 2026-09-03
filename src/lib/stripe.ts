@@ -16,6 +16,7 @@ export interface B2BPlanTierConfig {
   aiLoreAudits: boolean;
   priorityDirectory: boolean;
   luaBundleExport: boolean;
+  customDomain: boolean;
   dedicatedSupportChannel: boolean;
   badge: string;
   description: string;
@@ -31,9 +32,10 @@ export const B2B_PLAN_TIERS: Record<'community' | 'mega_server' | 'enterprise', 
     aiLoreAudits: true,
     priorityDirectory: false,
     luaBundleExport: true,
+    customDomain: false,
     dedicatedSupportChannel: true,
     badge: 'Popular for Growing Servers',
-    description: 'Up to 250 apps/mo, full Lua generator access, and automated Discord role bot screening.'
+    description: 'Up to 250 apps/mo, standard subdomains, full Lua generator access, and automated Discord role bot screening.'
   },
   mega_server: {
     id: 'mega_server',
@@ -44,9 +46,10 @@ export const B2B_PLAN_TIERS: Record<'community' | 'mega_server' | 'enterprise', 
     aiLoreAudits: true,
     priorityDirectory: true,
     luaBundleExport: true,
+    customDomain: true,
     dedicatedSupportChannel: true,
     badge: 'Enterprise 100+ Player Hubs',
-    description: 'Unlimited apps, AI deep lore grader, multi-job balance ZIP bundle export & priority directory ranking.'
+    description: 'Unlimited apps, 1-click custom domain + auto TLS, AI deep lore grader, multi-job balance ZIP bundle export & priority directory ranking.'
   },
   enterprise: {
     id: 'enterprise',
@@ -57,9 +60,10 @@ export const B2B_PLAN_TIERS: Record<'community' | 'mega_server' | 'enterprise', 
     aiLoreAudits: true,
     priorityDirectory: true,
     luaBundleExport: true,
+    customDomain: true,
     dedicatedSupportChannel: true,
     badge: 'Multi-Community Networks',
-    description: 'Multi-server cluster management, custom domain white-labeling, and dedicated SLA.'
+    description: 'Multi-server cluster management, multi-domain custom vanity URLs, and dedicated SLA.'
   }
 };
 

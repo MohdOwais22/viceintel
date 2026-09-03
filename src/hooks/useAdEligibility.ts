@@ -104,7 +104,9 @@ export function useAdEligibility(options: AdEligibilityOptions = {}): AdEligibil
     customPathname,
     enableDynamicSizing = true
   } = options;
-  const { user: authUser, profile } = useAuth();
+  const authContext = useAuth();
+  const authUser = authContext?.user || null;
+  const profile = authContext?.profile || null;
 
   // Combine auth state
   const currentUser = explicitUser || profile || authUser;

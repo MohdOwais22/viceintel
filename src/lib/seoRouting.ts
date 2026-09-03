@@ -14,6 +14,11 @@ export const TAB_TO_PATH: Record<ActiveTab, string> = {
   'handling-editor': '/calculators/handling-editor',
   'economy-balancer': '/calculators/economy-balancer',
   'script-generator': '/scripts/generator',
+  'cad-mdt': '/cad-mdt',
+  identity: '/identity',
+  'rules-generator': '/generator',
+  generator: '/generator',
+  economy: '/economy',
   map: '/map',
   blog: '/blog',
   'rp-servers': '/rp-servers',
@@ -66,6 +71,21 @@ export const PATH_TO_TAB: Record<string, ActiveTab> = {
   '/economy-balancer': 'economy-balancer',
   '/scripts/generator': 'script-generator',
   '/script-generator': 'script-generator',
+  '/cad-mdt': 'cad-mdt',
+  '/app/cad-mdt': 'cad-mdt',
+  '/cad': 'cad-mdt',
+  '/mdt': 'cad-mdt',
+  '/identity': 'identity',
+  '/app/identity': 'identity',
+  '/license': 'identity',
+  '/id-generator': 'identity',
+  '/generator': 'rules-generator',
+  '/rules-generator': 'rules-generator',
+  '/app/generator': 'rules-generator',
+  '/economy': 'economy',
+  '/app/economy': 'economy',
+  '/dynasty8': 'economy',
+  '/real-estate': 'economy',
   '/map': 'map',
   '/blog': 'blog',
   '/rp-servers': 'rp-servers',
@@ -138,6 +158,11 @@ export const TAB_TITLES: Record<ActiveTab, string> = {
   'handling-editor': 'Interactive Vehicle Telemetry & handling.meta Visual Editor — ViceIntel',
   'economy-balancer': 'RP Server Economy & Wage Balancer (QBCore, ESX, QBX) — ViceIntel',
   'script-generator': 'FiveM Script Studio & Lua/XML Config Generator (QBCore & ESX) — ViceIntel',
+  'cad-mdt': 'Emergency CAD / MDT Terminal & Dispatch Board — ViceIntel',
+  identity: 'State of Leonida Driver License & Character ID Generator — ViceIntel',
+  'rules-generator': 'No-Code Server Rules & Event Dispatch Engine — ViceIntel',
+  generator: 'No-Code Server Rules & Event Dispatch Engine — ViceIntel',
+  economy: 'Dynasty 8 Real Estate & Business Directory — ViceIntel',
   map: 'Interactive Leonida & Vice City Map Tracker — ViceIntel',
   blog: 'Vice City Intel Blog & News Bulletins — ViceIntel',
   'rp-servers': 'GTA VI Vice City RP Server Directory & Whitelist Apps — ViceIntel',
@@ -186,6 +211,11 @@ export const TAB_DESCRIPTIONS: Record<ActiveTab, string> = {
   'handling-editor': 'Visual FiveM & GTA VI handling.meta physics editor with live 3D/2D telemetry visualizers, torque split calculators, and community presets.',
   'economy-balancer': 'Model FiveM/GTA RP server inflation, simulate 30-day money velocity, balance legal vs illegal job payouts, and export QBCore/ESX/QBX config.lua files.',
   'script-generator': 'Zero-syntax-error FiveM no-code Lua and XML config generator with dynamic job grade hierarchies, item registries, and economy balance simulation.',
+  'cad-mdt': 'Emergency 911 dispatch queue, officer unit 10-codes, NCIC criminal and vehicle lookup, arrest warrants, and EMS hospital trauma triage.',
+  identity: 'Generate skeuomorphic State of Leonida driver licenses, concealed carry weapons permits, and export high-resolution PNGs or Discord markdown.',
+  'rules-generator': 'Build clear FiveM/GTA RP server rulebooks, FailRP and FearRP violation matrices, and schedule community racing/auction tournaments.',
+  generator: 'Build clear FiveM/GTA RP server rulebooks, FailRP and FearRP violation matrices, and schedule community racing/auction tournaments.',
+  economy: 'Dynasty 8 Executive Real Estate and commercial business directory with daily tax calculations and interactive escrow purchase bids.',
   map: 'Track collectibles, safehouses, weapon spawns, and turf zones in Vice City.',
   blog: 'Latest GTA VI leaks, trailers analysis, map guides, and game update news.',
   'rp-servers': 'Discover top FiveM and GTA VI Roleplay servers with whitelist application access.',
@@ -258,36 +288,45 @@ export function getTabFromPath(pathname: string): { tab: ActiveTab; slug?: strin
  * Helper to update or create a meta tag dynamically in document head.
  */
 export function setMetaTag(nameOrProperty: string, content: string, isProperty = false) {
-  if (typeof document === 'undefined') return;
-  const selector = isProperty
-    ? `meta[property="${nameOrProperty}"]`
-    : `meta[name="${nameOrProperty}"]`;
+  if (typeof document === 'undefined' || !nameOrProperty) return;
+  try {
+    const escaped = CSS.escape ? CSS.escape(nameOrProperty) : nameOrProperty.replace(/["\\]/g, '\\$&');
+    const selector = isProperty
+      ? `meta[property="${escaped}"]`
+      : `meta[name="${escaped}"]`;
 
-  let meta = document.querySelector(selector) as HTMLMetaElement | null;
-  if (!meta) {
-    meta = document.createElement('meta');
-    if (isProperty) {
-      meta.setAttribute('property', nameOrProperty);
-    } else {
-      meta.setAttribute('name', nameOrProperty);
+    let meta = document.querySelector(selector) as HTMLMetaElement | null;
+    if (!meta) {
+      meta = document.createElement('meta');
+      if (isProperty) {
+        meta.setAttribute('property', nameOrProperty);
+      } else {
+        meta.setAttribute('name', nameOrProperty);
+      }
+      document.head.appendChild(meta);
     }
-    document.head.appendChild(meta);
+    meta.setAttribute('content', content || '');
+  } catch (err) {
+    // Ignore DOM selector or head manipulation errors in restricted environments
   }
-  meta.setAttribute('content', content);
 }
 
 /**
  * Updates or injects the canonical URL tag <link rel="canonical" href="...">
  */
 export function setCanonicalUrl(url: string) {
-  if (typeof document === 'undefined') return;
-  let link = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
-  if (!link) {
-    link = document.createElement('link');
-    link.setAttribute('rel', 'canonical');
-    document.head.appendChild(link);
+  if (typeof document === 'undefined' || !url) return;
+  try {
+    let link = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement('link');
+      link.setAttribute('rel', 'canonical');
+      document.head.appendChild(link);
+    }
+    link.setAttribute('href', url);
+  } catch (err) {
+    // Ignore DOM manipulation errors
   }
-  link.setAttribute('href', url);
 }
 
 export interface SeoOptions {

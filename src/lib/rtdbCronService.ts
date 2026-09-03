@@ -88,7 +88,8 @@ export async function startCronJobInRtdb(
     await fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated)
+      body: JSON.stringify(updated),
+      signal: AbortSignal.timeout(2500)
     });
   } catch (err) {
     console.warn(`[RTDB Cron Service] Note: Failed to patch start state to Realtime Database for ${jobId}:`, err);
@@ -135,7 +136,8 @@ export async function finishCronJobInRtdb(
     await fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record)
+      body: JSON.stringify(record),
+      signal: AbortSignal.timeout(2500)
     });
   } catch (err) {
     console.warn(`[RTDB Cron Service] Note: Failed to patch finish state to Realtime Database for ${jobId}:`, err);
@@ -150,7 +152,7 @@ export async function finishCronJobInRtdb(
 export async function getAllCronJobsFromRtdb(): Promise<CronJobRecord[]> {
   try {
     const url = `${RTDB_BASE_URL}/cron_jobs.json`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
     if (res.ok) {
       const data = await res.json();
       if (data && typeof data === 'object') {

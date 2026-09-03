@@ -165,7 +165,7 @@ export async function cleanupStaleSquadRooms(options?: {
   let checkedCount = 0;
 
   try {
-    const roomsSnap = await getDocs(collection(db, 'squad_rooms'));
+    const roomsSnap = await getDocs(query(collection(db, 'squad_rooms'), limit(30)));
     checkedCount = roomsSnap.size;
 
     for (const roomDoc of roomsSnap.docs) {
@@ -535,6 +535,10 @@ export async function updateSquadRoomPasscode(
   return { success: true };
 }
 
+// In-memory throttling map to prevent excessive Firestore writes during active map movement
+const lastFirestorePositionUpdateMap = new Map<string, number>();
+const FIRESTORE_POSITION_THROTTLE_MS = 4000;
+
 /**
  * Updates coordinate telemetry for the user in real-time.
  */
@@ -546,12 +550,19 @@ export async function updatePlayerPosition(
 ): Promise<void> {
   if (!roomId || !uid) return;
   
-  // 1. RTDB instant update (~10ms)
+  // 1. RTDB instant update (~10ms) - handles high-frequency real-time radar sync
   updateRtdbSquadPosition(roomId, uid, lat, lng).catch(() => {});
 
-  // 2. Firestore backup update
-  const roomRef = doc(db, 'squad_rooms', roomId);
+  // 2. Firestore backup update - throttled to 4s to prevent quota leaks & cascading reads
+  const throttleKey = `${roomId}_${uid}`;
   const now = Date.now();
+  const lastWrite = lastFirestorePositionUpdateMap.get(throttleKey) || 0;
+  if (now - lastWrite < FIRESTORE_POSITION_THROTTLE_MS) {
+    return;
+  }
+  lastFirestorePositionUpdateMap.set(throttleKey, now);
+
+  const roomRef = doc(db, 'squad_rooms', roomId);
   try {
     await updateDoc(roomRef, {
       [`members.${uid}.lat`]: lat,
@@ -562,7 +573,7 @@ export async function updatePlayerPosition(
       isStale: false
     });
   } catch (e) {
-    console.warn('Failed to update player position:', e);
+    console.warn('Failed to update player position in Firestore:', e);
   }
 }
 

@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
 import App from './App';
+import { AuthProvider } from './context/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { notifyQuotaExceeded } from './lib/firestoreErrorHandler';
 import './index.css';
@@ -12,11 +13,27 @@ const originalWarn = console.warn;
 
 const isIgnorableFirestoreWarning = (args: any[]) => {
   return args.some(arg => {
-    const str = typeof arg === 'string' ? arg : (arg && typeof arg === 'object' && arg.message ? arg.message : String(arg || ''));
+    if (!arg) return false;
+    let str = '';
+    if (typeof arg === 'string') {
+      str = arg;
+    } else if (arg instanceof Error) {
+      str = `${arg.name} ${arg.message} ${arg.stack || ''}`;
+    } else if (typeof arg === 'object') {
+      try {
+        str = JSON.stringify(arg) + ' ' + (arg.message || '') + ' ' + (arg.code || '');
+      } catch {
+        str = String(arg);
+      }
+    } else {
+      str = String(arg);
+    }
     return (
       str.includes('Disconnecting idle stream') || 
       str.includes('Timed out waiting for new targets') ||
       str.includes('CANCELLED: Disconnecting idle stream') ||
+      str.includes('GrpcConnection RPC') ||
+      str.includes('CANCELLED: Disconnecting') ||
       str.includes('Using maximum backoff delay to prevent overloading the backend')
     );
   });
@@ -88,6 +105,16 @@ window.addEventListener('unhandledrejection', (event) => {
 window.addEventListener('error', (event) => {
   const msg = event?.message || String(event?.error || '');
   if (
+    msg.includes('Disconnecting idle stream') ||
+    msg.includes('Timed out waiting for new targets') ||
+    msg.includes('CANCELLED: Disconnecting') ||
+    msg.includes('GrpcConnection RPC') ||
+    msg.includes('CANCELLED: Disconnecting idle stream')
+  ) {
+    event.preventDefault();
+    return;
+  }
+  if (
     msg.includes('RESOURCE_EXHAUSTED') ||
     msg.includes('Quota limit exceeded') ||
     msg.includes('code=resource-exhausted') ||
@@ -102,8 +129,10 @@ window.addEventListener('error', (event) => {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
-      <Analytics />
+      <AuthProvider>
+        <App />
+        <Analytics />
+      </AuthProvider>
     </ErrorBoundary>
   </StrictMode>,
 );

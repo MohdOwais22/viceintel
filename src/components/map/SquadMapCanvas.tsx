@@ -353,13 +353,15 @@ const SquadPingsLayer: React.FC<{
 }> = React.memo(({ pings }) => {
   const [now, setNow] = useState<number>(Date.now());
 
+  const hasActivePings = Boolean(pings && pings.some((p) => p && p.expiresAt > Date.now()));
+
   useEffect(() => {
-    if (!pings || pings.length === 0) return;
+    if (!hasActivePings) return;
     const interval = setInterval(() => {
       setNow(Date.now());
     }, 1000);
     return () => clearInterval(interval);
-  }, [pings && pings.length > 0]);
+  }, [hasActivePings]);
 
   const activePings = React.useMemo(() => {
     return (pings || []).filter((p) => p && p.expiresAt > now);
@@ -434,13 +436,15 @@ const SquadPingsFeed: React.FC<{
 }> = React.memo(({ pings, onFocusPing }) => {
   const [now, setNow] = useState<number>(Date.now());
 
+  const hasActivePings = Boolean(pings && pings.some((p) => p && p.expiresAt > Date.now()));
+
   useEffect(() => {
-    if (!pings || pings.length === 0) return;
+    if (!hasActivePings) return;
     const interval = setInterval(() => {
       setNow(Date.now());
     }, 1000);
     return () => clearInterval(interval);
-  }, [pings && pings.length > 0]);
+  }, [hasActivePings]);
 
   const activePings = React.useMemo(() => {
     return (pings || []).filter((p) => p && p.expiresAt > now);

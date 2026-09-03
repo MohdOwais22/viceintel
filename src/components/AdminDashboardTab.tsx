@@ -55,7 +55,8 @@ import {
   Globe,
   Target,
   ExternalLink,
-  Bot
+  Bot,
+  Wand2
 } from 'lucide-react';
 import { ENV } from '../lib/envConfig';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, query, limit, getDocs } from 'firebase/firestore';
@@ -85,6 +86,7 @@ import { CharacterGalleryAdminCms } from './admin/CharacterGalleryAdminCms';
 import { VehicleCatalogAdminCms } from './admin/VehicleCatalogAdminCms';
 import { WeaponCatalogAdminCms } from './admin/WeaponCatalogAdminCms';
 import { MasterCatalogAdminCms } from './admin/MasterCatalogAdminCms';
+import { OnDemandFeatureAdminCms } from './admin/OnDemandFeatureAdminCms';
 import { SystemPricingControl } from './SystemPricingControl';
 import { logStaffActivity } from '../lib/staffAuditLogger';
 import { formatVipExpiry, formatDate, formatDateTime, formatShortTimestamp, formatAutoCrawlTime } from '../lib/dateUtils';
@@ -225,7 +227,7 @@ interface PendingApproval {
 const INITIAL_PENDING: PendingApproval[] = [];
 
 export interface AdminDashboardTabProps {
-  initialSubTab?: 'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'character-gallery' | 'vehicle-cms' | 'weapon-cms';
+  initialSubTab?: 'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'character-gallery' | 'vehicle-cms' | 'weapon-cms' | 'feature-requests';
 }
 
 export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSubTab }) => {
@@ -255,12 +257,15 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const [editModerationNote, setEditModerationNote] = useState('');
   const [editRawJson, setEditRawJson] = useState('');
   const [isSavingUserDoc, setIsSavingUserDoc] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot' | 'character-gallery' | 'vehicle-cms' | 'weapon-cms' | 'cron-rtdb'>(() => {
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'approvals' | 'reports' | 'cms' | 'challenge-cms' | 'rental-cms' | 'analytics' | 'pricing-control' | 'pseo' | 'vip-notifications' | 'squad-rooms' | 'staff-logs' | 'coupon-cms' | 'ad-toggles' | 'env-health' | 'market-agency' | 'webhook-bot' | 'character-gallery' | 'vehicle-cms' | 'weapon-cms' | 'cron-rtdb' | 'feature-requests'>(() => {
     if (initialSubTab) return initialSubTab as any;
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
       const params = new URLSearchParams(window.location.search);
       const sub = params.get('subtab');
+      if (sub === 'feature-requests' || sub === 'features-on-demand' || sub === 'on-demand-features') {
+        return 'feature-requests';
+      }
       if (sub === 'cron-rtdb' || sub === 'cron' || sub === 'crons' || sub === 'rtdb-cron') {
         return 'cron-rtdb';
       }
@@ -2003,401 +2008,426 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         </div>
       </div>
 
-      {/* Consolidated 5-Hub Master Navigation */}
-      {(() => {
-        const activeHub =
-          activeSubTab === 'market-agency'
-            ? 'market_agency_hub'
-            : activeSubTab === 'users' || activeSubTab === 'vip-notifications'
-            ? 'users_hub'
-            : activeSubTab === 'approvals' || activeSubTab === 'reports' || activeSubTab === 'staff-logs'
-            ? 'moderation_hub'
-            : activeSubTab === 'cms' || activeSubTab === 'challenge-cms' || activeSubTab === 'rental-cms' || activeSubTab === 'coupon-cms' || activeSubTab === 'character-gallery'
-            ? 'cms_hub'
-            : activeSubTab === 'squad-rooms' || activeSubTab === 'pseo' || activeSubTab === 'env-health' || activeSubTab === 'cron-rtdb'
-            ? 'system_hub'
-            : 'analytics_hub';
+      {/* Sidebar & Workspace Main Container */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* MOBILE NAVIGATION BAR (Horizontal Scrolling Pills) */}
+        <div className="lg:hidden w-full space-y-2 bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3">
+          <div className="flex items-center gap-2 text-xs font-black text-rose-400 uppercase tracking-wider px-1">
+            <ShieldAlert className="w-4 h-4 text-rose-500" />
+            <span>Admin Control Sections</span>
+          </div>
+          <div className="flex overflow-x-auto gap-2 pb-1 scrollbar-none">
+            <button
+              onClick={() => setActiveSubTab('users')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'users' ? 'bg-rose-600 text-white' : 'bg-zinc-800/80 text-zinc-300'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Users ({users.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveSubTab('approvals')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'approvals' ? 'bg-rose-600 text-white' : 'bg-zinc-800/80 text-zinc-300'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Queue ({pendingApprovals.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveSubTab('cms')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'cms' ? 'bg-amber-600 text-white' : 'bg-zinc-800/80 text-zinc-300'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Publisher CMS</span>
+            </button>
+            <button
+              onClick={() => setActiveSubTab('feature-requests')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'feature-requests' ? 'bg-cyan-600 text-white' : 'bg-zinc-800/80 text-zinc-300'
+              }`}
+            >
+              <Wand2 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Feature Requests</span>
+            </button>
+            <button
+              onClick={() => setActiveSubTab('env-health')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'env-health' ? 'bg-emerald-600 text-white' : 'bg-zinc-800/80 text-zinc-300'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-400" />
+              <span>System Health</span>
+            </button>
+            <button
+              onClick={() => setActiveSubTab('analytics')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'analytics' ? 'bg-indigo-600 text-white' : 'bg-zinc-800/80 text-zinc-300'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Analytics</span>
+            </button>
+            <button
+              onClick={() => setActiveSubTab('market-agency')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'market-agency' ? 'bg-purple-600 text-white' : 'bg-zinc-800/80 text-zinc-300'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5 text-cyan-400" />
+              <span>MarketAgency AI</span>
+            </button>
+          </div>
+        </div>
 
-        return (
-          <div className="space-y-3">
-            {/* Primary Hub Tabs */}
-            <div className="flex border-b border-zinc-800 gap-2 sm:gap-4 overflow-x-auto scrollbar-none pb-0.5">
-              {/* 1. Users & VIP Hub */}
+        {/* DESKTOP SIDEBAR */}
+        <aside className="hidden lg:flex w-64 shrink-0 bg-zinc-900/90 rounded-3xl border border-zinc-800 p-4 flex-col gap-4 self-start sticky top-24 shadow-2xl">
+          <div className="flex items-center gap-2 px-2 pb-2 border-b border-zinc-800 font-black text-xs text-rose-400 uppercase tracking-wider">
+            <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
+            <span>Executive Control Panel</span>
+          </div>
+
+          <nav className="space-y-4">
+            {/* GROUP 1: USER & HRBAC */}
+            <div className="space-y-1">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                User Management
+              </div>
+
               <button
-                type="button"
-                onClick={() => setActiveSubTab(activeSubTab === 'vip-notifications' ? 'vip-notifications' : 'users')}
-                className={`pb-3 px-3 text-xs font-extrabold transition border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  activeHub === 'users_hub'
-                    ? 'border-rose-500 text-rose-400 bg-rose-500/5 rounded-t-xl'
-                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-t-xl'
+                onClick={() => setActiveSubTab('users')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'users'
+                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
                 }`}
               >
-                <Users className="w-4 h-4" />
-                <span>Users & VIP</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-zinc-800 text-zinc-300">
-                  {users.length}
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <Users className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>Accounts & HRBAC</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300 font-mono font-bold">{users.length}</span>
               </button>
 
-              {/* 2. Moderation & Security Hub */}
               <button
-                type="button"
-                onClick={() => setActiveSubTab(activeSubTab === 'reports' || activeSubTab === 'staff-logs' ? activeSubTab : 'approvals')}
-                className={`pb-3 px-3 text-xs font-extrabold transition border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  activeHub === 'moderation_hub'
-                    ? 'border-rose-500 text-rose-400 bg-rose-500/5 rounded-t-xl'
-                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-t-xl'
+                onClick={() => {
+                  setActiveSubTab('vip-notifications');
+                  fetchVipLogs();
+                }}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'vip-notifications'
+                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
                 }`}
               >
-                <ShieldAlert className="w-4 h-4 text-rose-400" />
-                <span>Moderation & Security</span>
+                <div className="flex items-center gap-2.5">
+                  <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>VIP Email Engine</span>
+                </div>
+              </button>
+            </div>
+
+            {/* GROUP 2: MODERATION & SECURITY */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Moderation & Audit
+              </div>
+
+              <button
+                onClick={() => setActiveSubTab('approvals')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'approvals'
+                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Moderation Queue</span>
+                </div>
                 {pendingApprovals.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono font-bold border border-amber-500/40 animate-pulse">
                     {pendingApprovals.length}
                   </span>
                 )}
               </button>
 
-              {/* 3. Content & Tuning Challenges Hub */}
               <button
-                type="button"
-                onClick={() => setActiveSubTab(activeSubTab === 'challenge-cms' ? 'challenge-cms' : 'cms')}
-                className={`pb-3 px-3 text-xs font-extrabold transition border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  activeHub === 'cms_hub'
-                    ? 'border-rose-500 text-rose-400 bg-rose-500/5 rounded-t-xl'
-                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-t-xl'
+                onClick={() => setActiveSubTab('reports')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'reports'
+                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
                 }`}
               >
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>Content & Challenges</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                  CMS
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <Bug className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>Bug Reports HQ</span>
+                </div>
               </button>
 
-              {/* 4. Radar & System Hub */}
+              {isActorL4Admin && (
+                <button
+                  onClick={() => setActiveSubTab('staff-logs')}
+                  className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                    activeSubTab === 'staff-logs'
+                      ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>Staff Activity Logs</span>
+                  </div>
+                  <span className="text-[9px] px-1 py-0.2 rounded font-mono font-black bg-rose-500/30 text-rose-200">L4</span>
+                </button>
+              )}
+            </div>
+
+            {/* GROUP 3: CONTENT & CATALOG CMS */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Content & Catalog CMS
+              </div>
+
               <button
-                type="button"
+                onClick={() => setActiveSubTab('cms')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'cms'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Publisher CMS</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('character-gallery')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'character-gallery' || activeSubTab === 'vehicle-cms' || activeSubTab === 'weapon-cms'
+                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Layers className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span>Master Catalog CMS</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('challenge-cms')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'challenge-cms'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Trophy className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Tuning Challenge CMS</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('rental-cms')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'rental-cms'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Spotlight Rental CMS</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('coupon-cms')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'coupon-cms'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Ticket className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Coupon Studio</span>
+                </div>
+                <span className="text-[9px] px-1 py-0.2 rounded font-mono font-black bg-amber-500/30 text-amber-200">L4</span>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('feature-requests')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'feature-requests'
+                    ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Wand2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Feature Requests</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">SAAS</span>
+              </button>
+            </div>
+
+            {/* GROUP 4: RADAR & SYSTEM */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Radar & System
+              </div>
+
+              <button
+                onClick={() => setActiveSubTab('env-health')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'env-health'
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Activity className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Environment Health</span>
+                </div>
+              </button>
+
+              <button
                 onClick={() => {
-                  if (activeSubTab !== 'squad-rooms' && activeSubTab !== 'pseo' && activeSubTab !== 'env-health') {
-                    setActiveSubTab('env-health');
-                  }
+                  setActiveSubTab('squad-rooms');
+                  fetchSquadRoomsData();
                 }}
-                className={`pb-3 px-3 text-xs font-extrabold transition border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  activeHub === 'system_hub'
-                    ? 'border-rose-500 text-rose-400 bg-rose-500/5 rounded-t-xl'
-                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-t-xl'
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'squad-rooms'
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
                 }`}
               >
-                <Activity className="w-4 h-4 text-emerald-400" />
-                <span>Radar & System Health</span>
+                <div className="flex items-center gap-2.5">
+                  <Radio className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Squad Radar</span>
+                </div>
               </button>
 
-              {/* 5. Revenue & Analytics Hub */}
               <button
-                type="button"
+                onClick={() => setActiveSubTab('cron-rtdb')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'cron-rtdb'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>RTDB Cron Hub</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('pseo')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'pseo'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Layers className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Architecture & SEO</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('webhook-bot')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'webhook-bot'
+                    ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Bot className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Webhook / API Bot</span>
+                </div>
+              </button>
+            </div>
+
+            {/* GROUP 5: REVENUE & AI */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
+                Revenue & AI
+              </div>
+
+              <button
                 onClick={() => setActiveSubTab('analytics')}
-                className={`pb-3 px-3 text-xs font-extrabold transition border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  activeHub === 'analytics_hub'
-                    ? 'border-rose-500 text-rose-400 bg-rose-500/5 rounded-t-xl'
-                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-t-xl'
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'analytics'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
                 }`}
               >
-                <BarChart3 className="w-4 h-4 text-indigo-400" />
-                <span>Revenue & Analytics</span>
+                <div className="flex items-center gap-2.5">
+                  <BarChart3 className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>Revenue Analytics</span>
+                </div>
               </button>
 
-              {/* 6. MarketAgency AI */}
               <button
-                type="button"
-                onClick={() => setActiveSubTab('market-agency')}
-                className={`pb-3 px-3 text-xs font-extrabold transition border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  activeHub === 'market_agency_hub'
-                    ? 'border-rose-500 text-rose-400 bg-rose-500/5 rounded-t-xl'
-                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-t-xl'
+                onClick={() => setActiveSubTab('pricing-control')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'pricing-control'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
                 }`}
               >
-                <Bot className="w-4 h-4 text-cyan-400" />
-                <span>MarketAgency AI</span>
+                <div className="flex items-center gap-2.5">
+                  <DollarSign className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Tier Pricing HQ</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('ad-toggles')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'ad-toggles'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Tv className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Ad Controls</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setActiveSubTab('market-agency')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSubTab === 'market-agency'
+                    ? 'bg-gradient-to-r from-purple-600 to-cyan-600 text-white shadow-lg shadow-purple-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Bot className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>MarketAgency AI</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">AI</span>
               </button>
             </div>
+          </nav>
+        </aside>
 
-            {/* Secondary Sub-Hub Switcher Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1.5 px-2 bg-zinc-950/60 border border-zinc-800/80 rounded-xl">
-              {activeHub === 'users_hub' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('users')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'users'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Users className="w-3.5 h-3.5" />
-                    <span>User Accounts & HRBAC ({users.length})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveSubTab('vip-notifications');
-                      fetchVipLogs();
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'vip-notifications'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Mail className="w-3.5 h-3.5 text-rose-400" />
-                    <span>VIP Expiration Email Engine</span>
-                  </button>
-                </>
-              )}
-
-              {activeHub === 'moderation_hub' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('approvals')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'approvals'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Moderation Queue ({pendingApprovals.length})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('reports')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'reports'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Bug className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Bug & Error Reports HQ</span>
-                  </button>
-                  {isActorL4Admin && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveSubTab('staff-logs')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                        activeSubTab === 'staff-logs'
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                          : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                      }`}
-                    >
-                      <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
-                      <span>L3 Staff Activity Logs</span>
-                      <span className="px-1 py-0.2 rounded text-[9px] font-mono font-black bg-rose-500/30 text-rose-200">
-                        L4 ONLY
-                      </span>
-                    </button>
-                  )}
-                </>
-              )}
-
-              {activeHub === 'cms_hub' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('cms')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'cms'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Zero-Code Content CMS & Publisher</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('character-gallery')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'character-gallery' || activeSubTab === 'vehicle-cms' || activeSubTab === 'weapon-cms'
-                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Master Catalog CMS (Characters, Vehicles, Weapons)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('challenge-cms')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'challenge-cms'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Tuning Challenge No-Code CMS HQ</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('rental-cms')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'rental-cms'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Crown className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Top Spotlight Rental CMS</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('coupon-cms')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'coupon-cms'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Ticket className="w-3.5 h-3.5 text-amber-400" />
-                    <span>L4 Coupon Generator Studio</span>
-                    <span className="px-1 py-0.2 rounded text-[9px] font-mono font-black bg-amber-500/30 text-amber-200">
-                      L4 ONLY
-                    </span>
-                  </button>
-                </>
-              )}
-
-              {activeHub === 'system_hub' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('env-health')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'env-health'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Activity className="w-3.5 h-3.5 text-rose-400" />
-                    <span>🛡️ Environment & Firebase Health</span>
-                    <span className="px-1 py-0.2 rounded text-[9px] font-mono font-black bg-rose-500/30 text-rose-200">
-                      MANUAL AUDIT
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveSubTab('squad-rooms');
-                      fetchSquadRoomsData();
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'squad-rooms'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Radio className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Squad Radar & Stale Room Cleaner</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('cron-rtdb')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'cron-rtdb'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Zap className="w-3.5 h-3.5 text-amber-400" />
-                    <span>⚡ RTDB Cron Hub</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('pseo')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'pseo'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5 text-amber-400" />
-                    <span>System Architecture & SEO Hub</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('webhook-bot')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'webhook-bot'
-                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Bot className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Custom Webhook / API Bot</span>
-                  </button>
-                </>
-              )}
-
-              {activeHub === 'analytics_hub' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('analytics')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'analytics'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Revenue & Traffic Analytics</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('pricing-control')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'pricing-control'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <DollarSign className="w-3.5 h-3.5 text-amber-400" />
-                    <span>💰 Tier Pricing Control HQ</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('ad-toggles')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      activeSubTab === 'ad-toggles'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    <Tv className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Ad & Sponsorship Display Controls</span>
-                  </button>
-                </>
-              )}
-
-              {activeHub === 'market_agency_hub' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('market-agency')}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm cursor-pointer"
-                  >
-                    <Bot className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>AI Agent Fleet & Campaign Simulator</span>
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })()}
+        {/* MAIN WORKSPACE CONTENT */}
+        <main className="flex-1 min-w-0 space-y-6 w-full">
 
       {/* Tab Content 1: User Accounts Table & Firestore Document Manager */}
       {activeSubTab === 'users' && (
@@ -4198,6 +4228,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         />
       )}
 
+      {/* Tab Content: On-Demand Feature Requests Queue */}
+      {activeSubTab === 'feature-requests' && (
+        <OnDemandFeatureAdminCms currentUser={auth.currentUser} />
+      )}
+
       {/* Tab Content: Pricing Control Studio */}
       {activeSubTab === 'pricing-control' && (
         <SystemPricingControl
@@ -5028,6 +5063,9 @@ exports.checkVipExpirations = onSchedule("0 0 * * *", async (event) => {
           </div>
         </div>
       )}
+
+        </main>
+      </div>
 
       {/* Full Firestore User Document Edit Modal */}
       {editingUserDoc && (

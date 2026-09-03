@@ -561,7 +561,59 @@ export interface GiftCard {
   paymentMethod?: string;
 }
 
-export type ActiveTab = 'home' | 'about' | 'vehicles' | 'weapons' | 'characters' | 'comparison' | 'mod-calculator' | 'roi-calculator' | 'handling-editor' | 'economy-balancer' | 'script-generator' | 'map' | 'rp-servers' | 'monetization' | 'chat' | 'admin' | 'docs' | 'blog' | 'profile' | 'pseo' | 'giftcards' | 'seo-hub' | 'challenges' | 'whitelist-manage' | 'whitelist-apply' | 'whitelist-review' | 'whitelist-status' | 'server-manage' | 'server-apply' | 'server-review' | 'server-status' | 'server-dashboard' | 'server-billing' | 'server-growth' | 'server-studio' | 'marketing' | 'privacy' | 'copyright' | 'for-servers' | 'servers-onboarding' | 'admin-business' | 'market-agency' | 'marketagency' | 'pitch' | 'investors';
+export type ActiveTab = 
+  | 'home' 
+  | 'about' 
+  | 'vehicles' 
+  | 'weapons' 
+  | 'characters' 
+  | 'comparison' 
+  | 'mod-calculator' 
+  | 'roi-calculator' 
+  | 'handling-editor' 
+  | 'economy-balancer' 
+  | 'script-generator' 
+  | 'cad-mdt'
+  | 'identity'
+  | 'rules-generator'
+  | 'generator'
+  | 'economy'
+  | 'map' 
+  | 'rp-servers' 
+  | 'monetization' 
+  | 'chat' 
+  | 'admin' 
+  | 'docs' 
+  | 'blog' 
+  | 'profile' 
+  | 'pseo' 
+  | 'giftcards' 
+  | 'seo-hub' 
+  | 'challenges' 
+  | 'whitelist-manage' 
+  | 'whitelist-apply' 
+  | 'whitelist-review' 
+  | 'whitelist-status' 
+  | 'server-manage' 
+  | 'server-apply' 
+  | 'server-review' 
+  | 'server-status' 
+  | 'server-dashboard' 
+  | 'server-billing' 
+  | 'server-growth' 
+  | 'server-studio' 
+  | 'marketing' 
+  | 'privacy' 
+  | 'copyright' 
+  | 'for-servers' 
+  | 'servers-onboarding' 
+  | 'admin-business' 
+  | 'market-agency' 
+  | 'marketagency' 
+  | 'pitch' 
+  | 'investors';
+
+export * from './rpSuite';
 
 export type NotificationType = 'article' | 'admin_message' | 'car_addition' | 'weapon_addition' | 'chat_tag' | 'channel_join_request' | 'admin_chat_broadcast' | 'channel_all_tag' | 'whitelist_status_update' | 'VIP_EXPIRY_ALERT' | 'challenge_win';
 
