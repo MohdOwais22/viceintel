@@ -31,7 +31,9 @@ import {
   onSnapshot,
   updateDoc,
   deleteDoc,
-  getDocs
+  getDocs,
+  query,
+  limit
 } from 'firebase/firestore';
 
 export const InternalLinksSection: React.FC = () => {
@@ -59,7 +61,7 @@ export const InternalLinksSection: React.FC = () => {
   useEffect(() => {
     let unsubscribe = () => {};
     try {
-      const linksCol = collection(db, 'marketingInternalLinks');
+      const linksCol = query(collection(db, 'marketingInternalLinks'), limit(10));
       unsubscribe = onSnapshot(
         linksCol,
         (snapshot) => {

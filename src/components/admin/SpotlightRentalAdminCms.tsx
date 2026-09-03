@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { RpServer, SpotlightRentalBooking, SpotlightPricingConfig } from '../../types';
 import { db, auth } from '../../lib/firebase';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, orderBy, limit } from 'firebase/firestore';
 import { logStaffActivity } from '../../lib/staffAuditLogger';
 
 interface SpotlightRentalAdminCmsProps {
@@ -117,7 +117,8 @@ export const SpotlightRentalAdminCms: React.FC<SpotlightRentalAdminCmsProps> = (
     // 2. Firestore listener for real-time bookings updates
     let unsubBookings: (() => void) | null = null;
     try {
-      unsubBookings = onSnapshot(collection(db, 'spotlight_rentals'), (snapshot) => {
+      const bookingsQ = query(collection(db, 'spotlight_rentals'), orderBy('date', 'desc'), limit(10));
+      unsubBookings = onSnapshot(bookingsQ, (snapshot) => {
         const list: SpotlightRentalBooking[] = [];
         snapshot.forEach((docSnap) => {
           list.push({ ...docSnap.data(), id: docSnap.id } as SpotlightRentalBooking);

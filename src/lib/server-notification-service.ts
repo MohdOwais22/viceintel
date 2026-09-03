@@ -223,7 +223,7 @@ export function subscribeToServerNotifications(
     const q = query(
       collRef,
       where('serverSlug', 'in', [normSlug, serverSlug, `srv_${normSlug}`]),
-      limit(25)
+      limit(10)
     );
 
     const unsub = onSnapshot(

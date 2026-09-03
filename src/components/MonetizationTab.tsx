@@ -223,7 +223,7 @@ export const MonetizationTab: React.FC<MonetizationTabProps> = ({ currentUser, u
     if (!db) return;
     try {
       // 1. Subscribe to userProfiles to compute real active VIP and SaaS subscriptions
-      const usersQuery = query(collection(db, 'userProfiles'), limit(100));
+      const usersQuery = query(collection(db, 'userProfiles'), limit(10));
       const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
         if (!snapshot.empty) {
           let vips = 0;
@@ -244,7 +244,7 @@ export const MonetizationTab: React.FC<MonetizationTabProps> = ({ currentUser, u
       });
 
       // 2. Subscribe to ad_impressions collection for live visibility metrics
-      const impressionsQuery = query(collection(db, 'ad_impressions'), orderBy('timestampMs', 'desc'), limit(500));
+      const impressionsQuery = query(collection(db, 'ad_impressions'), orderBy('timestampMs', 'desc'), limit(10));
       const unsubImpressions = onSnapshot(impressionsQuery, (snapshot) => {
         if (!snapshot.empty) {
           const loaded = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));

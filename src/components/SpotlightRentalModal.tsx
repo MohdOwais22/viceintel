@@ -25,7 +25,7 @@ import {
 import { RpServer, SpotlightRentalBooking } from '../types';
 import { RP_SERVERS_DATA } from '../data/rpServers';
 import { db, auth } from '../lib/firebase';
-import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, query, where, limit } from 'firebase/firestore';
 
 interface SpotlightRentalModalProps {
   isOpen: boolean;
@@ -157,8 +157,9 @@ export const SpotlightRentalModal: React.FC<SpotlightRentalModalProps> = ({
     }
 
     try {
+      const activeRentalsQ = query(collection(db, 'spotlight_rentals'), where('date', '>=', todayStr), limit(10));
       unsubRentals = onSnapshot(
-        collection(db, 'spotlight_rentals'),
+        activeRentalsQ,
         (snapshot) => {
           const dates: string[] = [];
           snapshot.forEach((docSnap) => {

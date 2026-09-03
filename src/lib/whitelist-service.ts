@@ -1969,7 +1969,7 @@ export async function getQuickInvites(serverSlug: string): Promise<QuickInvite[]
       collection(db, QUICK_INVITES_COLLECTION),
       where('serverSlug', '==', normalizedSlug),
       orderBy('createdAt', 'desc'),
-      limit(50)
+      limit(10)
     );
     const snap = await getDocs(q);
     snap.forEach((d) => {

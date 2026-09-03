@@ -1,22 +1,5 @@
 {
   "entities": {
-    "chatMessages": {
-      "title": "Chat Messages",
-      "description": "Community chat messages posted in Vice City channels.",
-      "type": "object",
-      "properties": {
-        "channel": { "type": "string" },
-        "username": { "type": "string" },
-        "avatar": { "type": "string" },
-        "text": { "type": "string" },
-        "timestamp": { "type": "string" },
-        "isVip": { "type": "boolean" },
-        "attachment": { "type": "object" },
-        "reactions": { "type": "object" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["channel", "username", "text"]
-    },
     "userProfiles": {
       "title": "User Profiles",
       "description": "Registered player profiles, GamerTags, VIP status, and persistent OAuth integrations.",
@@ -175,21 +158,6 @@
         "metadata": { "type": "object" }
       },
       "required": ["to", "message"]
-    },
-    "squad_rooms": {
-      "title": "Squad Radar & Co-Op Party Rooms",
-      "description": "Real-time party squad map coordination, player position telemetry, shared waypoints, and collectible progress.",
-      "type": "object",
-      "properties": {
-        "roomId": { "type": "string" },
-        "hostUid": { "type": "string" },
-        "isVipRoom": { "type": "boolean" },
-        "createdAt": { "type": "number" },
-        "members": { "type": "object" },
-        "waypoints": { "type": "array" },
-        "checkedCollectibles": { "type": "array" }
-      },
-      "required": ["roomId", "hostUid"]
     },
     "vehicle_tuning_builds": {
       "title": "Community Vehicle Tuning Builds",
@@ -355,27 +323,6 @@
         "expiresAt": { "type": "number" }
       },
       "required": ["id", "title", "baseVehicle", "targetMetric"]
-    },
-    "challenge_entries": {
-      "title": "Challenge Submissions & Leaderboard",
-      "description": "Player vehicle builds submitted to championship competitions.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "challengeId": { "type": "string" },
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "avatar": { "type": "string" },
-        "isVip": { "type": "boolean" },
-        "buildTitle": { "type": "string" },
-        "metricValue": { "type": "number" },
-        "metricDisplay": { "type": "string" },
-        "calculatedScore": { "type": "number" },
-        "handlingData": { "type": "object" },
-        "telemetry": { "type": "object" },
-        "submittedAt": { "type": "number" }
-      },
-      "required": ["id", "challengeId", "userId", "userName", "metricValue"]
     },
     "past_challenges": {
       "title": "Archived Championship Events",

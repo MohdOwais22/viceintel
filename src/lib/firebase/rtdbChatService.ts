@@ -2,12 +2,14 @@ import {
   getDatabase,
   ref,
   onValue,
+  get,
   push,
   set,
   update,
   remove,
   query,
   limitToLast,
+  onDisconnect,
   Database
 } from 'firebase/database';
 import { app } from './client';
@@ -290,6 +292,22 @@ export function subscribeRtdbSquadRoom(
   } catch (err) {
     console.warn('Failed to subscribe to RTDB squad room:', err);
     return () => {};
+  }
+}
+
+export async function fetchRtdbSquadRoom(roomId: string): Promise<any | null> {
+  const rtdb = getRtdb();
+  if (!rtdb || !roomId) return null;
+  try {
+    const roomRef = ref(rtdb, `squadRooms/${roomId}`);
+    const snapshot = await get(roomRef);
+    if (snapshot.exists()) {
+      return snapshot.val();
+    }
+    return null;
+  } catch (err) {
+    console.warn('RTDB fetch squad room error:', err);
+    return null;
   }
 }
 
@@ -603,4 +621,124 @@ export async function updateRtdbFivemServer(
     return false;
   }
 }
+
+/* ====================================================================
+   4. Squad Member Presence & Auto-Disconnect Cleanup
+   ==================================================================== */
+
+export function registerRtdbSquadMemberPresence(
+  roomId: string,
+  uid: string,
+  isHost: boolean = false
+): () => void {
+  const rtdb = getRtdb();
+  if (!rtdb || !roomId || !uid) return () => {};
+
+  try {
+    const memberRef = ref(rtdb, `squadRooms/${roomId}/members/${uid}`);
+    
+    // Automatically remove this member node from RTDB when tab closes or disconnects
+    onDisconnect(memberRef).remove().catch((e) => {
+      console.warn('RTDB onDisconnect member remove notice:', e);
+    });
+
+    if (isHost) {
+      // If the host disconnects, mark room status stale or remove LFG flag
+      const roomRef = ref(rtdb, `squadRooms/${roomId}`);
+      onDisconnect(roomRef).update({
+        isLfgActive: false,
+        status: 'stale',
+        isStale: true
+      }).catch((e) => {
+        console.warn('RTDB onDisconnect host room update notice:', e);
+      });
+    }
+
+    return () => {
+      try {
+        remove(memberRef).catch(() => {});
+      } catch {}
+    };
+  } catch (err) {
+    console.warn('registerRtdbSquadMemberPresence error:', err);
+    return () => {};
+  }
+}
+
+/* ====================================================================
+   5. Live Tuning Championship Leaderboards (Realtime Database)
+   ==================================================================== */
+
+export async function saveRtdbChallengeEntry(entry: any): Promise<boolean> {
+  const rtdb = getRtdb();
+  if (!rtdb || !entry?.challengeId || !entry?.id) return false;
+
+  try {
+    const entryRef = ref(rtdb, `tuningLeaderboards/${entry.challengeId}/${entry.id}`);
+    await set(entryRef, {
+      ...entry,
+      updatedAtMs: Date.now()
+    });
+    return true;
+  } catch (err) {
+    console.warn('RTDB challenge entry save warning:', err);
+    return false;
+  }
+}
+
+export async function deleteRtdbChallengeEntry(challengeId: string, entryId: string): Promise<boolean> {
+  const rtdb = getRtdb();
+  if (!rtdb || !challengeId || !entryId) return false;
+  try {
+    const entryRef = ref(rtdb, `tuningLeaderboards/${challengeId}/${entryId}`);
+    await remove(entryRef);
+    return true;
+  } catch (err) {
+    console.warn('RTDB challenge entry delete error:', err);
+    return false;
+  }
+}
+
+export async function clearRtdbChallengeLeaderboard(challengeId: string): Promise<boolean> {
+  const rtdb = getRtdb();
+  if (!rtdb || !challengeId) return false;
+  try {
+    const boardRef = ref(rtdb, `tuningLeaderboards/${challengeId}`);
+    await remove(boardRef);
+    return true;
+  } catch (err) {
+    console.warn('RTDB challenge leaderboard clear error:', err);
+    return false;
+  }
+}
+
+export function subscribeRtdbChallengeLeaderboard(
+  challengeId: string,
+  onUpdate: (entriesMap: Record<string, any>) => void
+): () => void {
+  const rtdb = getRtdb();
+  if (!rtdb || !challengeId) return () => {};
+
+  try {
+    const boardRef = ref(rtdb, `tuningLeaderboards/${challengeId}`);
+    const unsubscribe = onValue(
+      boardRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          onUpdate({});
+          return;
+        }
+        onUpdate(snapshot.val());
+      },
+      (err) => {
+        console.warn('RTDB leaderboard subscription warning:', err);
+      }
+    );
+    return () => unsubscribe();
+  } catch (err) {
+    console.warn('Failed to subscribe to RTDB leaderboard:', err);
+    return () => {};
+  }
+}
+
 

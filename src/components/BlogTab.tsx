@@ -37,7 +37,7 @@ import { BlogPost } from '../types';
 import { InternalLinkOpportunity } from './marketing/agency/types';
 import { SEED_INTERNAL_LINKS } from './marketing/agency/mockData';
 import { User as FirebaseUser } from 'firebase/auth';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 import { copyToClipboard } from '../lib/copyUtils';
@@ -91,7 +91,8 @@ export const BlogTab: React.FC<BlogTabProps> = ({
   useEffect(() => {
     let unsub = () => {};
     try {
-      unsub = onSnapshot(collection(db, 'marketingInternalLinks'), (snap) => {
+      const q = query(collection(db, 'marketingInternalLinks'), limit(10));
+      unsub = onSnapshot(q, (snap) => {
         if (!snap.empty) {
           const links: InternalLinkOpportunity[] = [];
           snap.forEach((d) => {
@@ -125,7 +126,8 @@ export const BlogTab: React.FC<BlogTabProps> = ({
   useEffect(() => {
     let unsub = () => {};
     try {
-      unsub = onSnapshot(collection(db, 'blogPosts'), (snap) => {
+      const q = query(collection(db, 'blogPosts'), limit(10));
+      unsub = onSnapshot(q, (snap) => {
         if (!snap.empty) {
           const fsBlogs: BlogPost[] = [];
           snap.forEach((doc) => {

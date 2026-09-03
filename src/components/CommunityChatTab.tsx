@@ -1125,45 +1125,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       console.warn('RTDB voice rooms sub warning:', e);
     }
 
-    // 2. Firestore fallback sync
-    try {
-      const voiceRef = collection(db, 'voiceComms');
-      unsubFs = onSnapshot(voiceRef, (snapshot) => {
-        setVoiceRooms(prev => {
-          const nextMap = { ...prev };
-          const currentUsername = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'ViceCityPlayer';
-          const currentUid = currentUser?.uid || currentUsername;
-
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            if (data && Array.isArray(data.participants)) {
-              let remoteParticipants = data.participants as VoiceParticipant[];
-
-              // Preserve local user if connected to this channel during sync lag
-              if (isVoiceConnected && activeVoiceChannel === docSnap.id) {
-                const hasLocalUserInRemote = remoteParticipants.some(
-                  p => p.username === currentUsername || p.userId === currentUid
-                );
-                const localUserInPrev = (prev[docSnap.id] || []).find(
-                  p => p.username === currentUsername || p.userId === currentUid
-                );
-
-                if (!hasLocalUserInRemote && localUserInPrev) {
-                  remoteParticipants = [...remoteParticipants, localUserInPrev];
-                }
-              }
-
-              nextMap[docSnap.id] = remoteParticipants;
-            }
-          });
-          return nextMap;
-        });
-      }, (err) => console.warn('Voice comms listener warning:', err));
-    } catch (e) {
-      console.warn('Voice comms subscription error:', e);
-    }
     return () => {
-      unsubFs();
       unsubRtdb();
     };
   }, [isVoiceConnected, activeVoiceChannel, currentUser]);
@@ -1289,26 +1251,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       console.warn('RTDB voice signal sub warning:', e);
     }
 
-    // 2. Firestore fallback signal listener
-    try {
-      const signalsRef = collection(db, 'voiceComms', activeVoiceChannel, 'signals');
-      const q = query(signalsRef, orderBy('timestampMs', 'asc'), limit(50));
-
-      unsubFs = onSnapshot(q, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === 'added') {
-            const data = change.doc.data();
-            if (data && data.timestampMs && data.timestampMs >= joinTime - 3000) {
-              handleIncomingWebRTCSignal(data);
-            }
-          }
-        });
-      });
-    } catch (e) {
-      console.warn('Voice signaling subscription error:', e);
-    }
     return () => {
-      unsubFs();
       unsubRtdb();
     };
   }, [isVoiceConnected, activeVoiceChannel, currentUser]);
@@ -1799,75 +1742,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       console.warn('RTDB channels subscription warning:', e);
     }
 
-    // 2. Subscribe to Firestore custom channels
-    try {
-      const channelsQuery = query(collection(db, 'customChannels'), limit(40));
-      unsubChannels = onSnapshot(channelsQuery, (snapshot) => {
-        const fsChannels = snapshot.docs.map(d => {
-          const data = d.data();
-          return {
-            id: d.id,
-            ...data,
-            members: Array.isArray(data.members) ? data.members : [],
-            pendingRequests: Array.isArray(data.pendingRequests) ? data.pendingRequests : [],
-            admins: Array.isArray(data.admins) ? data.admins : [],
-            bannedUsers: Array.isArray(data.bannedUsers) ? data.bannedUsers : []
-          };
-        }) as (CustomChannel & { isDeleted?: boolean; deleted?: boolean })[];
-
-        const fsChannelIds = new Set(fsChannels.map(c => c.id));
-        const nowMs = Date.now();
-        const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-
-        setCustomChannels(() => {
-          const map = new Map<string, CustomChannel>();
-
-          // 1. Initial custom channels (unless explicitly deleted in Firestore)
-          INITIAL_CUSTOM_CHANNELS.forEach(c => map.set(c.id, c));
-
-          // 2. Firestore channel documents
-          fsChannels.forEach(c => {
-            if (c.isDeleted || c.deleted) {
-              map.delete(c.id);
-              return;
-            }
-
-            let channel = { ...c };
-            // Auto-expire 24h deletion requests
-            if (channel.deletionRequested && channel.deletionRequestedAtMs) {
-              if (nowMs - channel.deletionRequestedAtMs > TWENTY_FOUR_HOURS_MS) {
-                channel.deletionRequested = false;
-                channel.deletionRequestedAtMs = undefined;
-                updateDoc(doc(db, 'customChannels', channel.id), {
-                  deletionRequested: false,
-                  deletionRequestedAtMs: null
-                }).catch(() => {});
-                saveRtdbChannel({ id: channel.id, name: channel.name, deletionRequested: false }).catch(() => {});
-              }
-            }
-            map.set(channel.id, channel);
-          });
-
-          // 3. Remove deleted hubs from output list
-          const finalChannels: CustomChannel[] = [];
-          map.forEach((chan, id) => {
-            if (id.startsWith('hub_') && !fsChannelIds.has(id)) {
-              return; // Deleted from Firestore by staff
-            }
-            if ((chan as any).isDeleted || (chan as any).deleted) {
-              return;
-            }
-            finalChannels.push(chan);
-          });
-
-          return finalChannels;
-        });
-      }, (e) => console.warn('Custom channels listener warning:', e));
-    } catch (e) {
-      console.warn('Custom channels subscription error:', e);
-    }
     return () => {
-      unsubChannels();
       unsubRtdbChannels();
     };
   }, []);
@@ -2118,7 +1993,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
   const [redeemedVouchersMap, setRedeemedVouchersMap] = useState<Record<string, { isRedeemed: boolean; redeemedByUsername?: string }>>({});
 
   useEffect(() => {
-    const giftCardsQuery = query(collection(db, 'giftCards'), limit(50));
+    const giftCardsQuery = query(collection(db, 'giftCards'), limit(10));
     const unsub = onSnapshot(giftCardsQuery, (snapshot) => {
       const map: Record<string, { isRedeemed: boolean; redeemedByUsername?: string }> = {};
       snapshot.forEach((d) => {
@@ -3076,56 +2951,6 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       console.warn('RTDB messages subscription warning:', e);
     }
 
-    // 2. Subscribe to Firestore chatMessages collection
-    try {
-      const chatRef = collection(db, 'chatMessages');
-      const q = query(chatRef, where('channel', '==', activeChannel), limit(80));
-
-      unsubscribeFirestore = onSnapshot(q, (snapshot) => {
-        if (!snapshot.empty) {
-          const firestoreMsgs: ChatMessage[] = snapshot.docs.map(doc => {
-            const data = doc.data();
-            const rawTime = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : data.createdAt) : (data.timestamp || new Date());
-            return {
-              id: doc.id,
-              user: data.username || 'ViceCityPlayer_2026',
-              avatar: data.avatar || DEFAULT_GTA6_AVATAR,
-              channel: data.channel || activeChannel,
-              content: data.isDeleted ? (data.text || 'This message was deleted') : (data.text || ''),
-              timestamp: rawTime,
-              isVip: data.isVip ?? true,
-              isMod: data.isMod || data.role === 'Staff',
-              isAdmin: data.isAdmin || data.role === 'Admin' || data.username === 'ViceCityMod_Tommy',
-              userLevel: data.userLevel || (data.isAdmin ? 'Admin' : data.isMod ? 'Staff' : data.isVip ? 'VIP' : 'Member'),
-              isDeleted: data.isDeleted || false,
-              deletedBy: data.deletedBy,
-              attachment: data.isDeleted ? undefined : (data.attachment || undefined),
-              reactions: data.reactions || {}
-            };
-          });
-
-          setMessages(prev => {
-            const newToAdd = firestoreMsgs.filter(m =>
-              !prev.some(p => p.id === m.id || (p.content === m.content && p.user === m.user && p.timestamp === m.timestamp))
-            );
-            // Also merge deleted statuses for existing messages
-            const updated = prev.map(p => {
-              const fsMatch = firestoreMsgs.find(m => m.id === p.id);
-              if (fsMatch && fsMatch.isDeleted) {
-                return { ...p, isDeleted: true, content: fsMatch.content || 'This message was deleted', attachment: undefined };
-              }
-              return p;
-            });
-            return [...updated, ...newToAdd];
-          });
-        }
-      }, (err) => {
-        console.warn('Firestore snapshot error, falling back to REST API:', err);
-      });
-    } catch (e) {
-      console.warn('Firestore init error, using REST API:', e);
-    }
-
     // Fallback sync from server REST API
     fetch(`/api/chat?channel=${activeChannel}`)
       .then(res => {
@@ -3454,45 +3279,21 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       });
     }
 
-    // 2. Save to Firebase Firestore
-    await safeFirestoreWrite(async () => {
-      const docRef = await addDoc(collection(db, 'chatMessages'), {
-        username: currentUsername,
-        avatar: currentAvatar,
-        text: newText,
-        channel: activeChannel,
-        timestamp: nowIso,
-        isVip: isVipUser,
-        isMod: isStaffUser,
-        isAdmin: isAdminUser,
-        userLevel: userLevel,
-        attachment: currentAttachment || null,
-        reactions: {},
-        createdAt: serverTimestamp()
-      });
-      if (docRef?.id) {
-        setMySentMessageIds(prev => {
-          const next = [...prev, docRef.id];
-          try { localStorage.setItem('gta6_my_chat_msg_ids', JSON.stringify(next)); } catch {}
-          return next;
-        });
-      }
-
-      // 1. Admin/Staff Broadcast Notification for regular users
-      if (isAdminUser || isStaffUser) {
-        try {
-          await addDoc(collection(db, 'userNotifications'), {
-            targetUserId: 'ALL',
-            targetUsername: 'ALL',
-            type: 'admin_chat_broadcast',
-            title: `🚨 Admin Broadcast in #${activeChannel}`,
-            message: `@${currentUsername}: "${newText.slice(0, 100)}"`,
-            timestamp: nowIso,
-            createdAt: Date.now(),
-            read: false,
-            targetTab: 'chat',
-            targetId: activeChannel,
-            metadata: {
+    // 2. Admin/Staff Broadcast Notification for regular users
+    if (isAdminUser || isStaffUser) {
+      try {
+        await addDoc(collection(db, 'userNotifications'), {
+          targetUserId: 'ALL',
+          targetUsername: 'ALL',
+          type: 'admin_chat_broadcast',
+          title: `🚨 Admin Broadcast in #${activeChannel}`,
+          message: `@${currentUsername}: "${newText.slice(0, 100)}"`,
+          timestamp: nowIso,
+          createdAt: Date.now(),
+          read: false,
+          targetTab: 'chat',
+          targetId: activeChannel,
+          metadata: {
               senderName: currentUsername,
               channel: activeChannel,
               isAdmin: isAdminUser,
@@ -3562,8 +3363,6 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
           }
         }
       }
-      return true;
-    });
 
     // 3. Also post to Express REST API server cache so memory state holds it
     try {
@@ -3666,9 +3465,8 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
 
       const nowIso = new Date().toISOString();
 
-      let postedFs = false;
       try {
-        await addDoc(collection(db, 'chatMessages'), {
+        await sendRtdbMessage({
           username: BOT_USER_NAME,
           avatar: botAvatarUrl,
           text: botText,
@@ -3677,15 +3475,11 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
           isBot: true,
           isVip: true,
           userLevel: 'AI Bot',
-          reactions: { '🤖': 1, '⚡': 1 },
-          createdAt: serverTimestamp()
+          reactions: { '🤖': 1, '⚡': 1 }
         });
-        postedFs = true;
       } catch (err) {
-        console.warn('Bot Firestore post error:', err);
+        console.warn('Bot RTDB post error:', err);
       }
-
-      if (!postedFs) {
         try {
           await fetch('/api/chat', {
             method: 'POST',
@@ -3719,7 +3513,6 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
           if (prev.some(m => m.id === newMsg.id || (m.content === newMsg.content && m.user === newMsg.user))) return prev;
           return [...prev, newMsg];
         });
-      }
     } catch (err) {
       console.error('Error in triggerBotResponseIfNeeded:', err);
     } finally {

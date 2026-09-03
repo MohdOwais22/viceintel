@@ -425,7 +425,7 @@ export async function fetchServerEnvHealth(adminPasskey?: string): Promise<{
  */
 export async function probeFirebaseHealth(firestoreDb: Firestore, firebaseAuth: Auth): Promise<FirebaseHealthResult> {
   const startTime = performance.now();
-  const collectionsToTest = ['userProfiles', 'chatMessages', 'customChannels', 'serverWhitelistForms', 'challenge_entries'];
+  const collectionsToTest = ['userProfiles', 'customChannels', 'serverWhitelistForms', 'vehicle_tuning_builds'];
   const collectionsPinged: { name: string; accessible: boolean; countPreview?: number; latencyMs?: number }[] = [];
   let isConnected = false;
   let errorMessage: string | undefined;

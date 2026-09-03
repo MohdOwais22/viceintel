@@ -31,7 +31,7 @@ import {
   Sliders,
   ChevronRight
 } from 'lucide-react';
-import { doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, query, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, query, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { BlogPostDraft, SocialPostItem } from './types';
 import { SEED_BLOG_DRAFTS, SEED_SOCIAL_POSTS } from './mockData';
@@ -184,7 +184,7 @@ export const ContentStudioSection: React.FC<ContentStudioSectionProps> = ({
   useEffect(() => {
     let unsubscribe = () => {};
     try {
-      const q = collection(db, 'contentStudioArticles');
+      const q = query(collection(db, 'contentStudioArticles'), limit(10));
       unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -259,7 +259,7 @@ export const ContentStudioSection: React.FC<ContentStudioSectionProps> = ({
   useEffect(() => {
     let unsubscribe = () => {};
     try {
-      const q = collection(db, 'marketing_social_posts');
+      const q = query(collection(db, 'marketing_social_posts'), limit(10));
       unsubscribe = onSnapshot(
         q,
         (snapshot) => {

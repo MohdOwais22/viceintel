@@ -10,11 +10,13 @@ import {
   collection,
   query,
   where,
+  limit,
   getDocs,
   onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { sendRtdbMessage } from '../lib/firebase/rtdbChatService';
 import { safeFirestoreWrite } from '../lib/firebase/firestoreCircuitBreaker';
 import { GiftCard, GiftCardTier } from '../types';
 import { PaymentGatewayModal, PaymentItemPackage } from './PaymentGatewayModal';
@@ -195,7 +197,8 @@ export const GiftCardTab: React.FC<GiftCardTabProps> = ({
 
   // Sync custom community channels from Firestore
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'customChannels'), (snapshot) => {
+    const q = query(collection(db, 'customChannels'), limit(10));
+    const unsub = onSnapshot(q, (snapshot) => {
       const list: { id: string; name: string; isVip?: boolean }[] = [
         { id: 'general', name: '#general (Main Lounge)' },
         { id: 'tuning', name: '#tuning (Vehicle Builds)' },
@@ -220,32 +223,29 @@ export const GiftCardTab: React.FC<GiftCardTabProps> = ({
       const currentUsername = currentUser.displayName || currentUser.email?.split('@')[0] || 'ViceCityGamer';
       const currentAvatar = currentUser.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=Lucia';
 
-      await safeFirestoreWrite(async () => {
-        await addDoc(collection(db, 'chatMessages'), {
-          username: currentUsername,
-          avatar: currentAvatar,
-          text: shareNote.trim() || `🎁 Shared an official ${sharingVoucherModal.tier} Shark Card (+${sharingVoucherModal.cashValue.toLocaleString('en-US')} VC) with the community!`,
-          channel: shareTargetChannel,
-          timestamp: new Date().toISOString(),
-          isVip: isVipActive,
-          isMod: isStaff,
-          isAdmin: isAdmin,
-          userLevel: isAdmin ? 'Admin' : isStaff ? 'Staff' : isVipActive ? 'VIP Member' : 'Player',
-          attachment: {
-            type: 'giftcard',
-            title: `🎁 ${sharingVoucherModal.tier}`,
-            detail: `Voucher Code: ${sharingVoucherModal.code} • +${sharingVoucherModal.cashValue.toLocaleString('en-US')} VC Balance`,
-            badge: 'Shark Card',
-            actionType: 'claim_giftcard',
-            actionData: sharingVoucherModal.code,
-            giftcardCode: sharingVoucherModal.code,
-            giftcardVcValue: sharingVoucherModal.cashValue,
-            giftcardTier: sharingVoucherModal.tier,
-            giftcardVipDays: sharingVoucherModal.vipDaysGranted || 0
-          },
-          reactions: {},
-          createdAt: serverTimestamp()
-        });
+      await sendRtdbMessage({
+        username: currentUsername,
+        avatar: currentAvatar,
+        text: shareNote.trim() || `🎁 Shared an official ${sharingVoucherModal.tier} Shark Card (+${sharingVoucherModal.cashValue.toLocaleString('en-US')} VC) with the community!`,
+        channel: shareTargetChannel,
+        timestamp: new Date().toISOString(),
+        isVip: isVipActive,
+        isMod: isStaff,
+        isAdmin: isAdmin,
+        userLevel: isAdmin ? 'Admin' : isStaff ? 'Staff' : isVipActive ? 'VIP Member' : 'Player',
+        attachment: {
+          type: 'giftcard',
+          title: `🎁 ${sharingVoucherModal.tier}`,
+          detail: `Voucher Code: ${sharingVoucherModal.code} • +${sharingVoucherModal.cashValue.toLocaleString('en-US')} VC Balance`,
+          badge: 'Shark Card',
+          actionType: 'claim_giftcard',
+          actionData: sharingVoucherModal.code,
+          giftcardCode: sharingVoucherModal.code,
+          giftcardVcValue: sharingVoucherModal.cashValue,
+          giftcardTier: sharingVoucherModal.tier,
+          giftcardVipDays: sharingVoucherModal.vipDaysGranted || 0
+        },
+        reactions: {}
       });
 
       setShareSuccessToast(`Successfully posted voucher to #${shareTargetChannel}! Community members can now claim it in chat.`);

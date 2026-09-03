@@ -48,7 +48,7 @@ import { VpnOptimizerWidget } from './affiliates/VpnOptimizerWidget';
 import { ClaimButtonModal } from './servers/ClaimButtonModal';
 import { copyToClipboard } from '../lib/copyUtils';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, query, where, limit } from 'firebase/firestore';
 import { subscribeRtdbFivemServers } from '../lib/firebase/rtdbChatService';
 import { normalizeTier, getTierWeight } from '../lib/stripe-subscriptions';
 
@@ -337,7 +337,8 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
     let unsubRentals: (() => void) | null = null;
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      unsubRentals = onSnapshot(collection(db, 'spotlight_rentals'), (snapshot) => {
+      const spotlightQ = query(collection(db, 'spotlight_rentals'), where('date', '==', todayStr), limit(10));
+      unsubRentals = onSnapshot(spotlightQ, (snapshot) => {
         let matched: SpotlightRentalBooking | null = null;
         snapshot.forEach((docSnap) => {
           const d = docSnap.data() as SpotlightRentalBooking;

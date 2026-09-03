@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { BrandGraphicBrief } from './types';
 import { SEED_BRAND_GRAPHICS } from './mockData';
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, query, limit } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 
 const PRESET_BACKGROUND_IMAGES = [
@@ -114,7 +114,8 @@ export const BrandGraphicsSection: React.FC = () => {
   useEffect(() => {
     let unsub = () => {};
     try {
-      unsub = onSnapshot(collection(db, 'marketingBannerBriefs'), (snap) => {
+      const q = query(collection(db, 'marketingBannerBriefs'), limit(10));
+      unsub = onSnapshot(q, (snap) => {
         if (!snap.empty) {
           const fetched: BrandGraphicBrief[] = [];
           snap.forEach((docSnap) => {

@@ -18,13 +18,15 @@ import { db } from './firebase';
 import localforage from 'localforage';
 import {
   subscribeRtdbSquadRoom,
+  fetchRtdbSquadRoom,
   saveRtdbSquadRoom,
   updateRtdbSquadPosition,
   addRtdbSquadWaypoint,
   addRtdbSquadPing,
   toggleRtdbCollectibleSync,
   leaveRtdbSquadRoom,
-  subscribeRtdbLfgSquads
+  subscribeRtdbLfgSquads,
+  registerRtdbSquadMemberPresence
 } from './firebase/rtdbChatService';
 
 export interface SquadMember {
@@ -165,7 +167,7 @@ export async function cleanupStaleSquadRooms(options?: {
   let checkedCount = 0;
 
   try {
-    const roomsSnap = await getDocs(query(collection(db, 'squad_rooms'), limit(30)));
+    const roomsSnap = await getDocs(query(collection(db, 'squad_rooms'), limit(10)));
     checkedCount = roomsSnap.size;
 
     for (const roomDoc of roomsSnap.docs) {
@@ -283,9 +285,10 @@ export async function createSquadRoom(
 
   const roomData = sanitizeFirestoreData(rawRoomData);
 
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  await setDoc(roomRef, roomData);
   await saveRtdbSquadRoom(roomData);
+  if (hostUid) {
+    registerRtdbSquadMemberPresence(roomId, hostUid, true);
+  }
   await cacheActiveRoom(roomId);
   await cacheSquadRoom(roomData);
   return roomId;
@@ -312,21 +315,18 @@ export async function joinSquadRoom(
     return { success: false, error: 'Room code is required.' };
   }
   const normalizedRoomId = roomId.toUpperCase().trim();
-  const roomRef = doc(db, 'squad_rooms', normalizedRoomId);
   
-  let snap;
+  let room: SquadRoom | null = null;
   try {
-    snap = await getDoc(roomRef);
+    room = await fetchRtdbSquadRoom(normalizedRoomId);
   } catch (err: any) {
-    console.warn('Error fetching squad room:', err);
+    console.warn('Error fetching squad room from RTDB:', err);
     return { success: false, error: 'Could not connect to squad room database.' };
   }
 
-  if (!snap.exists()) {
+  if (!room) {
     return { success: false, error: `Squad room ${normalizedRoomId} was not found or has expired.` };
   }
-
-  const room = snap.data() as SquadRoom;
 
   // Verify room is not stale (>30 mins without active positions)
   if (isSquadRoomStale(room) || room.isStale || room.status === 'stale') {
@@ -407,13 +407,8 @@ export async function joinSquadRoom(
     isStale: false
   };
 
-  await updateDoc(roomRef, {
-    [`members.${user.uid}`]: memberData,
-    lastActiveTimestamp: now,
-    status: 'active',
-    isStale: false
-  });
   await saveRtdbSquadRoom(updatedRoom);
+  registerRtdbSquadMemberPresence(normalizedRoomId, user.uid, false);
 
   await cacheActiveRoom(normalizedRoomId);
   return { success: true, room: updatedRoom };
@@ -428,11 +423,9 @@ export async function kickSquadMember(
   targetUid: string
 ): Promise<{ success: boolean; error?: string }> {
   if (!roomId || !targetUid) return { success: false, error: 'Invalid room or target UID.' };
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  const snap = await getDoc(roomRef);
-  if (!snap.exists()) return { success: false, error: 'Room not found.' };
+  const room = await fetchRtdbSquadRoom(roomId);
+  if (!room) return { success: false, error: 'Room not found.' };
 
-  const room = snap.data() as SquadRoom;
   if (room.hostUid !== hostUid) {
     return { success: false, error: 'Only the squad host can kick players.' };
   }
@@ -450,12 +443,6 @@ export async function kickSquadMember(
     lastActiveTimestamp: Date.now()
   };
 
-  await updateDoc(roomRef, {
-    [`members.${targetUid}`]: deleteField(),
-    kickedUids: arrayUnion(targetUid),
-    lastActiveTimestamp: Date.now()
-  });
-
   await saveRtdbSquadRoom(updatedRoom);
   leaveRtdbSquadRoom(roomId, targetUid).catch(() => {});
   return { success: true };
@@ -470,11 +457,9 @@ export async function toggleLockSquadRoom(
   isLocked: boolean
 ): Promise<{ success: boolean; error?: string }> {
   if (!roomId) return { success: false, error: 'Invalid room ID.' };
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  const snap = await getDoc(roomRef);
-  if (!snap.exists()) return { success: false, error: 'Room not found.' };
+  const room = await fetchRtdbSquadRoom(roomId);
+  if (!room) return { success: false, error: 'Room not found.' };
 
-  const room = snap.data() as SquadRoom;
   if (room.hostUid !== hostUid) {
     return { success: false, error: 'Only the squad host can lock or unlock the room.' };
   }
@@ -484,11 +469,6 @@ export async function toggleLockSquadRoom(
     isLocked,
     lastActiveTimestamp: Date.now()
   };
-
-  await updateDoc(roomRef, {
-    isLocked,
-    lastActiveTimestamp: Date.now()
-  });
 
   await saveRtdbSquadRoom(updatedRoom);
   return { success: true };
@@ -503,11 +483,9 @@ export async function updateSquadRoomPasscode(
   passcode?: string
 ): Promise<{ success: boolean; error?: string }> {
   if (!roomId) return { success: false, error: 'Invalid room ID.' };
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  const snap = await getDoc(roomRef);
-  if (!snap.exists()) return { success: false, error: 'Room not found.' };
+  const room = await fetchRtdbSquadRoom(roomId);
+  if (!room) return { success: false, error: 'Room not found.' };
 
-  const room = snap.data() as SquadRoom;
   if (room.hostUid !== hostUid) {
     return { success: false, error: 'Only the squad host can set the room passcode.' };
   }
@@ -524,12 +502,6 @@ export async function updateSquadRoomPasscode(
     delete rawUpdatedRoom.passcode;
   }
   const updatedRoom = sanitizeFirestoreData(rawUpdatedRoom);
-
-  await updateDoc(roomRef, {
-    passcode: cleanPasscode || deleteField(),
-    privacyMode: cleanPasscode ? 'passcode' : 'public',
-    lastActiveTimestamp: Date.now()
-  });
 
   await saveRtdbSquadRoom(updatedRoom);
   return { success: true };
@@ -549,32 +521,7 @@ export async function updatePlayerPosition(
   lng: number
 ): Promise<void> {
   if (!roomId || !uid) return;
-  
-  // 1. RTDB instant update (~10ms) - handles high-frequency real-time radar sync
   updateRtdbSquadPosition(roomId, uid, lat, lng).catch(() => {});
-
-  // 2. Firestore backup update - throttled to 4s to prevent quota leaks & cascading reads
-  const throttleKey = `${roomId}_${uid}`;
-  const now = Date.now();
-  const lastWrite = lastFirestorePositionUpdateMap.get(throttleKey) || 0;
-  if (now - lastWrite < FIRESTORE_POSITION_THROTTLE_MS) {
-    return;
-  }
-  lastFirestorePositionUpdateMap.set(throttleKey, now);
-
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  try {
-    await updateDoc(roomRef, {
-      [`members.${uid}.lat`]: lat,
-      [`members.${uid}.lng`]: lng,
-      [`members.${uid}.lastUpdated`]: now,
-      lastActiveTimestamp: now,
-      status: 'active',
-      isStale: false
-    });
-  } catch (e) {
-    console.warn('Failed to update player position in Firestore:', e);
-  }
 }
 
 /**
@@ -585,14 +532,11 @@ export async function addWaypoint(
   waypoint: Omit<Waypoint, 'id'> & { id?: string }
 ): Promise<void> {
   if (!roomId) return;
-  const roomRef = doc(db, 'squad_rooms', roomId);
   const newWaypoint: Waypoint = {
     ...waypoint,
     id: waypoint.id || `wp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
   };
-  await updateDoc(roomRef, {
-    waypoints: arrayUnion(newWaypoint)
-  });
+  await addRtdbSquadWaypoint(roomId, newWaypoint);
 }
 
 /**
@@ -612,24 +556,7 @@ export async function addSquadPing(
   };
 
   if (roomId) {
-    const roomRef = doc(db, 'squad_rooms', roomId);
-    try {
-      // Clean up older expired pings while appending the new ping
-      const snap = await getDoc(roomRef);
-      if (snap.exists()) {
-        const room = snap.data() as SquadRoom;
-        const freshPings = (room.pings || []).filter(p => p.expiresAt > timestamp);
-        await updateDoc(roomRef, {
-          pings: [...freshPings, newPing]
-        });
-      } else {
-        await updateDoc(roomRef, {
-          pings: arrayUnion(newPing)
-        });
-      }
-    } catch (e) {
-      console.warn('Failed to sync squad ping to Firestore:', e);
-    }
+    await addRtdbSquadPing(roomId, newPing);
   }
 
   return newPing;
@@ -643,14 +570,10 @@ export async function removeWaypoint(
   waypointId: string
 ): Promise<void> {
   if (!roomId || !waypointId) return;
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  const snap = await getDoc(roomRef);
-  if (snap.exists()) {
-    const room = snap.data() as SquadRoom;
-    const updatedWaypoints = (room.waypoints || []).filter(w => w.id !== waypointId);
-    await updateDoc(roomRef, {
-      waypoints: updatedWaypoints
-    });
+  const room = await fetchRtdbSquadRoom(roomId);
+  if (room) {
+    const updatedWaypoints = (room.waypoints || []).filter((w: Waypoint) => w.id !== waypointId);
+    await saveRtdbSquadRoom({ ...room, waypoints: updatedWaypoints });
   }
 }
 
@@ -662,24 +585,7 @@ export async function toggleCollectibleSync(
   collectibleId: string
 ): Promise<void> {
   if (!roomId || !collectibleId) return;
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  const snap = await getDoc(roomRef);
-  if (snap.exists()) {
-    const room = snap.data() as SquadRoom;
-    const currentList = room.checkedCollectibles || [];
-    const isChecked = currentList.includes(collectibleId);
-    if (isChecked) {
-      await updateDoc(roomRef, {
-        checkedCollectibles: arrayRemove(collectibleId)
-      });
-      await cacheCheckedCollectibles(currentList.filter(id => id !== collectibleId));
-    } else {
-      await updateDoc(roomRef, {
-        checkedCollectibles: arrayUnion(collectibleId)
-      });
-      await cacheCheckedCollectibles([...currentList, collectibleId]);
-    }
-  }
+  await toggleRtdbCollectibleSync(roomId, collectibleId);
 }
 
 /**
@@ -687,20 +593,12 @@ export async function toggleCollectibleSync(
  */
 export async function leaveSquadRoom(roomId: string, uid: string): Promise<void> {
   if (!roomId || !uid) return;
-  leaveRtdbSquadRoom(roomId, uid).catch(() => {});
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  try {
-    await updateDoc(roomRef, {
-      [`members.${uid}`]: deleteField()
-    });
-  } catch (e) {
-    console.warn('leaveSquadRoom error:', e);
-  }
+  await leaveRtdbSquadRoom(roomId, uid).catch(() => {});
   await clearCachedRoom();
 }
 
 /**
- * Subscribes to real-time updates for a squad room via Realtime Database & Firestore fallback.
+ * Subscribes to real-time updates for a squad room via Realtime Database (0 Firestore reads).
  */
 export function subscribeToSquadRoom(
   roomId: string,
@@ -712,42 +610,15 @@ export function subscribeToSquadRoom(
     return () => {};
   }
 
-  let unsubRtdb: () => void = () => {};
-  let unsubFs: () => void = () => {};
-
-  try {
-    unsubRtdb = subscribeRtdbSquadRoom(roomId, (rtdbRoom) => {
-      if (rtdbRoom) {
-        onUpdate(rtdbRoom as SquadRoom);
-        cacheSquadRoom(rtdbRoom as SquadRoom).catch(() => {});
-      }
-    });
-  } catch (e) {
-    console.warn('RTDB squad room sub warning:', e);
-  }
-
-  const roomRef = doc(db, 'squad_rooms', roomId);
-  unsubFs = onSnapshot(
-    roomRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data() as SquadRoom;
-        onUpdate(data);
-        cacheSquadRoom(data).catch(() => {});
-      } else if (!unsubRtdb) {
-        onUpdate(null);
-      }
-    },
-    (err) => {
-      console.warn('Squad room snapshot subscription notice:', err?.message || err);
-      if (onError) onError(err);
+  // 100% RTDB streaming listener
+  return subscribeRtdbSquadRoom(roomId, (rtdbRoom) => {
+    if (rtdbRoom) {
+      onUpdate(rtdbRoom as SquadRoom);
+      cacheSquadRoom(rtdbRoom as SquadRoom).catch(() => {});
+    } else {
+      onUpdate(null);
     }
-  );
-
-  return () => {
-    unsubRtdb();
-    unsubFs();
-  };
+  });
 }
 
 // LocalForage Cache Helpers
@@ -860,6 +731,10 @@ export async function hostLfgSquadRoom(
 
   const roomRef = doc(db, 'squad_rooms', roomId);
   await setDoc(roomRef, newRoom);
+  await saveRtdbSquadRoom(newRoom);
+  if (hostUid) {
+    registerRtdbSquadMemberPresence(roomId, hostUid, true);
+  }
   await cacheActiveRoom(roomId);
   await cacheSquadRoom(newRoom);
 
@@ -891,57 +766,20 @@ export async function updateLfgStatus(
 }
 
 /**
- * Subscribes to all active LFG Squad Rooms across the platform
+ * Subscribes to all active LFG Squad Rooms across the platform via Realtime Database (0 Firestore reads)
  */
 export function subscribeToLfgSquads(
   onUpdate: (rooms: SquadRoom[]) => void,
   onError?: (err: any) => void
 ): () => void {
-  let unsubRtdb: () => void = () => {};
-  let unsubFs: () => void = () => {};
-
-  try {
-    unsubRtdb = subscribeRtdbLfgSquads((rtdbRooms) => {
-      if (rtdbRooms && rtdbRooms.length > 0) {
-        onUpdate(rtdbRooms as SquadRoom[]);
-      }
-    });
-  } catch (e) {
-    console.warn('RTDB LFG sub warning:', e);
-  }
-
-  const roomsRef = collection(db, 'squad_rooms');
-  const q = query(roomsRef, where('isLfgActive', '==', true), limit(25));
-
-  unsubFs = onSnapshot(
-    q,
-    (snapshot) => {
-      const activeLfgRooms: SquadRoom[] = [];
-      snapshot.forEach((docSnap) => {
-        const room = docSnap.data() as SquadRoom;
-        if (!isSquadRoomStale(room)) {
-          // Sync current member count
-          const memberCount = Object.keys(room.members || {}).length;
-          if (room.lfgConfig) {
-            room.lfgConfig.currentPlayers = memberCount;
-          }
-          activeLfgRooms.push(room);
-        }
-      });
-      if (activeLfgRooms.length > 0) {
-        onUpdate(activeLfgRooms);
-      }
-    },
-    (err) => {
-      console.warn('subscribeToLfgSquads snapshot notice:', err?.message || err);
-      if (onError) onError(err);
+  return subscribeRtdbLfgSquads((rtdbRooms) => {
+    if (rtdbRooms) {
+      const active = (rtdbRooms as SquadRoom[]).filter(room => !isSquadRoomStale(room));
+      onUpdate(active);
+    } else {
+      onUpdate([]);
     }
-  );
-
-  return () => {
-    unsubRtdb();
-    unsubFs();
-  };
+  });
 }
 
 /**

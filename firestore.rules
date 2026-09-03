@@ -51,21 +51,12 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // 2. Squad Radar & Co-Op Tactical Party Sync
-    match /squad_rooms/{roomId} {
-      allow read, write: if true;
-    }
-
-    // 3. Vehicle Handling Builds & Tuning Presets
+    // 2. Vehicle Handling Builds & Tuning Presets
     match /vehicle_tuning_builds/{buildId} {
       allow read, write: if true;
     }
 
     match /tuning_challenges/{challengeId} {
-      allow read, write: if true;
-    }
-
-    match /challenge_entries/{entryId} {
       allow read, write: if true;
     }
 
@@ -88,17 +79,8 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // 7. Community Live Chat & Custom VIP Hubs
-    match /chatMessages/{messageId} {
-      allow read, write: if true;
-    }
-
+    // 5. Community Custom VIP Hubs
     match /customChannels/{channelId} {
-      allow read, write: if true;
-    }
-
-    // 8. Voice Comms & WebRTC Signaling
-    match /voiceComms/{document=**} {
       allow read, write: if true;
     }
 

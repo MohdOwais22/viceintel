@@ -20,6 +20,12 @@ import {
   increment
 } from 'firebase/firestore';
 import { db } from './firebase';
+import {
+  saveRtdbChallengeEntry,
+  deleteRtdbChallengeEntry,
+  clearRtdbChallengeLeaderboard,
+  subscribeRtdbChallengeLeaderboard
+} from './firebase/rtdbChatService';
 import { HandlingData, CalculatedTelemetry, calculateCalculatedStats } from './handling-calculator';
 
 export const ACTIVE_CHALLENGE_DOC_ID = 'weekly_tuning_challenge_active';
@@ -522,7 +528,9 @@ export async function submitChallengeTune(
   };
 
   const sanitizedEntry = sanitizeFirestore(entry);
-  await setDoc(entryRef, sanitizedEntry);
+
+  // Instant Realtime Database high-frequency streaming write (0 Firestore read cost on snapshot)
+  await saveRtdbChallengeEntry(sanitizedEntry).catch(() => {});
 
   // Update submission counter on challenge doc
   try {
@@ -565,7 +573,7 @@ export function sortChallengeEntriesWithTieBreaker(
 }
 
 /**
- * Subscribes to live leaderboard entries for the active challenge
+ * Subscribes to live leaderboard entries for the active challenge via Realtime Database
  */
 export function subscribeToChallengeLeaderboard(
   challengeId: string,
@@ -573,50 +581,24 @@ export function subscribeToChallengeLeaderboard(
   onUpdate: (entries: ChallengeEntry[]) => void,
   onError?: (err: any) => void
 ): () => void {
-  const entriesRef = collection(db, 'challenge_entries');
-  // For top_speed and drift_angle: descending. For quarter_mile: ascending (lower is faster)
-  const sortDirection = targetMetric === 'quarter_mile' ? 'asc' : 'desc';
-  const q = query(
-    entriesRef,
-    where('challengeId', '==', challengeId),
-    orderBy('metricValue', sortDirection),
-    limit(50)
-  );
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const rawEntries: ChallengeEntry[] = [];
-      snapshot.forEach((docSnap) => {
-        rawEntries.push(docSnap.data() as ChallengeEntry);
-      });
-      // Apply exact tie-breaker sorting: earlier submittedAt wins on identical metric
-      const sorted = sortChallengeEntriesWithTieBreaker(rawEntries, targetMetric);
+  // Primary 100% RTDB streaming listener (0 Firestore read consumption)
+  const unsubRtdb = subscribeRtdbChallengeLeaderboard(challengeId, (entriesMap) => {
+    if (entriesMap && Object.keys(entriesMap).length > 0) {
+      const list = Object.values(entriesMap) as ChallengeEntry[];
+      const sorted = sortChallengeEntriesWithTieBreaker(list, targetMetric);
       const rankedEntries = sorted.map((entry, index) => ({
         ...entry,
         rank: index + 1
       }));
       onUpdate(rankedEntries);
-    },
-    (err) => {
-      console.warn('[Leaderboard] snapshot notice, falling back to manual fetch:', err);
-      // Fallback in case composite index is still indexing
-      getDocs(collection(db, 'challenge_entries'))
-        .then((snap) => {
-          let list: ChallengeEntry[] = [];
-          snap.forEach((d) => {
-            const data = d.data() as ChallengeEntry;
-            if (data.challengeId === challengeId) list.push(data);
-          });
-          const sorted = sortChallengeEntriesWithTieBreaker(list, targetMetric);
-          const ranked = sorted.map((item, idx) => ({ ...item, rank: idx + 1 }));
-          onUpdate(ranked);
-        })
-        .catch(e => {
-          if (onError) onError(e);
-        });
+    } else {
+      onUpdate([]);
     }
-  );
+  });
+
+  return () => {
+    unsubRtdb();
+  };
 }
 
 /**
@@ -663,16 +645,7 @@ export async function fetchAllAdminChallenges(): Promise<{
  */
 export async function clearChallengeEntries(challengeId: string): Promise<void> {
   try {
-    const entriesRef = collection(db, 'challenge_entries');
-    const snap = await getDocs(entriesRef);
-    const deletePromises: Promise<void>[] = [];
-    snap.forEach((d) => {
-      const data = d.data();
-      if (data.challengeId === challengeId) {
-        deletePromises.push(deleteDoc(d.ref));
-      }
-    });
-    await Promise.all(deletePromises);
+    await clearRtdbChallengeLeaderboard(challengeId);
   } catch (err) {
     console.error('Failed to clear challenge entries:', err);
   }
@@ -791,9 +764,11 @@ export async function deleteAdminChallenge(challengeId: string): Promise<void> {
 /**
  * Disqualifies / deletes a single leaderboard entry
  */
-export async function disqualifyChallengeEntry(entryId: string): Promise<void> {
-  const entryRef = doc(db, 'challenge_entries', entryId);
-  await deleteDoc(entryRef);
+export async function disqualifyChallengeEntry(entryId: string, challengeId?: string): Promise<void> {
+  const targetChallengeId = challengeId || entryId.split('_')[0];
+  if (targetChallengeId) {
+    await deleteRtdbChallengeEntry(targetChallengeId, entryId);
+  }
 }
 
 /**

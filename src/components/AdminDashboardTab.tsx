@@ -588,8 +588,8 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     let unsubPending: () => void = () => {};
 
     try {
-      // 1. Subscribe to Firestore userProfiles collection with a limit of 100 docs for performance
-      const usersQuery = query(collection(db, 'userProfiles'), limit(100));
+      // 1. Subscribe to Firestore userProfiles collection with a limit of 10 docs for performance
+      const usersQuery = query(collection(db, 'userProfiles'), limit(10));
       unsubUsers = onSnapshot(
         usersQuery,
         (snapshot) => {
@@ -659,7 +659,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       );
 
       // 2. Subscribe to Firestore pendingApprovals collection
-      const pendingQuery = query(collection(db, 'pendingApprovals'), limit(50));
+      const pendingQuery = query(collection(db, 'pendingApprovals'), limit(10));
       unsubPending = onSnapshot(
         pendingQuery,
         (snapshot) => {
@@ -716,21 +716,16 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         }
       );
 
-      // 3. Subscribe to Firestore chatMessages collection for Admin Live Chat Manager
+      // 3. Subscribe to Realtime Database chat messages for Admin Live Chat Manager (0 Firestore cost)
       let unsubChatMsgs: () => void = () => {};
       try {
-        const chatQuery = query(collection(db, 'chatMessages'), limit(100));
-        unsubChatMsgs = onSnapshot(chatQuery, (snapshot) => {
-          if (!snapshot.empty) {
-            const fsMsgs = snapshot.docs.map(d => ({
-              id: d.id,
-              ...d.data()
-            }));
-            setLiveChatMessages(fsMsgs);
+        unsubChatMsgs = subscribeRtdbMessages('global', (rtdbMsgs) => {
+          if (rtdbMsgs && rtdbMsgs.length > 0) {
+            setLiveChatMessages(rtdbMsgs as any);
           }
-        }, (e) => console.warn('Admin chat snapshot warning:', e));
+        });
       } catch (e) {
-        console.warn('Chat subscription error:', e);
+        console.warn('RTDB Chat subscription error:', e);
       }
 
       // Initial REST fallback for chat messages
@@ -767,37 +762,37 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     let unsubChat = () => {};
 
     try {
-      unsubBlogs = onSnapshot(query(collection(db, 'blogPosts'), limit(25)), (snap) => {
+      unsubBlogs = onSnapshot(query(collection(db, 'blogPosts'), limit(10)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedBlogs(list);
       }, (e) => console.warn('Blogs sub error:', e));
 
-      unsubVehicles = onSnapshot(query(collection(db, 'vehicles'), limit(25)), (snap) => {
+      unsubVehicles = onSnapshot(query(collection(db, 'vehicles'), limit(10)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedVehicles(list);
       }, (e) => console.warn('Vehicles sub error:', e));
 
-      unsubWeapons = onSnapshot(query(collection(db, 'weapons'), limit(25)), (snap) => {
+      unsubWeapons = onSnapshot(query(collection(db, 'weapons'), limit(10)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedWeapons(list);
       }, (e) => console.warn('Weapons sub error:', e));
 
-      unsubMaps = onSnapshot(query(collection(db, 'mapLocations'), limit(25)), (snap) => {
+      unsubMaps = onSnapshot(query(collection(db, 'mapLocations'), limit(10)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedMapLocations(list);
       }, (e) => console.warn('Map locations sub error:', e));
 
-      unsubRp = onSnapshot(query(collection(db, 'rpServers'), limit(25)), (snap) => {
+      unsubRp = onSnapshot(query(collection(db, 'rpServers'), limit(10)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedRpServers(list);
       }, (e) => console.warn('RP servers sub error:', e));
 
-      unsubChat = onSnapshot(query(collection(db, 'chatChannels'), limit(25)), (snap) => {
+      unsubChat = onSnapshot(query(collection(db, 'chatChannels'), limit(10)), (snap) => {
         const list: any[] = [];
         snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
         setPublishedChatChannels(list);

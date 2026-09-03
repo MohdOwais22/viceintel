@@ -714,12 +714,12 @@ export async function fetchMarketingCampaignsFromFirestore(params?: {
 }): Promise<MarketingCampaign[]> {
   try {
     const colRef = collection(db, 'marketing_campaigns');
-    let q = query(colRef, limit(30));
+    let q = query(colRef, limit(10));
 
     if (params?.serverId) {
-      q = query(colRef, where('serverId', '==', params.serverId), limit(30));
+      q = query(colRef, where('serverId', '==', params.serverId), limit(10));
     } else if (params?.scope) {
-      q = query(colRef, where('scope', '==', params.scope), limit(30));
+      q = query(colRef, where('scope', '==', params.scope), limit(10));
     }
 
     const snap = await getDocs(q);

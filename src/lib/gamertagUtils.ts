@@ -32,7 +32,7 @@ export function initGamerTagEngineListener(): () => void {
   isSnapshotInitialized = true;
 
   try {
-    const q = query(collection(db, 'userProfiles'), limit(500));
+    const q = query(collection(db, 'userProfiles'), limit(10));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {

@@ -493,7 +493,7 @@ export default function App() {
     }
 
     return () => unsub();
-  }, [currentUser]);
+  }, [currentUser?.uid]);
 
   const fullCurrentUser = useMemo(() => {
     if (!currentUser) return null;
@@ -620,7 +620,7 @@ export default function App() {
       const q = query(
         collection(db, 'userNotifications'),
         where('targetUserId', 'in', targetIds),
-        limit(15)
+        limit(10)
       );
       unsub = onSnapshot(q, (snapshot) => {
         const list: UserNotification[] = [];
