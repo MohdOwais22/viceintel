@@ -68,7 +68,7 @@ import { AdminBusinessDashboard } from './components/AdminBusinessDashboard';
 import { Footer } from './components/Footer';
 import { registerServiceWorker, preloadAllCriticalData } from './lib/offlineStorage';
 import { syncDiscordConfigFromServer } from './lib/discordOAuthHelper';
-import { getTabFromPath, updatePageSeoMeta, TAB_TO_PATH } from './lib/seoRouting';
+import { getTabFromPath, updatePageSeoMeta, TAB_TO_PATH, PATH_TO_TAB } from './lib/seoRouting';
 import { initSeoRealtimeSync } from './lib/seoStore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Gift, Bug, Camera, CheckCircle2, AlertTriangle, XCircle, Sparkles, Coins, Mail } from 'lucide-react';
@@ -178,13 +178,16 @@ export default function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const isPopoutMode = urlParams.get('popout') === 'true';
     const popoutChannel = urlParams.get('channel');
+    const tabParam = urlParams.get('tab') || urlParams.get('page');
 
     // Detect Subdomain Isolation Mode (e.g. docs.domain.com or admin.domain.com or ?subdomain=docs)
     const detectedSubdomain = detectSubdomainMode();
     setSubdomainState(detectedSubdomain);
 
     let effectiveTab = initialTab;
-    if (detectedSubdomain.mode === 'docs' && (window.location.pathname === '/' || window.location.pathname === '')) {
+    if (tabParam && (PATH_TO_TAB[`/${tabParam}`] || PATH_TO_TAB[tabParam] || tabParam === 'home')) {
+      effectiveTab = (PATH_TO_TAB[`/${tabParam}`] || PATH_TO_TAB[tabParam] || tabParam) as ActiveTab;
+    } else if (detectedSubdomain.mode === 'docs' && (window.location.pathname === '/' || window.location.pathname === '')) {
       effectiveTab = 'docs';
     } else if (detectedSubdomain.mode === 'admin' && (window.location.pathname === '/' || window.location.pathname === '')) {
       effectiveTab = 'admin';

@@ -57,6 +57,11 @@ export const TAB_TO_PATH: Record<ActiveTab, string> = {
 
 export const PATH_TO_TAB: Record<string, ActiveTab> = {
   '/': 'home',
+  '': 'home',
+  '/home': 'home',
+  '/index.html': 'home',
+  '/main': 'home',
+  '/portal': 'home',
   '/pitch': 'pitch',
   '/investors': 'investors',
   '/vehicles': 'vehicles',
@@ -256,7 +261,9 @@ export const TAB_DESCRIPTIONS: Record<ActiveTab, string> = {
  * Returns the matching ActiveTab for a given URL path, supporting dynamic /servers/:slug/:action routes.
  */
 export function getTabFromPath(pathname: string): { tab: ActiveTab; slug?: string } {
-  const cleanPath = pathname.toLowerCase().replace(/\/$/, '') || '/';
+  // Strip out query parameters and hashes if included in pathname
+  const strippedPath = (pathname || '').split('?')[0].split('#')[0];
+  const cleanPath = strippedPath.toLowerCase().replace(/\/$/, '') || '/';
 
   // Dynamic /blog/[slug] parser
   const blogMatch = cleanPath.match(/^\/blog\/([^/]+)$/);
