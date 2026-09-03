@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, DollarSign, Percent, ShieldCheck, ChevronRight, Crown, Sparkles, Clock, Lock } from 'lucide-react';
+import { X, Calendar, DollarSign, Percent, ShieldCheck, ChevronRight, Crown, Sparkles, Clock, CreditCard } from 'lucide-react';
 import { getVipPriceNumber } from '../lib/vipConfig';
 import { PaymentItemPackage } from './PaymentGatewayModal';
-import { PaymentMaintenanceNotice } from './PaymentMaintenanceNotice';
 
 interface VipExtensionDialogProps {
   isOpen: boolean;
@@ -134,12 +133,6 @@ export const VipExtensionDialog: React.FC<VipExtensionDialogProps> = ({
 
             {/* Scrollable Content */}
             <div className="p-5 overflow-y-auto space-y-5 flex-1">
-              <PaymentMaintenanceNotice
-                title="Payments Temporarily Locked"
-                subtitle="VIP subscription extensions and upgrades are temporarily paused for maintenance. We will get back soon!"
-                compact={true}
-              />
-
               {/* Expiration Status Row */}
               <div className="p-4 bg-zinc-950/60 border border-zinc-800 rounded-xl flex items-center justify-between">
                 <div className="space-y-0.5">
@@ -284,11 +277,11 @@ export const VipExtensionDialog: React.FC<VipExtensionDialogProps> = ({
               </button>
               {!isUnlimited && (
                 <button
-                  disabled={true}
-                  className="px-5 py-2.5 bg-zinc-800 text-zinc-400 font-bold text-xs rounded-xl border border-zinc-700 flex items-center gap-1.5 cursor-not-allowed opacity-80"
+                  onClick={handleProceed}
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition cursor-pointer"
                 >
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Payments Temporarily Locked (Will Get Back Soon)</span>
+                  <CreditCard className="w-3.5 h-3.5 text-zinc-950" />
+                  <span>Proceed to Payment (${netTotal.toFixed(2)})</span>
                 </button>
               )}
             </div>

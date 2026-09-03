@@ -32,7 +32,7 @@ export interface AuthGuardOptions {
 
 /**
  * Validates whether the current user is the verified owner of a server
- * AND holds an active paid subscription (Community $29, Mega-Server $49, Enterprise $99).
+ * AND holds an active paid subscription (Community $29, Mega-Server $49, Enterprise $199).
  */
 export async function validateServerOwnerSubscription(
   options: AuthGuardOptions

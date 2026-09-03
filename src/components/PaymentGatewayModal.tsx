@@ -34,7 +34,6 @@ import { copyToClipboard } from '../lib/copyUtils';
 import { validateServerSlug, checkSlugAvailabilityApi, formatSlugString } from '../lib/whitelist-service';
 import { RP_SERVERS_DATA } from '../data/rpServers';
 import { getVipVcGrantedNumber } from '../lib/vipConfig';
-import { PaymentMaintenanceNotice } from './PaymentMaintenanceNotice';
 
 export interface PaymentItemPackage {
   itemType: 'shark_card' | 'vip_pass' | 'b2b_sponsor' | 'server_pro_pass' | 'spotlight_rental';
@@ -816,8 +815,44 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
       return;
     }
 
-    setPaymentValidationError('Payments are temporarily locked for system maintenance. We will get back soon!');
-    return;
+    if (checkoutPackage.itemType === 'server_pro_pass') {
+      if (!serverNameInput.trim()) {
+        setPaymentValidationError('Please enter a valid Server Name.');
+        return;
+      }
+      if (!serverSlugInput.trim() || slugStatus === 'invalid' || slugStatus === 'taken' || slugStatus === 'checking') {
+        setPaymentValidationError('Please enter a valid and available Server Slug.');
+        return;
+      }
+    }
+
+    if (checkoutPackage.isGift && !recipientGamerTag.trim()) {
+      setPaymentValidationError('Please enter the recipient GamerTag to send this gift to.');
+      return;
+    }
+
+    if (paymentMethod === 'stripe') {
+      const cleanCard = cardNumber.replace(/\s/g, '');
+      if (cleanCard.length < 12 && !cleanCard.toLowerCase().includes('tok_') && !cleanCard.toLowerCase().includes('4242')) {
+        setPaymentValidationError('Please enter a valid 16-digit Card Number or test card (e.g. 4242 •••• 4242).');
+        return;
+      }
+      if (!cardExpiry.includes('/') || cardExpiry.trim().length < 4) {
+        setPaymentValidationError('Please enter a valid expiration date (MM/YY).');
+        return;
+      }
+      if (cardCvc.trim().length < 3) {
+        setPaymentValidationError('Please enter a valid 3 or 4-digit CVC code.');
+        return;
+      }
+    } else if (paymentMethod === 'paypal') {
+      if (!paypalEmail.trim() || !paypalEmail.includes('@')) {
+        setPaymentValidationError('Please enter a valid PayPal account email address.');
+        return;
+      }
+    }
+
+    await processDirectGatewayTransaction();
   };
 
   if (!isOpen) return null;
@@ -1232,12 +1267,6 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
             {/* Non-Trial Order Summary & Payment Processor Controls */}
             {!isTrialMode && (
               <>
-                <PaymentMaintenanceNotice
-                  title="Payments Temporarily Locked"
-                  subtitle="We are currently upgrading our payment gateways and licensing infrastructure. Payment processing is temporarily paused and will be back online soon!"
-                  compact={false}
-                />
-
                 {/* Coupon Code Redemption Section */}
                 <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between text-xs">
@@ -1580,11 +1609,31 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
                 <button
                   id="unified-payment-authorize-btn"
                   onClick={handleExecutePayment}
-                  disabled={true}
-                  className="w-full py-4 bg-zinc-800 text-zinc-400 font-black text-sm rounded-2xl border border-zinc-700 shadow-inner flex items-center justify-center gap-2 cursor-not-allowed opacity-80"
+                  disabled={
+                    isProcessingPayment ||
+                    (checkoutPackage.itemType === 'server_pro_pass' && (
+                      !serverNameInput.trim() ||
+                      !serverSlugInput.trim() ||
+                      slugStatus === 'invalid' ||
+                      slugStatus === 'taken' ||
+                      slugStatus === 'checking'
+                    ))
+                  }
+                  className="w-full px-6 py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-black text-sm tracking-wide shadow-xl shadow-amber-500/20 border border-amber-400/40 transition flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Lock className="w-5 h-5 text-amber-400" />
-                  <span>Payments Temporarily Locked (Will Get Back Soon)</span>
+                  {isProcessingPayment ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-zinc-950" />
+                      <span>{paymentStepText || 'Authorizing 256-Bit SSL Payment...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="w-4 h-4 text-zinc-950 shrink-0" />
+                      <span>
+                        Authorize Payment &amp; Complete Order (${effectiveNetPrice.toFixed(2)})
+                      </span>
+                    </>
+                  )}
                 </button>
               )}
             </div>

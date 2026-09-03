@@ -1053,7 +1053,7 @@ export const MarketingWorkspace: React.FC<MarketingWorkspaceProps> = ({
                 <Lock className="w-12 h-12 text-amber-400 mx-auto mb-3" />
                 <h3 className="text-lg font-bold text-white">Streamer Sponsorship Studio is Gated (Mega Tier)</h3>
                 <p className="text-xs text-zinc-400 max-w-md mx-auto mt-2">
-                  Streamer pitch kits, VIP priority queue agreements, and Twitch/Kick outreach email generators are available exclusively on the <strong>Mega Tier ($99/mo)</strong> or for Platform Admins.
+                  Streamer pitch kits, VIP priority queue agreements, and Twitch/Kick outreach email generators are available exclusively on the <strong>Mega Tier ($199/mo)</strong> or for Platform Admins.
                 </p>
                 {onUpgradeClick && (
                   <button
@@ -1061,7 +1061,7 @@ export const MarketingWorkspace: React.FC<MarketingWorkspaceProps> = ({
                     onClick={onUpgradeClick}
                     className="mt-4 px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-zinc-950 font-black text-xs hover:opacity-90 transition cursor-pointer"
                   >
-                    Upgrade to Mega Tier ($99/mo)
+                    Upgrade to Mega Tier ($199/mo)
                   </button>
                 )}
               </div>

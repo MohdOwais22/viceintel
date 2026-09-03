@@ -84,7 +84,7 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
   const [serverRegion, setServerRegion] = useState('NA East');
   const [serverMaxPlayers, setServerMaxPlayers] = useState('128');
   const [serverFramework, setServerFramework] = useState('FiveM');
-  const [connectString, setConnectString] = useState('connect ');
+  const [connectString, setConnectString] = useState('');
   const [serverTags, setServerTags] = useState('');
   const [discordGuildId, setDiscordGuildId] = useState('');
   const [whitelistedRoleId, setWhitelistedRoleId] = useState('');
@@ -249,6 +249,8 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
       const serverRef = doc(db, 'servers', serverId);
       const whitelistFormRef = doc(db, 'whitelist_forms', serverId);
 
+      const cleanConnectUrl = connectString.trim().replace(/^connect\s+/i, '');
+
       const payload = {
         id: serverId,
         serverId: serverId,
@@ -262,7 +264,7 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
         region: serverRegion,
         maxPlayers: parseInt(serverMaxPlayers) || 128,
         framework: serverFramework,
-        connectUrl: connectString,
+        connectUrl: cleanConnectUrl,
         tags: serverTags ? serverTags.split(',').map(t => t.trim()).filter(Boolean) : [],
         tier: serverTier,
         isSubscriptionActive: true,
@@ -292,8 +294,8 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
             framework: serverFramework,
             region: serverRegion,
             maxPlayers: parseInt(serverMaxPlayers) || 128,
-            connectUrl: connectString,
-            cfxCode: connectString,
+            connectUrl: cleanConnectUrl,
+            cfxCode: cleanConnectUrl,
             description: serverDescription || 'High performance GTA 6 Vice City roleplay server with custom economy and jobs.',
             tags: serverTags ? serverTags.split(',').map(t => t.trim()).filter(Boolean) : [],
             isWhitelisted: true,
@@ -454,58 +456,6 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                  Active Subscription Tier
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                  <div 
-                    onClick={() => setServerTier('community')}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                      serverTier === 'community'
-                        ? 'bg-cyan-950/40 border-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.15)]'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-white text-sm">Community Plan</span>
-                      <span className="text-cyan-400 font-black text-sm">$29/mo</span>
-                    </div>
-                    <p className="text-xs text-slate-400">250 apps/mo, automated role bot, zero-error Lua.</p>
-                  </div>
-
-                  <div 
-                    onClick={() => setServerTier('mega_server')}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                      serverTier === 'mega_server'
-                        ? 'bg-rose-950/40 border-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.15)]'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-white text-sm">Mega-Server Pro</span>
-                      <span className="text-rose-400 font-black text-sm">$49/mo</span>
-                    </div>
-                    <p className="text-xs text-slate-400">Unlimited apps, AI deep lore grader, priority ranking.</p>
-                  </div>
-
-                  <div 
-                    onClick={() => setServerTier('enterprise')}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                      serverTier === 'enterprise'
-                        ? 'bg-amber-950/40 border-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.15)]'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-white text-sm">Enterprise Network</span>
-                      <span className="text-amber-400 font-black text-sm">$99/mo</span>
-                    </div>
-                    <p className="text-xs text-slate-400">5+ Linked Servers, Cross-Server Unified Whitelist Database.</p>
-                  </div>
-                </div>
-              </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
@@ -520,26 +470,17 @@ export const ServerOnboardingWizard: React.FC<ServerOnboardingWizardProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Connect Command (F8) <span className="text-rose-400">*</span>
+                    Server IP / Domain / Join Code <span className="text-rose-400">*</span>
                   </label>
                   <input
                     type="text"
                     value={connectString}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (!val) {
-                        setConnectString('connect ');
-                      } else if (!val.toLowerCase().startsWith('connect')) {
-                        setConnectString(`connect ${val}`);
-                      } else {
-                        setConnectString(val);
-                      }
-                    }}
+                    onChange={(e) => setConnectString(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
-                    placeholder="e.g. connect play.vicecity.rp"
+                    placeholder="e.g. play.vicecity.rp or cfx.re/join/xxxx"
                   />
                   <span className="text-[11px] text-slate-500 mt-1 block">
-                    F8 console command pre-written (e.g. <code className="text-cyan-400 font-mono">connect play.vicecity.rp</code>)
+                    Your server hostname, IP, or cfx code (e.g. <code className="text-cyan-400 font-mono">play.vicecity.rp</code> or <code className="text-cyan-400 font-mono">cfx.re/join/abc123</code>)
                   </span>
                 </div>
                 <div>

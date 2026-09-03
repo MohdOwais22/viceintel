@@ -20,12 +20,12 @@ import {
   Bot,
   Layers,
   ChevronRight,
-  Shield
+  Shield,
+  CreditCard
 } from 'lucide-react';
 import { SUBSCRIPTION_TIERS, SubscriptionTier, normalizeTier } from '../../lib/stripe-subscriptions';
 import { claimServerWithDiscord } from '../../lib/whitelist-service';
 import { startDiscordOAuth } from '../../lib/discordOAuthHelper';
-import { PaymentMaintenanceNotice } from '../PaymentMaintenanceNotice';
 
 export interface ClaimButtonModalProps {
   server: {
@@ -279,10 +279,43 @@ export const ClaimButtonModal: React.FC<ClaimButtonModalProps> = ({
   };
 
   const handleProceedToCheckout = async () => {
-    setErrorDetails({
-      message: 'Payments are temporarily locked for system maintenance. We will get back soon!',
-      code: 'PAYMENTS_LOCKED'
-    });
+    setIsProcessingCheckout(true);
+    setErrorDetails(null);
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planType: 'server_pro_pass',
+          tier: selectedTier,
+          serverId: cleanServerId,
+          serverSlug: cleanServerSlug,
+          serverName: server.name,
+          ownerDiscordId: manualDiscordId || userProfile?.discordId || '',
+          ownerDiscordUsername: manualDiscordUsername || userProfile?.discordUsername || '',
+          ownerEmail: userProfile?.email || '',
+          returnUrl: `${window.location.origin}/servers/${cleanServerSlug}/manage?paymentSuccess=true`
+        })
+      });
+      const data = await res.json();
+      if (data.url && (data.url.startsWith('http://') || data.url.startsWith('https://'))) {
+        window.location.href = data.url;
+      } else if (data.success || data.isDemoMode) {
+        window.location.href = `/servers/${cleanServerSlug}/manage?paymentSuccess=true`;
+      } else {
+        setErrorDetails({
+          message: data.error || 'Failed to initialize checkout session.',
+          code: 'CHECKOUT_FAILED'
+        });
+      }
+    } catch (err: any) {
+      setErrorDetails({
+        message: err?.message || 'Error processing checkout.',
+        code: 'CHECKOUT_ERROR'
+      });
+    } finally {
+      setIsProcessingCheckout(false);
+    }
   };
 
   const handleDiscordOAuthConnect = () => {
@@ -427,12 +460,6 @@ export const ClaimButtonModal: React.FC<ClaimButtonModalProps> = ({
                   0x8 ADMIN PASS
                 </span>
               </div>
-
-              <PaymentMaintenanceNotice
-                title="Payments Temporarily Locked"
-                subtitle="Subscription checkout is temporarily paused for system maintenance. We will get back soon!"
-                compact={false}
-              />
 
               {/* Tier Selection Radio Cards */}
               <div className="space-y-2">
@@ -727,11 +754,21 @@ export const ClaimButtonModal: React.FC<ClaimButtonModalProps> = ({
               
               <button
                 id="btn-claim-proceed-stripe"
-                disabled={true}
-                className="px-6 py-2.5 rounded-xl bg-zinc-800 text-zinc-400 text-xs font-black border border-zinc-700 transition flex items-center justify-center gap-2 cursor-not-allowed opacity-80 shrink-0 whitespace-nowrap"
+                onClick={handleProceedToCheckout}
+                disabled={isProcessingCheckout}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-zinc-950 text-xs font-black transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
               >
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span>Payments Temporarily Locked (Will Get Back Soon)</span>
+                {isProcessingCheckout ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-zinc-950 shrink-0" />
+                    <span>Redirecting to Checkout...</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-3.5 h-3.5 text-zinc-950 shrink-0" />
+                    <span>Proceed to Stripe ({SUBSCRIPTION_TIERS[selectedTier]?.priceFormatted}/mo)</span>
+                  </>
+                )}
               </button>
             </>
           ) : (

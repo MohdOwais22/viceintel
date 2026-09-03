@@ -233,7 +233,7 @@ export class DiscordBotService {
         vip: { id: this.vipRoleId, name: 'VIP Member ($3.99/mo)' },
         starter: { id: this.starterRoleId, name: 'Starter RP Owner ($29/mo)' },
         pro: { id: this.proRoleId, name: 'Pro RP Partner ($49/mo)' },
-        mega: { id: this.megaRoleId, name: 'Mega-Server Spotlight ($99/mo)' },
+        mega: { id: this.megaRoleId, name: 'Mega-Server Spotlight ($199/mo)' },
         serverOwner: { id: this.verifiedRoleId, name: 'Verified Server Owner' },
         staff: { id: this.staffRoleId, name: 'Level 3 Staff' },
         admin: { id: this.adminRoleId, name: 'Level 4 Admin' }

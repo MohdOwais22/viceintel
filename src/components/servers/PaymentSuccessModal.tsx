@@ -58,7 +58,7 @@ export const PaymentSuccessModal: React.FC<PaymentSuccessModalProps> = ({
   const tierNames: Record<string, string> = {
     community_whitelist: 'Starter Whitelist ($19.99/mo)',
     b2b_spotlight_whitelist: 'B2B Pro + AI Grader ($49.00/mo)',
-    enterprise_network: 'Enterprise Network ($99.00/mo)',
+    enterprise_network: 'Enterprise Network ($199.00/mo)',
     b2b_sponsor: 'B2B Pro + AI Grader ($49.00/mo)',
     b2b_sponsored: 'B2B Sponsored RP Server ($49.00/mo)'
   };

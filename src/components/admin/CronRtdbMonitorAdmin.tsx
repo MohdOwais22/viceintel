@@ -153,12 +153,16 @@ export const CronRtdbMonitorAdmin: React.FC<CronRtdbMonitorAdminProps> = () => {
                 Realtime Database (RTDB) Cron Engine
               </h2>
               <span className="px-3 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold rounded-full flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
                 Sub-10ms WebSocket Sync
+              </span>
+              <span className="px-3 py-1 bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-bold rounded-full flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                Automatic Crons: Stopped (Manual Only)
               </span>
             </div>
             <p className="text-zinc-400 text-sm max-w-2xl">
-              All 7 background cron tasks persist active status, last execution timestamps, durations, and summaries directly to Firebase Realtime Database without consuming Firestore write quotas.
+              Automatic background intervals have been stopped. All 7 cron tasks can be triggered manually on-demand or via authenticated webhook calls while updating Realtime Database status in real time.
             </p>
           </div>
 

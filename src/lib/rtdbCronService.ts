@@ -23,31 +23,31 @@ const cronStartTimeStore = new Map<string, number>();
 export const REGISTERED_CRON_DEFINITIONS: Record<string, { name: string; interval: string }> = {
   pseo_spider: {
     name: 'pSEO News Spider & Web Search Crawler',
-    interval: 'Every 2 Hours'
+    interval: 'Stopped (On-Demand / Manual Only)'
   },
   fivem_traffic_sync: {
     name: 'FiveM RP Server Directory Traffic & Uptime Sync',
-    interval: 'Every 1 Hour'
+    interval: 'Stopped (On-Demand / Manual Only)'
   },
   vip_expiry_alerts: {
     name: 'VIP Expiration & Daily Streak Warning Engine',
-    interval: 'Every 12 Hours'
+    interval: 'Stopped (On-Demand / Manual Only)'
   },
   challenges_payout: {
     name: 'Tuning Championship Challenge Expiry & Payout Checker',
-    interval: 'Every 30 Minutes'
+    interval: 'Stopped (On-Demand / Manual Only)'
   },
   stale_squad_cleanup: {
     name: 'Squad Room Inactivity & Stale Coordinate Cleanup',
-    interval: 'Every 15 Minutes'
+    interval: 'Stopped (On-Demand / Manual Only)'
   },
   pseo_merge_prune: {
     name: 'pSEO Article Consolidation & 30-Day Retention Pruner',
-    interval: 'Every 24 Hours'
+    interval: 'Stopped (On-Demand / Manual Only)'
   },
   discord_role_sync: {
     name: 'Discord Whitelist Role & Permission Sync Engine',
-    interval: 'Every 15 Minutes'
+    interval: 'Stopped (On-Demand / Manual Only)'
   }
 };
 

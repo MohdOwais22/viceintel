@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where, limit } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { safeFirestoreWrite } from './lib/firebase/firestoreCircuitBreaker';
 import { playNotificationChime } from './lib/soundUtils';
@@ -615,11 +615,12 @@ export default function App() {
 
     let unsub: () => void = () => {};
     try {
-      // Query notifications targeted at user or global broadcast
+      // Query notifications targeted at user or global broadcast with limit
       const targetIds = Array.from(new Set([currentUser.uid, userTag, userTagLower, 'ALL', 'PUBLIC_MEMBERS'])).filter(Boolean);
       const q = query(
         collection(db, 'userNotifications'),
-        where('targetUserId', 'in', targetIds)
+        where('targetUserId', 'in', targetIds),
+        limit(15)
       );
       unsub = onSnapshot(q, (snapshot) => {
         const list: UserNotification[] = [];

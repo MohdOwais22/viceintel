@@ -148,7 +148,7 @@ export function calculateDailyRotationScore(serverId: string, dateSeed?: string)
 
 /**
  * Computes composite ranking score for deterministic ordering:
- * - Mega Tier ($99): 300,000 + player score (Guaranteed top positions)
+ * - Mega Tier ($199): 300,000 + player score (Guaranteed top positions)
  * - Pro Tier ($49): 200,000 + daily rotation (0-10,000) + player bonus
  * - Starter Tier ($29): 100,000 + daily rotation (0-5,000) + player bonus
  * - Unclaimed / Free: Player score only (< 50,000)

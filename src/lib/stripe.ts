@@ -54,16 +54,16 @@ export const B2B_PLAN_TIERS: Record<'community' | 'mega_server' | 'enterprise', 
   enterprise: {
     id: 'enterprise',
     name: 'Enterprise Multi-Server Network',
-    priceMonthly: 99,
-    priceId: process.env.STRIPE_PRICE_ENTERPRISE || 'price_enterprise_99_mo',
+    priceMonthly: 199,
+    priceId: process.env.STRIPE_PRICE_ENTERPRISE || 'price_enterprise_199_mo',
     monthlyAppLimit: 'Unlimited',
     aiLoreAudits: true,
     priorityDirectory: true,
     luaBundleExport: true,
     customDomain: true,
     dedicatedSupportChannel: true,
-    badge: 'Multi-Community Networks',
-    description: 'Multi-server cluster management, multi-domain custom vanity URLs, and dedicated SLA.'
+    badge: 'Multi-Community Networks (5 Servers)',
+    description: 'Deploy up to 5 linked server communities, multi-domain vanity routing, cross-network analytics, and unified master control plane.'
   }
 };
 

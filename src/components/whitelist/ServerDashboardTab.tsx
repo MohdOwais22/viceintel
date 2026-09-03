@@ -114,6 +114,18 @@ import { RulesAndEventGenerator } from '../generator/RulesAndEventGenerator';
 import { DynastyEconomyDirectory } from '../economy/DynastyEconomyDirectory';
 import { FeaturesOnDemandTab } from './FeaturesOnDemandTab';
 import { ViceCityProvisioningModal } from '../provisioning/ViceCityProvisioningModal';
+import { ServerOwnerNotificationCenter } from '../servers/ServerOwnerNotificationCenter';
+import { ServerOwnerNotificationDropdown } from '../servers/ServerOwnerNotificationDropdown';
+import { 
+  ServerOwnerNotification, 
+  ServerNotificationSettings 
+} from '../../types';
+import { 
+  subscribeToServerNotifications, 
+  getServerNotificationSettings, 
+  saveServerNotificationSettings,
+  DEFAULT_SERVER_NOTIF_SETTINGS 
+} from '../../lib/server-notification-service';
 import { formatTime, formatDate, formatDateTime } from '../../lib/dateUtils';
 
 interface ServerDashboardTabProps {
@@ -168,8 +180,12 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
 
   // Dashboard Sub-navigation Tabs
   const [activeSection, setActiveSection] = useState<
-    'applications' | 'settings' | 'bot_gateway' | 'quick_invites' | 'branding' | 'analytics' | 'billing' | 'ownership_transfer' | 'growth' | 'cad_mdt' | 'identity' | 'rules_events' | 'economy' | 'features_on_demand'
+    'applications' | 'notifications' | 'settings' | 'bot_gateway' | 'quick_invites' | 'branding' | 'analytics' | 'billing' | 'ownership_transfer' | 'growth' | 'cad_mdt' | 'identity' | 'rules_events' | 'economy' | 'features_on_demand'
   >('applications');
+
+  // Server Owner Dedicated Notifications State
+  const [serverNotifications, setServerNotifications] = useState<ServerOwnerNotification[]>([]);
+  const [notifSettings, setNotifSettings] = useState<ServerNotificationSettings>(() => getServerNotificationSettings(serverSlug));
 
   // Custom Branding Suite State
   const [branding, setBranding] = useState<CustomBrandingConfig>({
@@ -988,6 +1004,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
   // Load Form Config & Real-Time Applications Listener
   useEffect(() => {
     let unsubscribeApps: () => void = () => {};
+    let unsubscribeNotifs: () => void = () => {};
 
     // Check if returning from Stripe checkout with success
     if (typeof window !== 'undefined') {
@@ -1105,6 +1122,16 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
           }
         );
 
+        // Subscribe to Server Owner Notifications in real time
+        unsubscribeNotifs = subscribeToServerNotifications(
+          serverSlug,
+          loadedConfig?.serverName || matchedRpServer?.name || 'FiveM RP Server',
+          currentUser?.uid,
+          (notifs) => {
+            setServerNotifications(notifs);
+          }
+        );
+
         // Load Quick Invites
         loadQuickInvitesData();
 
@@ -1120,6 +1147,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
 
     return () => {
       if (unsubscribeApps) unsubscribeApps();
+      if (unsubscribeNotifs) unsubscribeNotifs();
     };
   }, [serverSlug]);
 
@@ -1921,10 +1949,13 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
       )}
 
       {/* Header & Command Center Bar */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-2xl">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 relative shadow-2xl">
+        {/* Isolated glow effect that does not clip child popups */}
+        <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-3xl" />
+        </div>
 
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 relative z-10">
           <div className="space-y-2.5">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -2015,11 +2046,11 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
             </p>
           </div>
 
-          {/* Quick Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          {/* Quick Action Buttons and Sentinel Alerts */}
+          <div className="flex items-center gap-2.5 flex-wrap">
             <button
               onClick={handleCopyApplyUrl}
-              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/25 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/25 cursor-pointer shrink-0"
             >
               {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedLink ? 'Apply Link Copied!' : 'Copy Apply Link'}</span>
@@ -2027,7 +2058,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
 
             <button
               onClick={() => onNavigate?.(`/servers/${config.serverSlug}/apply`, config.serverSlug)}
-              className="px-3.5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition flex items-center gap-1.5 border border-zinc-700 cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition flex items-center gap-1.5 border border-zinc-700 cursor-pointer shrink-0"
             >
               <Eye className="w-3.5 h-3.5 text-cyan-400" />
               <span>Preview Apply Portal</span>
@@ -2035,7 +2066,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
 
             <button
               onClick={handleCopyConnect}
-              className="px-3.5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition flex items-center gap-1.5 border border-zinc-700 cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition flex items-center gap-1.5 border border-zinc-700 cursor-pointer shrink-0"
             >
               {copiedConnect ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Radio className="w-3.5 h-3.5 text-indigo-400" />}
               <span>{copiedConnect ? 'Copied F8!' : 'F8 Connect'}</span>
@@ -2046,7 +2077,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                 setDataModalTab('import');
                 setShowDataModal(true);
               }}
-              className="px-3.5 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-950/30"
+              className="px-3.5 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-950/30 shrink-0"
               title="Import server configuration, questions schema, or applicant rosters (.json, .csv)"
             >
               <Upload className="w-3.5 h-3.5 text-indigo-400" />
@@ -2058,12 +2089,22 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                 setDataModalTab('export');
                 setShowDataModal(true);
               }}
-              className="px-3.5 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-950/30"
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-950/30 shrink-0"
               title="Export all server whitelist data, applicants, and configuration settings"
             >
               <Download className="w-3.5 h-3.5 text-emerald-400" />
               <span>Export Server Data</span>
             </button>
+
+            <div className="h-6 w-px bg-zinc-800 hidden sm:block mx-1" />
+
+            {/* Dedicated Server Owner Sentinel Notification Bell */}
+            <ServerOwnerNotificationDropdown
+              serverSlug={serverSlug}
+              notifications={serverNotifications}
+              onOpenCenter={() => setActiveSection('notifications')}
+              onNavigateSection={(sec) => setActiveSection(sec as any)}
+            />
 
           </div>
         </div>
@@ -2075,6 +2116,16 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
       
       {/* MOBILE / TABLET HORIZONTAL NAVIGATION STRIP (< lg) */}
       <div className="lg:hidden p-2 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-xl overflow-x-auto scrollbar-none flex items-center gap-1.5">
+        <button
+          onClick={() => setActiveSection('notifications')}
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            activeSection === 'notifications' ? 'bg-cyan-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
+          }`}
+        >
+          <Bell className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Alerts {serverNotifications.filter(n => !n.read).length > 0 ? `(${serverNotifications.filter(n => !n.read).length})` : ''}</span>
+        </button>
+
         <button
           onClick={() => setActiveSection('applications')}
           className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
@@ -2180,8 +2231,37 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
         {/* DESKTOP LEFT SIDEBAR NAVIGATION PANEL (lg+) */}
         <aside className="hidden lg:block lg:w-64 xl:w-72 shrink-0 lg:sticky lg:top-20 z-20">
           <nav className="p-3 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-xl space-y-4">
-            {/* GROUP 1: RECRUITMENT */}
+            {/* GROUP 0: SENTINEL ALERTS */}
             <div className="space-y-1">
+              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-cyan-400 font-mono flex items-center justify-between">
+                <span>Sentinel System</span>
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+              </div>
+
+              <button
+                onClick={() => setActiveSection('notifications')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                  activeSection === 'notifications'
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-600/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Bell className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Sentinel Notifications</span>
+                </div>
+                {serverNotifications.filter(n => !n.read).length > 0 ? (
+                  <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-black animate-pulse">
+                    {serverNotifications.filter(n => !n.read).length}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-zinc-600 font-mono">0</span>
+                )}
+              </button>
+            </div>
+
+            {/* GROUP 1: RECRUITMENT */}
+            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
               <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
                 Recruitment
               </div>
@@ -2495,6 +2575,26 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
               <div className="text-[11px] text-emerald-400 mt-0.5">Turnaround</div>
             </div>
           </div>
+
+      {/* =========================================================================
+          SECTION 0: SENTINEL NOTIFICATION CENTER
+          ========================================================================= */}
+      {activeSection === 'notifications' && (
+        <ServerOwnerNotificationCenter
+          serverSlug={serverSlug}
+          serverName={config.serverName || 'FiveM RP Server'}
+          currentUserUid={currentUser?.uid}
+          notifications={serverNotifications}
+          settings={notifSettings}
+          onUpdateSettings={(newSettings) => {
+            setNotifSettings(newSettings);
+            saveServerNotificationSettings(serverSlug, newSettings);
+          }}
+          onNavigateSection={(sectionKey) => {
+            setActiveSection(sectionKey as any);
+          }}
+        />
+      )}
 
       {/* =========================================================================
           SECTION 1: APPLICATIONS REVIEW QUEUE
@@ -4104,7 +4204,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                           </div>
 
                           <p className="text-xs text-zinc-300 leading-relaxed">
-                            Custom branded domain routing (<code className="text-amber-300 font-mono">apply.yourcity.com</code>) with automated TLS certificates is an exclusive feature of the <strong>Mega-Server Pro Tier ($49/mo)</strong> and <strong>Enterprise Networks ($99/mo)</strong>.
+                            Custom branded domain routing (<code className="text-amber-300 font-mono">apply.yourcity.com</code>) with automated TLS certificates is an exclusive feature of the <strong>Mega-Server Pro Tier ($49/mo)</strong> and <strong>Enterprise Networks ($199/mo)</strong>.
                           </p>
 
                           <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-2">
@@ -4751,7 +4851,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                   <Crown className="w-3.5 h-3.5 text-amber-400" />
                   <span>
                     {config.planTier === 'enterprise' || config.planTier === 'mega_enterprise'
-                      ? 'Enterprise Plan ($99/mo)'
+                      ? 'Enterprise Plan ($199/mo)'
                       : isTrialActive
                       ? '⚡ 14-Day Pro Pass ($0 Trial)'
                       : isVerifiedServerOwner || config.planTier === 'mega' || config.planTier === 'verified'
@@ -5009,15 +5109,17 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-base font-bold text-purple-400">Enterprise Custom</h3>
-                    <div className="text-2xl font-black text-white mt-1">$99 <span className="text-xs text-zinc-400 font-normal">/ month</span></div>
-                    <p className="text-xs text-zinc-400 mt-1">Dedicated bot hosting, custom domain SSL, and VIP SLA.</p>
+                    <div className="text-2xl font-black text-white mt-1">$199 <span className="text-xs text-zinc-400 font-normal">/ month</span></div>
+                    <p className="text-xs text-zinc-400 mt-1">Up to 5 Linked Server Communities, dedicated bot hosting, and custom domain SSL.</p>
                   </div>
 
                   <div className="space-y-2 text-xs text-zinc-300">
                     <div className="flex items-center gap-2 text-purple-300 font-bold">✓ Everything in Mega Server Plan</div>
+                    <div className="flex items-center gap-2">✓ Up to 5 Linked Server Communities</div>
+                    <div className="flex items-center gap-2">✓ Multi-Domain Vanity Routing for All 5 Hubs</div>
                     <div className="flex items-center gap-2">✓ Dedicated Discord Bot Cloud Instance</div>
-                    <div className="flex items-center gap-2">✓ Multi-Region Whitelist Replication</div>
-                    <div className="flex items-center gap-2">✓ 24/7 Priority Staff SLA</div>
+                    <div className="flex items-center gap-2">✓ Cross-Server Unified Whitelist Database</div>
+                    <div className="flex items-center gap-2">✓ 24/7 Priority Staff SLA & Phone Escalation</div>
                   </div>
                 </div>
 
@@ -5025,7 +5127,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                   {config.planTier === 'enterprise' || config.planTier === 'mega_enterprise' ? (
                     <div className="w-full py-2.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-black text-center flex items-center justify-center gap-1.5">
                       <Crown className="w-4 h-4 text-purple-400" />
-                      <span>Current Active Plan ($99/mo)</span>
+                      <span>Current Active Plan ($199/mo)</span>
                     </div>
                   ) : (
                     <button
@@ -5038,7 +5140,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                       className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-purple-950/30 cursor-pointer disabled:opacity-50"
                     >
                       {verifyingSub ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}
-                      <span>Upgrade to Enterprise ($99/mo)</span>
+                      <span>Upgrade to Enterprise ($199/mo)</span>
                     </button>
                   )}
                 </div>

@@ -617,6 +617,77 @@ export * from './rpSuite';
 
 export type NotificationType = 'article' | 'admin_message' | 'car_addition' | 'weapon_addition' | 'chat_tag' | 'channel_join_request' | 'admin_chat_broadcast' | 'channel_all_tag' | 'whitelist_status_update' | 'VIP_EXPIRY_ALERT' | 'challenge_win';
 
+export type ServerOwnerNotificationType =
+  | 'NEW_APPLICATION'
+  | 'APPLICATION_REVIEWED'
+  | 'STAFF_INVITE_ACCEPTED'
+  | 'SUBSCRIPTION_EXPIRING'
+  | 'SUBSCRIPTION_RENEWED'
+  | 'DISCORD_WEBHOOK_ALERT'
+  | 'DIRECTORY_SPOTLIGHT'
+  | 'SERVER_SECURITY_ALERT'
+  | 'UPTIME_HEALTH_PING'
+  | 'CUSTOM_STAFF_BROADCAST'
+  | 'APPEAL_SUBMITTED';
+
+export type ServerOwnerNotificationSeverity = 'info' | 'success' | 'warning' | 'error' | 'critical';
+
+export type ServerOwnerNotificationCategory = 'applications' | 'staff' | 'billing' | 'security' | 'system';
+
+export interface ServerOwnerNotification {
+  id: string;
+  serverId: string;
+  serverSlug: string;
+  serverName?: string;
+  ownerUid?: string;
+  type: ServerOwnerNotificationType;
+  title: string;
+  message: string;
+  severity: ServerOwnerNotificationSeverity;
+  category: ServerOwnerNotificationCategory;
+  timestamp: string;
+  createdAt: number;
+  read: boolean;
+  archived?: boolean;
+  priority?: 'normal' | 'high' | 'urgent';
+  actionSection?: string; // e.g. 'applications', 'billing', 'bot_gateway', 'analytics', 'settings'
+  actionLabel?: string;
+  actionUrl?: string;
+  metadata?: {
+    applicationId?: string;
+    applicantName?: string;
+    applicantUid?: string;
+    applicantDiscordTag?: string;
+    applicantRoleplayPath?: string;
+    reviewerName?: string;
+    reviewerNotes?: string;
+    statusDecision?: 'approved' | 'rejected' | 'under_review' | 'pending';
+    planName?: string;
+    invoiceAmount?: string;
+    expiryDate?: string;
+    pingMs?: number;
+    playerCount?: number;
+    webhookUrl?: string;
+    webhookStatus?: 'ok' | 'failed' | 'rate_limited';
+    spotlightDate?: string;
+    securityDetails?: string;
+  };
+}
+
+export interface ServerNotificationSettings {
+  soundEnabled: boolean;
+  browserPushEnabled: boolean;
+  discordWebhookForwarding: boolean;
+  notifyNewApplications: boolean;
+  notifyApplicationDecisions: boolean;
+  notifyBillingAndSpotlight: boolean;
+  notifySecurityAlerts: boolean;
+  notifyUptimePings: boolean;
+  notifyStaffActivity: boolean;
+  minSeverity: 'all' | 'warning_and_critical' | 'critical_only';
+  customDiscordWebhookUrl?: string;
+}
+
 export interface UserNotification {
   id: string;
   targetUserId?: string;

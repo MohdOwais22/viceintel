@@ -414,7 +414,7 @@ export const AdminBusinessDashboard: React.FC<AdminBusinessDashboardProps> = ({
                               ? 'bg-amber-950/80 border border-amber-500/40 text-amber-400'
                               : 'bg-cyan-950/80 border border-cyan-500/40 text-cyan-400'
                           }`}>
-                            {sub.tier === 'mega_server' ? 'Mega-Server ($49)' : sub.tier === 'enterprise' ? 'Enterprise ($99)' : 'Community ($29)'}
+                            {sub.tier === 'mega_server' ? 'Mega-Server ($49)' : sub.tier === 'enterprise' ? 'Enterprise ($199)' : 'Community ($29)'}
                           </span>
                         </td>
 

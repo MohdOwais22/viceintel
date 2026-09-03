@@ -31,6 +31,7 @@ import {
 } from '../types';
 import { generateCustomGtaAvatar, resolveApplicantAvatar } from '../data/avatars';
 import { RP_SERVERS_DATA } from '../data/rpServers';
+import { dispatchServerOwnerNotification } from './server-notification-service';
 
 export const FORMS_COLLECTION = 'whitelist_forms';
 export const APPLICATIONS_COLLECTION = 'whitelist_applications';
@@ -450,6 +451,33 @@ export async function submitApplication(
     } catch (webhookErr) {
       console.warn('Webhook dispatch failed:', webhookErr);
     }
+  }
+
+  // Dispatch dedicated Server Owner Sentinel Notification
+  try {
+    const applicantName = (applicationData as any).characterName || applicationData.discordTag?.split('#')[0] || 'New Applicant';
+    await dispatchServerOwnerNotification({
+      serverId: applicationData.serverId,
+      serverSlug: normalizeServerSlug(applicationData.serverId),
+      serverName: serverName || applicationData.serverId,
+      type: 'NEW_APPLICATION',
+      category: 'applications',
+      severity: 'info',
+      title: 'New Whitelist Application Submitted',
+      message: `${applicantName} submitted a new whitelist application for review.`,
+      priority: 'high',
+      actionSection: 'applications',
+      actionLabel: 'Review Application',
+      metadata: {
+        applicationId,
+        applicantName,
+        applicantUid: applicationData.applicantUid,
+        applicantDiscordTag: applicationData.discordTag,
+        statusDecision: 'pending'
+      }
+    });
+  } catch (notifErr) {
+    console.warn('Server owner notification dispatch failed:', notifErr);
   }
 
   return applicationId;
@@ -1041,6 +1069,40 @@ export async function updateApplicationStatus(
     });
   } catch (emailErr) {
     console.warn('Status change Email notification trigger notice:', emailErr);
+  }
+
+  // Dispatch dedicated Server Owner Sentinel Notification for staff decision
+  try {
+    const statusTitle = status === 'approved' 
+      ? `Application Approved: ${finalApplicantUsername}` 
+      : status === 'rejected'
+      ? `Application Declined: ${finalApplicantUsername}`
+      : `Application Set Under Review: ${finalApplicantUsername}`;
+
+    await dispatchServerOwnerNotification({
+      serverId: finalServerSlug,
+      serverSlug: finalServerSlug,
+      serverName: finalServerName,
+      type: 'APPLICATION_REVIEWED',
+      category: 'applications',
+      severity: status === 'approved' ? 'success' : status === 'rejected' ? 'warning' : 'info',
+      title: statusTitle,
+      message: `${updates.reviewedBy || 'Staff'} marked ${finalApplicantUsername} (${finalDiscordTag}) as ${status.toUpperCase()}.${updates.reviewerNotes ? ` Note: "${updates.reviewerNotes}"` : ''}`,
+      priority: status === 'approved' ? 'normal' : 'high',
+      actionSection: 'applications',
+      actionLabel: 'View Applications',
+      metadata: {
+        applicationId,
+        applicantName: finalApplicantUsername,
+        applicantUid: finalApplicantUid,
+        applicantDiscordTag: finalDiscordTag,
+        reviewerName: updates.reviewedBy,
+        reviewerNotes: updates.reviewerNotes,
+        statusDecision: status
+      }
+    });
+  } catch (notifErr) {
+    console.warn('Server owner status update notification failed:', notifErr);
   }
 
   return { success: true, emailResult };

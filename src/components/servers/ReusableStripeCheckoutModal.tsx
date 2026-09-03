@@ -12,10 +12,10 @@ import {
   ShieldAlert,
   Clock,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  CreditCard
 } from 'lucide-react';
 import { SUBSCRIPTION_TIERS, SubscriptionTier, normalizeTier } from '../../lib/stripe-subscriptions';
-import { PaymentMaintenanceNotice } from '../PaymentMaintenanceNotice';
 
 export interface ReusableStripeCheckoutModalProps {
   isOpen: boolean;
@@ -56,7 +56,42 @@ export const ReusableStripeCheckoutModal: React.FC<ReusableStripeCheckoutModalPr
   const tiersList: SubscriptionTier[] = ['starter', 'pro', 'mega'];
 
   const handleProceedToStripe = async () => {
-    setErrorMsg('Payments are temporarily locked for system maintenance. We will get back soon!');
+    setIsProcessingCheckout(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planType: 'server_pro_pass',
+          tier: selectedTier,
+          serverId,
+          serverSlug,
+          serverName,
+          ownerDiscordId,
+          ownerDiscordUsername,
+          returnUrl: typeof onCheckoutSuccessUrl === 'string' ? onCheckoutSuccessUrl : `${window.location.origin}/servers/${serverSlug}/manage?paymentSuccess=true`
+        })
+      });
+      const data = await res.json();
+      if (data.url && (data.url.startsWith('http://') || data.url.startsWith('https://'))) {
+        window.location.href = data.url;
+      } else if (data.success || data.isDemoMode) {
+        if (typeof onCheckoutSuccessUrl === 'function') {
+          onCheckoutSuccessUrl(`/servers/${serverSlug}/manage?paymentSuccess=true`);
+        } else if (typeof onCheckoutSuccessUrl === 'string') {
+          window.location.href = onCheckoutSuccessUrl;
+        } else {
+          window.location.href = `/servers/${serverSlug}/manage?paymentSuccess=true`;
+        }
+      } else {
+        setErrorMsg(data.error || 'Failed to initialize Stripe checkout session.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error processing checkout.');
+    } finally {
+      setIsProcessingCheckout(false);
+    }
   };
 
   return (
@@ -90,12 +125,6 @@ export const ReusableStripeCheckoutModal: React.FC<ReusableStripeCheckoutModalPr
 
         {/* Content Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1 min-h-0">
-          <PaymentMaintenanceNotice
-            title="Payments Temporarily Locked"
-            subtitle="Subscription billing is temporarily paused for system maintenance. We will get back soon!"
-            compact={false}
-          />
-
           {errorMsg && (
             <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-rose-200 text-xs flex items-start gap-3">
               <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
@@ -251,11 +280,21 @@ export const ReusableStripeCheckoutModal: React.FC<ReusableStripeCheckoutModalPr
 
           <button
             type="button"
-            disabled={true}
-            className="px-6 py-2.5 rounded-xl bg-zinc-800 text-zinc-400 text-xs font-black transition flex items-center justify-center gap-2 border border-zinc-700 cursor-not-allowed opacity-80 shrink-0 whitespace-nowrap"
+            onClick={handleProceedToStripe}
+            disabled={isProcessingCheckout}
+            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-zinc-950 text-xs font-black transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
           >
-            <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>Payments Temporarily Locked (Will Get Back Soon)</span>
+            {isProcessingCheckout ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-zinc-950 shrink-0" />
+                <span>Redirecting to Stripe...</span>
+              </>
+            ) : (
+              <>
+                <CreditCard className="w-3.5 h-3.5 text-zinc-950 shrink-0" />
+                <span>Proceed to Stripe ({activeTierConfig.priceFormatted}/mo)</span>
+              </>
+            )}
           </button>
         </div>
 

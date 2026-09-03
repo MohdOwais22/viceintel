@@ -58,7 +58,7 @@ const SCOPE_OPTIONS: { id: CouponScope; label: string; icon: any; color: string;
   { id: 'vip_sub', label: 'VIP Pass Membership', icon: Crown, color: 'text-amber-400 bg-amber-500/10 border-amber-500/30', desc: 'Valid for B2C VIP Monthly Pass ($3.99/mo).' },
   { id: 'b2b_sponsor', label: 'RP Server Sponsorship', icon: Server, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30', desc: 'Valid for B2B Sponsored Directory Spot ($49/mo).' },
   { id: 'whitelist_mega', label: 'Whitelist Mega Plan', icon: Zap, color: 'text-purple-400 bg-purple-500/10 border-purple-500/30', desc: 'Valid for FiveM Whitelist Mega Server Plan ($49/mo).' },
-  { id: 'whitelist_enterprise', label: 'Whitelist Enterprise', icon: Sparkles, color: 'text-rose-400 bg-rose-500/10 border-rose-500/30', desc: 'Valid for Enterprise Whitelist Plan ($99/mo).' },
+  { id: 'whitelist_enterprise', label: 'Whitelist Enterprise', icon: Sparkles, color: 'text-rose-400 bg-rose-500/10 border-rose-500/30', desc: 'Valid for Enterprise Whitelist Plan ($199/mo).' },
   { id: 'spotlight_rental', label: 'Map Spotlight Rental', icon: MapPin, color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30', desc: 'Valid for Vice City Map Banner Spot rentals.' },
   { id: 'vc_credits', label: 'Vice Cash Bundles', icon: Coins, color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30', desc: 'Valid for Vice Cash Shark Credit top-ups.' }
 ];

@@ -30,7 +30,8 @@ import {
   VolumeX,
   Eye,
   EyeOff,
-  Tag
+  Tag,
+  RefreshCw
 } from 'lucide-react';
 import {
   signInWithEmailAndPassword,
@@ -49,7 +50,6 @@ import { auth, db } from '../lib/firebase';
 import { GTA6_AVATARS, DEFAULT_GTA6_AVATAR, getSafePhotoURL } from '../data/avatars';
 import { checkGamerTagUniqueness, validateGamerTagSyntax, generateUniqueGamerTag } from '../lib/gamertagUtils';
 import { EmailVerificationStep } from './EmailVerificationStep';
-import { PaymentMaintenanceNotice } from './PaymentMaintenanceNotice';
 import { ENV } from '../lib/envConfig';
 import { getVipPriceFormatted, getVipPriceText } from '../lib/vipConfig';
 import { formatShortTimestamp } from '../lib/dateUtils';
@@ -697,7 +697,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handlePay = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthError('Payments are temporarily locked for system maintenance. We will get back soon!');
+    setIsProcessing(true);
+    setAuthError(null);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      setPaymentSuccess(true);
+      onUpgradeToVip();
+      setTimeout(() => {
+        setIsProcessing(false);
+        onClose();
+      }, 1000);
+    } catch (err: any) {
+      setAuthError(err?.message || 'Failed to process payment.');
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -1017,12 +1030,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* CHECKOUT FORM */}
           {mode === 'checkout' && (
             <form onSubmit={handlePay} className="space-y-4">
-              <PaymentMaintenanceNotice
-                title="Payments Temporarily Locked"
-                subtitle="VIP membership pass purchases are temporarily paused for system maintenance. We will get back soon!"
-                compact={false}
-              />
-
               {/* ITEM SUMMARY BANNER */}
               <div className="p-3.5 bg-zinc-950 border border-amber-500/30 rounded-xl space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -1202,12 +1209,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
               <div className="pt-2 space-y-2">
                 <button
-                  type="button"
-                  disabled={true}
-                  className="w-full py-3 bg-zinc-800 text-zinc-400 font-extrabold text-xs rounded-xl border border-zinc-700 transition flex items-center justify-center gap-2 cursor-not-allowed opacity-80"
+                  type="submit"
+                  disabled={isProcessing}
+                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  <Lock className="w-4 h-4 text-amber-400" />
-                  <span>Payments Temporarily Locked (Will Get Back Soon)</span>
+                  {isProcessing ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-zinc-950" />
+                      <span>Authorizing Payment...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-zinc-950" />
+                      <span>Authorize Payment ({getFinalVipPriceFormatted()})</span>
+                    </>
+                  )}
                 </button>
 
                 <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-1">

@@ -19,7 +19,8 @@ import {
   Globe,
   Radio,
   FileCode,
-  Users
+  Users,
+  RefreshCw
 } from 'lucide-react';
 import { SUBSCRIPTION_TIERS, SubscriptionTier, normalizeTier } from '../../lib/stripe-subscriptions';
 import { PaymentSuccessModal } from './PaymentSuccessModal';
@@ -28,7 +29,6 @@ import { getUserProfile } from '../../lib/whitelist-service';
 import { UserProfile } from '../../types';
 import { isStaffUser } from '../../lib/rbac';
 import { ArrowLeft, LogIn } from 'lucide-react';
-import { PaymentMaintenanceNotice } from '../PaymentMaintenanceNotice';
 
 interface ServerBillingPaywallProps {
   serverSlug: string;
@@ -191,7 +191,38 @@ export const ServerBillingPaywall: React.FC<ServerBillingPaywallProps> = ({
   };
 
   const handleStripeCheckout = async () => {
-    setErrorMsg('Payments are temporarily locked for system maintenance. We will get back soon!');
+    setIsProcessingCheckout(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planType: 'server_pro_pass',
+          tier: selectedTier,
+          serverId,
+          serverSlug,
+          serverName,
+          ownerDiscordId: discordId,
+          ownerDiscordUsername: discordUsername,
+          ownerEmail: auth?.currentUser?.email || '',
+          returnUrl: `${window.location.origin}/servers/${serverSlug}/manage?paymentSuccess=true`
+        })
+      });
+      const data = await res.json();
+      if (data.url && (data.url.startsWith('http://') || data.url.startsWith('https://'))) {
+        window.location.href = data.url;
+      } else if (data.success || data.isDemoMode) {
+        setPaymentSuccess(true);
+        if (onPaymentCompleted) onPaymentCompleted();
+      } else {
+        setErrorMsg(data.error || 'Failed to initialize checkout session.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error processing checkout.');
+    } finally {
+      setIsProcessingCheckout(false);
+    }
   };
 
   return (
@@ -398,12 +429,6 @@ export const ServerBillingPaywall: React.FC<ServerBillingPaywallProps> = ({
           </div>
         )}
 
-        <PaymentMaintenanceNotice
-          title="Payments Temporarily Locked"
-          subtitle="Server subscription billing is temporarily paused for infrastructure maintenance. We will get back soon!"
-          compact={false}
-        />
-
         {/* Payment Success Alert */}
         {paymentSuccess && (
           <div className="p-5 rounded-2xl bg-emerald-950/50 border border-emerald-500/50 text-emerald-200 text-xs space-y-2 animate-in fade-in">
@@ -526,7 +551,7 @@ export const ServerBillingPaywall: React.FC<ServerBillingPaywallProps> = ({
             <div className="p-4 rounded-2xl bg-zinc-950/60 border border-amber-900/40 space-y-1.5">
               <div className="font-bold text-amber-300 flex items-center gap-1.5">
                 <Crown className="w-3.5 h-3.5 text-amber-400" />
-                Mega-Server ($99/mo)
+                Mega-Server ($199/mo)
               </div>
               <p>Pinned Top 5 Spotlight on Page 1 (Weight 300). Glowing directory cards, Lua exports, unlimited apps.</p>
             </div>
@@ -559,11 +584,22 @@ export const ServerBillingPaywall: React.FC<ServerBillingPaywallProps> = ({
 
             {/* Primary Stripe Button */}
             <button
-              disabled={true}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-zinc-800 text-zinc-400 font-black text-sm border border-zinc-700 transition flex items-center justify-center gap-2 cursor-not-allowed opacity-80"
+              type="button"
+              onClick={handleStripeCheckout}
+              disabled={isProcessingCheckout || paymentSuccess}
+              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-black text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50"
             >
-              <Lock className="w-4 h-4 text-amber-400" />
-              <span>Payments Temporarily Locked (Will Get Back Soon)</span>
+              {isProcessingCheckout ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-zinc-950" />
+                  <span>Connecting to Stripe...</span>
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4 text-zinc-950" />
+                  <span>Subscribe with Stripe ({SUBSCRIPTION_TIERS[selectedTier]?.priceFormatted}/mo)</span>
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -18,13 +18,14 @@ import {
   Flame,
   CheckCircle2,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  RefreshCw,
+  CreditCard
 } from 'lucide-react';
 import { RpServer, SpotlightRentalBooking } from '../types';
 import { RP_SERVERS_DATA } from '../data/rpServers';
 import { db, auth } from '../lib/firebase';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
-import { PaymentMaintenanceNotice } from './PaymentMaintenanceNotice';
 
 interface SpotlightRentalModalProps {
   isOpen: boolean;
@@ -196,7 +197,47 @@ export const SpotlightRentalModal: React.FC<SpotlightRentalModalProps> = ({
   const currentServer = ownerServers.find((s) => s.id === selectedServerId);
 
   const handleBookSpotlight = async () => {
-    setErrorMessage('Payments are temporarily locked for system maintenance. We will get back soon!');
+    if (!currentServer || !selectedDate) {
+      setErrorMessage('Please select a valid server and reservation date.');
+      return;
+    }
+    setIsProcessingPayment(true);
+    setErrorMessage(null);
+    try {
+      const res = await fetch('/api/spotlight-rentals/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: selectedDate,
+          serverId: currentServer.id,
+          serverSlug: (currentServer as any).slug || (currentServer as any).serverSlug || currentServer.id,
+          serverName: currentServer.name,
+          framework: currentServer.framework || 'QBCore',
+          region: currentServer.region || 'NA',
+          connectUrl: currentServer.connectUrl || '',
+          description: currentServer.description || '',
+          customBadge: customBadge.trim() || '🌟 #1 FEATURED VICE CITY SERVER',
+          accentColor: accentColor || 'amber',
+          pricePaid: dailyRate,
+          ownerDiscordId: currentServer.ownerDiscordId || userDiscordId || '',
+          ownerUid: userId || '',
+          ownerEmail: userEmail || '',
+          notes: customNote.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.booking) {
+        setPaymentSuccess(data.booking);
+        if (onBookingSuccess) onBookingSuccess(data.booking);
+        setStep('success');
+      } else {
+        setErrorMessage(data.error || 'Failed to complete spotlight rental reservation.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Error processing reservation.');
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   return (
@@ -431,12 +472,6 @@ export const SpotlightRentalModal: React.FC<SpotlightRentalModalProps> = ({
         {/* Step 2: Checkout & 1-Click Pay */}
         {step === 'checkout' && (
           <div className="space-y-4">
-            <PaymentMaintenanceNotice
-              title="Spotlight Payments Temporarily Locked"
-              subtitle="Spotlight rentals and automated checkout are temporarily paused for maintenance. We will get back soon!"
-              compact={false}
-            />
-
             <div className="p-4 bg-zinc-950 rounded-xl border border-amber-500/30 space-y-3">
               <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
                 <span className="text-xs font-bold text-zinc-400">Server Listing:</span>
@@ -466,11 +501,21 @@ export const SpotlightRentalModal: React.FC<SpotlightRentalModalProps> = ({
             <div className="space-y-2">
               <button
                 type="button"
-                disabled={true}
-                className="w-full py-3.5 bg-zinc-800 text-zinc-400 font-black text-sm rounded-xl border border-zinc-700 transition flex items-center justify-center gap-2 cursor-not-allowed opacity-80"
+                onClick={handleBookSpotlight}
+                disabled={isProcessingPayment}
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-black text-sm rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                <Lock className="w-4 h-4 text-amber-400" />
-                <span>Payments Temporarily Locked (Will Get Back Soon)</span>
+                {isProcessingPayment ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-zinc-950" />
+                    <span>Reserving Spotlight Position...</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-4 h-4 text-zinc-950" />
+                    <span>Authorize &amp; Lock Spotlight (${dailyRate.toFixed(2)} USD)</span>
+                  </>
+                )}
               </button>
             </div>
 

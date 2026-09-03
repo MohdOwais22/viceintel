@@ -1,6 +1,6 @@
 /**
  * 3-Tier SaaS Subscription & Automated Directory Deployment Engine
- * Starter ($29/mo), Pro ($49/mo), Mega-Server ($99/mo)
+ * Starter ($29/mo), Pro ($49/mo), Mega-Server ($199/mo)
  * Manages Stripe Checkout sessions, customer billing portal, tier metadata, and directory rankings.
  */
 
@@ -72,14 +72,15 @@ export const SUBSCRIPTION_TIERS: Record<SubscriptionTier, TierConfig> = {
   mega: {
     id: 'mega',
     name: 'Mega-Server Tier',
-    priceMonthly: 99,
-    priceFormatted: '$99',
+    priceMonthly: 199,
+    priceFormatted: '$199',
     monthlyAppLimit: 'Unlimited',
     tierWeight: 300,
     badge: 'Pinned Top 5 Spotlight',
     badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
     description: 'Multi-Domain Custom SSL Gateway, Full Sentinel Marketing Studio Suite with streamer outreach, unlimited player volume, Lua exports, glowing directory cards, and Pinned Top 5 Spotlight.',
     features: [
+      'Up to 5 Linked Server Communities',
       'Multi-Domain Custom SSL Gateway & Vanity Clusters',
       'Full Sentinel Marketing Studio (pSEO + Streamer Outreach)',
       'Unlimited player applications & reviews',

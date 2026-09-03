@@ -66,7 +66,7 @@ export const MARKETING_TIER_CONFIGS: Record<MarketingTier, TierCapabilities> = {
   mega: {
     tier: 'mega',
     label: 'Sentinel Mega & Streamer Studio',
-    priceMonthly: 99,
+    priceMonthly: 199,
     monthlyKeywordAudits: -1, // Unlimited
     monthlyCampaignDrafts: -1, // Unlimited
     canExportPseoMatrix: true,
@@ -150,7 +150,7 @@ export function verifyMarketingAccess(
       if (!tier.canGenerateStreamerPitchKits) {
         return {
           allowed: false,
-          reason: 'Streamer Outreach & Pitch Kit Studio requires the Mega Tier ($99/mo).',
+          reason: 'Streamer Outreach & Pitch Kit Studio requires the Mega Tier ($199/mo).',
           requiredTier: 'mega'
         };
       }

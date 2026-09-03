@@ -170,9 +170,9 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
     } else if (tier === 'enterprise') {
       setPaymentPackage({
         itemType: 'server_pro_pass',
-        tierName: 'Enterprise Multi-Server Network ($99/mo)',
-        faceValue: 99.00,
-        netPrice: 99.00,
+        tierName: 'Enterprise Multi-Server Network ($199/mo)',
+        faceValue: 199.00,
+        netPrice: 199.00,
         discountAmount: 0.00,
         discountPercent: 0,
         isTrial: false,
@@ -204,7 +204,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
   // ROI Math
   const totalStaffHoursPerMonth = (appsPerMonth * staffReviewTimeMins) / 60;
   const manualLaborCost = totalStaffHoursPerMonth * staffHourlyWage;
-  const subscriptionCost = serverTier === 'enterprise' ? 99 : serverTier === 'mega_server' ? 49 : 29;
+  const subscriptionCost = serverTier === 'enterprise' ? 199 : serverTier === 'mega_server' ? 49 : 29;
   const automatedReviewHours = (appsPerMonth * 1.5) / 60; // 90% time saved
   const automatedLaborCost = automatedReviewHours * staffHourlyWage;
   const netMonthlySavings = Math.max(0, manualLaborCost - automatedLaborCost - subscriptionCost);
@@ -573,7 +573,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
                 </div>
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold shrink-0 self-start sm:self-auto">
                   <Crown className="w-3.5 h-3.5" />
-                  <span>Mega-Server ($49/mo) & Enterprise ($99/mo) Tier Feature</span>
+                  <span>Mega-Server ($49/mo) & Enterprise ($199/mo) Tier Feature</span>
                 </div>
               </div>
 
@@ -581,7 +581,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
               <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-start gap-3 text-xs text-slate-400">
                 <Globe className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="text-slate-200">Domain Tier Policy:</strong> Community Server Tier ($29/mo) provides instant zero-config subdomains (<code className="text-cyan-300 font-mono">slug.viceintel.app</code>). White-labeled dedicated custom domains with automated Let's Encrypt TLS certificates are exclusively available on <strong>Mega-Server Pro Tier</strong> ($49/mo) and <strong>Enterprise Networks</strong> ($99/mo).
+                  <strong className="text-slate-200">Domain Tier Policy:</strong> Community Server Tier ($29/mo) provides instant zero-config subdomains (<code className="text-cyan-300 font-mono">slug.viceintel.app</code>). White-labeled dedicated custom domains with automated Let's Encrypt TLS certificates are exclusively available on <strong>Mega-Server Pro Tier</strong> ($49/mo) and <strong>Enterprise Networks</strong> ($199/mo).
                 </div>
               </div>
 
@@ -919,7 +919,7 @@ end)`}</pre>
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Enterprise ($99/mo)
+                Enterprise ($199/mo)
               </button>
             </div>
           </div>
@@ -1041,7 +1041,7 @@ end)`}</pre>
                 <span className="whitespace-nowrap sm:whitespace-normal text-center">
                   {serverTier === 'mega_server' 
                     ? '⚡ Claim 14-Day Pro Pass ($49/mo • $0 Today)' 
-                    : `Claim This ROI for ${serverTier === 'enterprise' ? 'Enterprise ($99/mo)' : 'Community ($29/mo)'}`
+                    : `Claim This ROI for ${serverTier === 'enterprise' ? 'Enterprise ($199/mo)' : 'Community ($29/mo)'}`
                   }
                 </span>
                 <ChevronRight className="w-4 h-4 shrink-0" />
@@ -1174,16 +1174,16 @@ end)`}</pre>
             </button>
           </div>
 
-          {/* Tier 3: Enterprise Multi-Server ($99/mo) */}
+          {/* Tier 3: Enterprise Multi-Server ($199/mo) */}
           <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-amber-500/50 transition-all flex flex-col justify-between relative">
             <div>
               <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">Enterprise Multi-Server Network</div>
               <div className="flex items-baseline gap-1 mb-4">
-                <span className="text-4xl font-black text-white">$99</span>
+                <span className="text-4xl font-black text-white">$199</span>
                 <span className="text-slate-400 text-sm font-medium">/ month</span>
               </div>
               <p className="text-slate-400 text-sm mb-6 leading-relaxed font-sans">
-                Tailored for multi-server gaming networks running 3+ connected FiveM cities with cross-server staff synchronization.
+                Tailored for multi-server gaming networks running up to 5 connected FiveM cities with cross-server staff synchronization.
               </p>
 
               <div className="space-y-3 pt-6 border-t border-slate-800/80 text-sm">
@@ -1218,7 +1218,7 @@ end)`}</pre>
               onClick={() => handleOpenPaymentModal('enterprise')}
               className="mt-8 w-full py-3.5 rounded-xl bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>Deploy Network ($99/mo)</span>
+              <span>Deploy Network ($199/mo)</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -1236,7 +1236,7 @@ end)`}</pre>
           <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
             <div className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 font-black text-sm flex items-center justify-center mx-auto mb-3">1</div>
             <h4 className="font-bold text-white text-sm mb-1">Select Subscription</h4>
-            <p className="text-xs text-slate-400">Choose Community ($29), Mega-Server ($49), or Enterprise ($99) on Stripe checkout.</p>
+            <p className="text-xs text-slate-400">Choose Community ($29), Mega-Server ($49), or Enterprise ($199) on Stripe checkout.</p>
           </div>
 
           <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
