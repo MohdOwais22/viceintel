@@ -10,7 +10,8 @@ function getFilteredMapLocations(query: any) {
   if (search) {
     const s = search.toLowerCase();
     list = list.filter(l =>
-      l.name?.toLowerCase().includes(s) ||
+      l.title?.toLowerCase().includes(s) ||
+      (l as any).name?.toLowerCase().includes(s) ||
       l.description?.toLowerCase().includes(s) ||
       l.district?.toLowerCase().includes(s)
     );
@@ -37,6 +38,7 @@ export default async function handler(req: any, res: any) {
         }
         if (search) {
           filter.$or = [
+            { title: { $regex: search, $options: 'i' } },
             { name: { $regex: search, $options: 'i' } },
             { description: { $regex: search, $options: 'i' } },
             { district: { $regex: search, $options: 'i' } }

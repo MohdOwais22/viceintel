@@ -1,7 +1,7 @@
 import { getMongoDb, sendJson, parseBody } from './_lib/db';
-import { BLOG_POSTS_DATA, BLOG_POSTS } from '../src/data/blogPosts';
+import { BLOG_POSTS } from '../src/data/blogPosts';
 
-const POSTS = BLOG_POSTS_DATA || BLOG_POSTS || [];
+const POSTS = BLOG_POSTS || [];
 
 function getFilteredPosts(query: any) {
   const { tag, category, search, slug } = query || {};

@@ -667,5 +667,3 @@ export const BLOG_POSTS: BlogPost[] = [
   }
 ];
 
-export const BLOG_POSTS_DATA = BLOG_POSTS;
-
