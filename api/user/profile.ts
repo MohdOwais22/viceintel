@@ -1,3 +1,5 @@
+import { getMongoDb, sendJson, parseBody } from '../_lib/db';
+
 function normalizeProfile(doc: any): any {
   if (!doc) return null;
   const p = doc.toObject ? doc.toObject() : { ...doc };
@@ -41,98 +43,33 @@ function normalizeProfile(doc: any): any {
   };
 }
 
-async function parseBody(req: any): Promise<any> {
-  if (req.body && typeof req.body === 'object') return req.body;
-  return new Promise((resolve) => {
-    let body = '';
-    req.on('data', (chunk: any) => {
-      body += chunk;
-    });
-    req.on('end', () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch {
-        resolve({});
-      }
-    });
-  });
-}
-
 export default async function handler(req: any, res: any) {
+  if (req.method === 'OPTIONS') {
+    return sendJson(res, 204, {});
+  }
+
+  const url = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
+  const uid = (url.searchParams.get('uid') || req.query?.uid || '')?.trim();
+  const email = (url.searchParams.get('email') || req.query?.email || '')?.trim();
+
   try {
-    if (res.setHeader) {
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST,PUT,PATCH,DELETE');
-      res.setHeader(
-        'Access-Control-Allow-Headers',
-        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-      );
-      res.setHeader('Content-Type', 'application/json');
-    }
-
-    if (req.method === 'OPTIONS') {
-      if (typeof res.status === 'function') return res.status(200).end();
-      res.statusCode = 200;
-      res.end();
-      return;
-    }
-
-    const url = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
-    const uid = (url.searchParams.get('uid') || req.query?.uid || '')?.trim();
-    const email = (url.searchParams.get('email') || req.query?.email || '')?.trim();
-
-    let mongooseInstance: any = null;
-    const mongoUri = process.env.MONGODB_URI;
-
-    if (mongoUri) {
-      try {
-        const mongooseModule = await import('mongoose');
-        const mongoose = (mongooseModule as any).default || mongooseModule;
-        if (mongoose.connection && mongoose.connection.readyState === 1) {
-          mongooseInstance = mongoose;
-        } else {
-          await mongoose.connect(mongoUri.trim(), {
-            dbName: process.env.MONGODB_DB_NAME || undefined,
-            serverSelectionTimeoutMS: 3000,
-            socketTimeoutMS: 5000,
-            bufferCommands: false,
-          });
-          if (mongoose.connection.readyState === 1) {
-            mongooseInstance = mongoose;
-          }
-        }
-      } catch (dbErr) {
-        console.warn('MongoDB connect notice in profile handler:', dbErr);
-      }
-    }
+    const db = await getMongoDb();
 
     if (req.method === 'GET') {
       if (!uid && !email) {
-        const payload = { success: false, error: 'Missing uid or email parameter' };
-        if (typeof res.status === 'function') return res.status(400).json(payload);
-        res.statusCode = 400;
-        res.end(JSON.stringify(payload));
-        return;
+        return sendJson(res, 400, { success: false, error: 'Missing uid or email parameter' });
       }
 
-      if (mongooseInstance) {
+      if (db) {
         try {
-          const db = mongooseInstance.connection.db;
-          if (db) {
-            const collection = db.collection('userProfiles');
-            const found = await collection.findOne({
-              $or: [{ uid }, { id: uid }, { docId: uid }, ...(email ? [{ email }] : [])],
-            });
+          const collection = db.collection('userProfiles');
+          const found = await collection.findOne({
+            $or: [{ uid }, { id: uid }, { docId: uid }, ...(email ? [{ email }] : [])],
+          });
 
-            if (found) {
-              const normalized = normalizeProfile(found);
-              const payload = { success: true, source: 'MongoDB', data: normalized };
-              if (typeof res.status === 'function') return res.status(200).json(payload);
-              res.statusCode = 200;
-              res.end(JSON.stringify(payload));
-              return;
-            }
+          if (found) {
+            const normalized = normalizeProfile(found);
+            return sendJson(res, 200, { success: true, source: 'MongoDB', data: normalized });
           }
         } catch (queryErr) {
           console.warn('MongoDB profile lookup notice:', queryErr);
@@ -149,16 +86,11 @@ export default async function handler(req: any, res: any) {
         dailyStreak: 1,
       });
 
-      const payload = {
+      return sendJson(res, 200, {
         success: true,
-        source: mongooseInstance ? 'MongoDB-Initialized' : 'VercelFallback',
+        source: db ? 'MongoDB-Empty' : 'Fallback',
         data: fallback,
-      };
-
-      if (typeof res.status === 'function') return res.status(200).json(payload);
-      res.statusCode = 200;
-      res.end(JSON.stringify(payload));
-      return;
+      });
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
@@ -166,46 +98,30 @@ export default async function handler(req: any, res: any) {
       const targetUid = body.uid || body.id || uid;
 
       if (!targetUid) {
-        const payload = { success: false, error: 'Missing user uid' };
-        if (typeof res.status === 'function') return res.status(400).json(payload);
-        res.statusCode = 400;
-        res.end(JSON.stringify(payload));
-        return;
+        return sendJson(res, 400, { success: false, error: 'Missing user uid' });
       }
 
-      const cleanData = normalizeProfile({ ...body, uid: targetUid, id: targetUid });
+      const cleanData = normalizeProfile({ ...body, uid: targetUid, id: targetUid, updatedAt: new Date().toISOString() });
 
-      if (mongooseInstance) {
+      if (db) {
         try {
-          const db = mongooseInstance.connection.db;
-          if (db) {
-            const collection = db.collection('userProfiles');
-            await collection.updateOne(
-              { $or: [{ uid: targetUid }, { id: targetUid }, { docId: targetUid }] },
-              { $set: cleanData },
-              { upsert: true }
-            );
-          }
+          const collection = db.collection('userProfiles');
+          await collection.updateOne(
+            { $or: [{ uid: targetUid }, { id: targetUid }, { docId: targetUid }] },
+            { $set: cleanData },
+            { upsert: true }
+          );
         } catch (saveErr) {
           console.warn('MongoDB profile save notice:', saveErr);
         }
       }
 
-      const payload = { success: true, source: 'Saved', data: cleanData };
-      if (typeof res.status === 'function') return res.status(200).json(payload);
-      res.statusCode = 200;
-      res.end(JSON.stringify(payload));
-      return;
+      return sendJson(res, 200, { success: true, source: 'Saved', data: cleanData });
     }
 
-    const methodNotAllowed = { success: false, error: 'Method Not Allowed' };
-    if (typeof res.status === 'function') return res.status(405).json(methodNotAllowed);
-    res.statusCode = 405;
-    res.end(JSON.stringify(methodNotAllowed));
+    return sendJson(res, 405, { success: false, error: 'Method Not Allowed' });
   } catch (err: any) {
-    const errorPayload = { success: false, error: err?.message || 'Server error' };
-    if (typeof res.status === 'function') return res.status(500).json(errorPayload);
-    res.statusCode = 500;
-    res.end(JSON.stringify(errorPayload));
+    console.error('Profile API error:', err);
+    return sendJson(res, 500, { success: false, error: err?.message || 'Server error' });
   }
 }

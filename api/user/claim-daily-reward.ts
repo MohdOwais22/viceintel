@@ -1,77 +1,27 @@
+import { getMongoDb, sendJson, parseBody } from '../_lib/db';
+
 function getTodayString(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-async function parseBody(req: any): Promise<any> {
-  if (req.body && typeof req.body === 'object') return req.body;
-  return new Promise((resolve) => {
-    let body = '';
-    req.on('data', (chunk: any) => {
-      body += chunk;
-    });
-    req.on('end', () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch {
-        resolve({});
-      }
-    });
-  });
-}
-
 export default async function handler(req: any, res: any) {
+  if (req.method === 'OPTIONS') {
+    return sendJson(res, 204, {});
+  }
+
   try {
-    if (res.setHeader) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      res.setHeader('Content-Type', 'application/json');
-    }
-
-    if (req.method === 'OPTIONS') {
-      if (typeof res.status === 'function') return res.status(200).end();
-      res.statusCode = 200;
-      res.end();
-      return;
-    }
-
     const body = await parseBody(req);
     const url = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
     const uid = (body.uid || body.userId || url.searchParams.get('uid') || req.query?.uid || '')?.trim();
 
     if (!uid) {
-      const payload = { success: false, error: 'Missing uid' };
-      if (typeof res.status === 'function') return res.status(400).json(payload);
-      res.statusCode = 400;
-      res.end(JSON.stringify(payload));
-      return;
+      return sendJson(res, 400, { success: false, error: 'Missing uid' });
     }
 
     let profile: any = null;
-    let mongooseInstance: any = null;
-    const mongoUri = process.env.MONGODB_URI;
-
-    if (mongoUri) {
-      try {
-        const mongooseModule = await import('mongoose');
-        const mongoose = (mongooseModule as any).default || mongooseModule;
-        if (!mongoose.connection || mongoose.connection.readyState !== 1) {
-          await mongoose.connect(mongoUri.trim(), {
-            dbName: process.env.MONGODB_DB_NAME || undefined,
-            serverSelectionTimeoutMS: 3000,
-            socketTimeoutMS: 5000,
-            bufferCommands: false,
-          });
-        }
-        if (mongoose.connection && mongoose.connection.readyState === 1) {
-          mongooseInstance = mongoose;
-          if (mongoose.connection.db) {
-            profile = await mongoose.connection.db.collection('userProfiles').findOne({ $or: [{ uid }, { id: uid }] });
-          }
-        }
-      } catch (dbErr) {
-        console.warn('MongoDB connection in claim-daily-reward notice:', dbErr);
-      }
+    const db = await getMongoDb();
+    if (db) {
+      profile = await db.collection('userProfiles').findOne({ $or: [{ uid }, { id: uid }] });
     }
 
     const today = getTodayString();
@@ -82,9 +32,9 @@ export default async function handler(req: any, res: any) {
     const newBalance = balance + rewardEarned;
     const newStreak = streak + 1;
 
-    if (mongooseInstance && mongooseInstance.connection && mongooseInstance.connection.db) {
+    if (db) {
       try {
-        await mongooseInstance.connection.db.collection('userProfiles').updateOne(
+        await db.collection('userProfiles').updateOne(
           { $or: [{ uid }, { id: uid }] },
           {
             $set: {
@@ -92,7 +42,7 @@ export default async function handler(req: any, res: any) {
               dailyStreak: newStreak,
               streakCount: newStreak,
               lastClaimDate: today,
-              updatedAt: new Date(),
+              updatedAt: new Date().toISOString(),
             },
           },
           { upsert: true }
@@ -102,21 +52,15 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const payload = {
+    return sendJson(res, 200, {
       success: true,
       rewardEarned,
       newBalance,
       newStreak,
       message: `Claimed +${rewardEarned} VC!`,
-    };
-
-    if (typeof res.status === 'function') return res.status(200).json(payload);
-    res.statusCode = 200;
-    res.end(JSON.stringify(payload));
+    });
   } catch (err: any) {
-    const errorPayload = { success: false, error: err?.message || 'Server error' };
-    if (typeof res.status === 'function') return res.status(500).json(errorPayload);
-    res.statusCode = 500;
-    res.end(JSON.stringify(errorPayload));
+    console.error('Claim daily reward API error:', err);
+    return sendJson(res, 500, { success: false, error: err?.message || 'Server error' });
   }
 }

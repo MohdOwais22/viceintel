@@ -55,6 +55,15 @@ export async function getMongoDb(): Promise<any | null> {
   }
 }
 
+export function getMongoConnectionInfo() {
+  const isConnected = mongoose.connection && mongoose.connection.readyState === 1;
+  return {
+    configured: Boolean(process.env.MONGODB_URI),
+    connected: Boolean(isConnected),
+    name: mongoose.connection?.name || 'none'
+  };
+}
+
 export function sendJson(res: any, status: number, data: any) {
   if (res.setHeader) {
     res.setHeader('Access-Control-Allow-Origin', '*');
