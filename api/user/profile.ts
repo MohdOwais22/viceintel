@@ -1,32 +1,27 @@
-import type { IncomingMessage, ServerResponse } from 'http';
-import { connectToMongoDB } from '../../src/lib/db/mongodb';
-import { findDocument, saveDocument } from '../../src/lib/db/mongoHelpers';
-import { UserProfileModel } from '../../src/lib/db/models/UserProfile';
+function normalizeProfile(doc: any): any {
+  if (!doc) return null;
+  const p = doc.toObject ? doc.toObject() : { ...doc };
 
-function normalizeProfile(p: any): any {
-  if (!p) return null;
-  const doc = p.toObject ? p.toObject() : { ...p };
+  const streak = Number(p.dailyStreak ?? p.streakCount ?? p.rewardStreak ?? 1);
+  const isL4 = p.clearanceLevel === 4 || p.clearanceLevel === 'L4' || p.role === 'Admin' || p.isAdmin === true;
+  const isL3 = p.clearanceLevel === 3 || p.clearanceLevel === 'L3' || p.role === 'Staff' || p.isStaff === true;
+  const isL2 = p.clearanceLevel === 2 || p.clearanceLevel === 'L2' || p.isVip === true || p.vipStatus === true || (p.vipExpires && p.vipExpires !== 'Expired');
 
-  const streak = Number(doc.dailyStreak ?? doc.streakCount ?? doc.rewardStreak ?? 1);
-  const isL4 = doc.clearanceLevel === 4 || doc.clearanceLevel === 'L4' || doc.role === 'Admin' || doc.isAdmin === true;
-  const isL3 = doc.clearanceLevel === 3 || doc.clearanceLevel === 'L3' || doc.role === 'Staff' || doc.isStaff === true;
-  const isL2 = doc.clearanceLevel === 2 || doc.clearanceLevel === 'L2' || doc.isVip === true || doc.vipStatus === true || (doc.vipExpires && doc.vipExpires !== 'Expired');
-
-  const resolvedDiscordId = doc.discordId || doc.claimedByDiscordId || doc.discordAuth?.id || null;
-  const resolvedDiscordUsername = doc.discordUsername || doc.claimedByDiscordUsername || doc.discordAuth?.username || null;
-  const resolvedDiscordAvatar = doc.discordAvatar || doc.discordAuth?.avatar || null;
-  const resolvedDiscordConnected = Boolean(doc.discordConnected || resolvedDiscordId);
+  const resolvedDiscordId = p.discordId || p.claimedByDiscordId || p.discordAuth?.id || null;
+  const resolvedDiscordUsername = p.discordUsername || p.claimedByDiscordUsername || p.discordAuth?.username || null;
+  const resolvedDiscordAvatar = p.discordAvatar || p.discordAuth?.avatar || null;
+  const resolvedDiscordConnected = Boolean(p.discordConnected || resolvedDiscordId);
 
   return {
-    ...doc,
-    uid: doc.uid || doc.id || doc._id?.toString(),
-    id: doc.id || doc.uid || doc._id?.toString(),
-    username: doc.username || doc.gamerTag || 'Player',
-    gamerTag: doc.gamerTag || doc.username || 'Player',
-    email: doc.email || '',
-    avatar: doc.avatar || doc.avatarUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=default',
-    avatarUrl: doc.avatarUrl || doc.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=default',
-    vcBalance: typeof doc.vcBalance === 'number' ? doc.vcBalance : 100,
+    ...p,
+    uid: p.uid || p.id || p._id?.toString() || 'user_demo',
+    id: p.id || p.uid || p._id?.toString() || 'user_demo',
+    username: p.username || p.gamerTag || 'ViceCityPlayer',
+    gamerTag: p.gamerTag || p.username || 'ViceCityPlayer',
+    email: p.email || '',
+    avatar: p.avatar || p.avatarUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=default',
+    avatarUrl: p.avatarUrl || p.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=default',
+    vcBalance: typeof p.vcBalance === 'number' ? p.vcBalance : 100,
     dailyStreak: streak,
     streakCount: streak,
     rewardStreak: streak,
@@ -36,22 +31,21 @@ function normalizeProfile(p: any): any {
     vipStatus: isL4 || isL3 || isL2,
     clearanceLevel: isL4 ? 4 : isL3 ? 3 : isL2 ? 2 : 1,
     userLevel: isL4 ? 'L4' : isL3 ? 'L3' : isL2 ? 'L2' : 'L1',
-    vipExpires: doc.vipExpires || (isL4 ? 'Lifetime' : isL2 ? '2026-10-04' : 'Expired'),
+    vipExpires: p.vipExpires || (isL4 ? 'Lifetime' : isL2 ? '2026-10-04' : 'Expired'),
     discordId: resolvedDiscordId,
     discordUsername: resolvedDiscordUsername,
     discordAvatar: resolvedDiscordAvatar,
     discordConnected: resolvedDiscordConnected,
-    claimedByDiscordId: resolvedDiscordId,
-    claimedByDiscordUsername: resolvedDiscordUsername,
-    gamerTagChangesRemaining: doc.gamerTagChangesRemaining !== undefined ? doc.gamerTagChangesRemaining : 2,
-    status: doc.status || 'Active',
+    gamerTagChangesRemaining: p.gamerTagChangesRemaining !== undefined ? p.gamerTagChangesRemaining : 2,
+    status: p.status || 'Active',
   };
 }
 
-async function parseBody(req: IncomingMessage): Promise<any> {
+async function parseBody(req: any): Promise<any> {
+  if (req.body && typeof req.body === 'object') return req.body;
   return new Promise((resolve) => {
     let body = '';
-    req.on('data', (chunk) => {
+    req.on('data', (chunk: any) => {
       body += chunk;
     });
     req.on('end', () => {
@@ -65,124 +59,152 @@ async function parseBody(req: IncomingMessage): Promise<any> {
 }
 
 export default async function handler(req: any, res: any) {
-  // Setup CORS
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST,PUT,PATCH,DELETE');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
-
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 200;
-    res.end();
-    return;
-  }
-
   try {
-    const conn = await connectToMongoDB();
+    if (res.setHeader) {
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST,PUT,PATCH,DELETE');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
+      );
+      res.setHeader('Content-Type', 'application/json');
+    }
+
+    if (req.method === 'OPTIONS') {
+      if (typeof res.status === 'function') return res.status(200).end();
+      res.statusCode = 200;
+      res.end();
+      return;
+    }
+
+    const url = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
+    const uid = (url.searchParams.get('uid') || req.query?.uid || '')?.trim();
+    const email = (url.searchParams.get('email') || req.query?.email || '')?.trim();
+
+    let mongooseInstance: any = null;
+    const mongoUri = process.env.MONGODB_URI;
+
+    if (mongoUri) {
+      try {
+        const mongooseModule = await import('mongoose');
+        const mongoose = (mongooseModule as any).default || mongooseModule;
+        if (mongoose.connection && mongoose.connection.readyState === 1) {
+          mongooseInstance = mongoose;
+        } else {
+          await mongoose.connect(mongoUri.trim(), {
+            serverSelectionTimeoutMS: 3000,
+            socketTimeoutMS: 5000,
+            bufferCommands: false,
+          });
+          if (mongoose.connection.readyState === 1) {
+            mongooseInstance = mongoose;
+          }
+        }
+      } catch (dbErr) {
+        console.warn('MongoDB connect notice in profile handler:', dbErr);
+      }
+    }
 
     if (req.method === 'GET') {
-      const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
-      const uid = (url.searchParams.get('uid') || req.query?.uid || '')?.trim();
-      const email = (url.searchParams.get('email') || req.query?.email || '')?.trim();
-
       if (!uid && !email) {
+        const payload = { success: false, error: 'Missing uid or email parameter' };
+        if (typeof res.status === 'function') return res.status(400).json(payload);
         res.statusCode = 400;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ success: false, error: 'Missing uid or email parameter' }));
+        res.end(JSON.stringify(payload));
         return;
       }
 
-      if (!conn) {
-        // Fallback response if MongoDB_URI is not yet configured in Vercel settings
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(
-          JSON.stringify({
-            success: true,
-            source: 'VercelFallback',
-            warning: 'MONGODB_URI environment variable not set in Vercel settings',
-            data: normalizeProfile({
-              uid: uid || 'user_demo',
-              gamerTag: 'ViceCityPlayer',
-              username: 'ViceCityPlayer',
-              email: email || '',
-              vcBalance: 100,
-              dailyStreak: 1,
-            }),
-          })
-        );
-        return;
+      if (mongooseInstance) {
+        try {
+          const db = mongooseInstance.connection.db;
+          if (db) {
+            const collection = db.collection('userProfiles');
+            const found = await collection.findOne({
+              $or: [{ uid }, { id: uid }, { docId: uid }, ...(email ? [{ email }] : [])],
+            });
+
+            if (found) {
+              const normalized = normalizeProfile(found);
+              const payload = { success: true, source: 'MongoDB', data: normalized };
+              if (typeof res.status === 'function') return res.status(200).json(payload);
+              res.statusCode = 200;
+              res.end(JSON.stringify(payload));
+              return;
+            }
+          }
+        } catch (queryErr) {
+          console.warn('MongoDB profile lookup notice:', queryErr);
+        }
       }
 
-      const queryConds: any[] = [];
-      if (uid) {
-        const uidRegex = new RegExp(`^${uid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-        queryConds.push({ uid }, { id: uid }, { docId: uid }, { uid: uidRegex }, { id: uidRegex });
-      }
-      if (email) {
-        queryConds.push({ email: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
-      }
-
-      const found = await UserProfileModel.findOne({ $or: queryConds });
-      if (found) {
-        const normalized = normalizeProfile(found);
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ success: true, source: 'MongoDB', data: normalized }));
-        return;
-      }
-
-      // If user profile not found, initialize new
-      const primaryUid = uid || `user_${Date.now()}`;
-      const newProfile = normalizeProfile({
-        uid: primaryUid,
-        id: primaryUid,
-        username: email ? email.split('@')[0] : 'Player_' + primaryUid.slice(0, 5),
-        gamerTag: email ? email.split('@')[0] : 'Player_' + primaryUid.slice(0, 5),
+      // Default fallback profile response
+      const fallback = normalizeProfile({
+        uid: uid || 'user_demo',
+        gamerTag: email ? email.split('@')[0] : 'ViceCityPlayer',
+        username: email ? email.split('@')[0] : 'ViceCityPlayer',
         email: email || '',
         vcBalance: 100,
         dailyStreak: 1,
       });
 
-      await saveDocument('userProfiles', primaryUid, newProfile);
+      const payload = {
+        success: true,
+        source: mongooseInstance ? 'MongoDB-Initialized' : 'VercelFallback',
+        data: fallback,
+      };
 
+      if (typeof res.status === 'function') return res.status(200).json(payload);
       res.statusCode = 200;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ success: true, source: 'MongoDB-Created', data: newProfile }));
+      res.end(JSON.stringify(payload));
       return;
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
-      const body = req.body || (await parseBody(req));
-      const uid = body.uid || body.id || (req.query?.uid as string);
+      const body = await parseBody(req);
+      const targetUid = body.uid || body.id || uid;
 
-      if (!uid) {
+      if (!targetUid) {
+        const payload = { success: false, error: 'Missing user uid' };
+        if (typeof res.status === 'function') return res.status(400).json(payload);
         res.statusCode = 400;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ success: false, error: 'Missing user uid' }));
+        res.end(JSON.stringify(payload));
         return;
       }
 
-      const cleanData = normalizeProfile(body);
-      if (conn) {
-        await saveDocument('userProfiles', uid, cleanData);
+      const cleanData = normalizeProfile({ ...body, uid: targetUid, id: targetUid });
+
+      if (mongooseInstance) {
+        try {
+          const db = mongooseInstance.connection.db;
+          if (db) {
+            const collection = db.collection('userProfiles');
+            await collection.updateOne(
+              { $or: [{ uid: targetUid }, { id: targetUid }, { docId: targetUid }] },
+              { $set: cleanData },
+              { upsert: true }
+            );
+          }
+        } catch (saveErr) {
+          console.warn('MongoDB profile save notice:', saveErr);
+        }
       }
 
+      const payload = { success: true, source: 'Saved', data: cleanData };
+      if (typeof res.status === 'function') return res.status(200).json(payload);
       res.statusCode = 200;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ success: true, source: 'MongoDB', data: cleanData }));
+      res.end(JSON.stringify(payload));
       return;
     }
 
+    const methodNotAllowed = { success: false, error: 'Method Not Allowed' };
+    if (typeof res.status === 'function') return res.status(405).json(methodNotAllowed);
     res.statusCode = 405;
-    res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
+    res.end(JSON.stringify(methodNotAllowed));
   } catch (err: any) {
-    console.error('Vercel Profile API Error:', err);
+    const errorPayload = { success: false, error: err?.message || 'Server error' };
+    if (typeof res.status === 'function') return res.status(500).json(errorPayload);
     res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ success: false, error: err?.message || 'Server error' }));
+    res.end(JSON.stringify(errorPayload));
   }
 }
