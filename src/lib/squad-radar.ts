@@ -15,7 +15,6 @@ import {
   limit
 } from 'firebase/firestore';
 import { db } from './firebase';
-import localforage from 'localforage';
 import {
   subscribeRtdbSquadRoom,
   fetchRtdbSquadRoom,
@@ -536,7 +535,9 @@ export async function addWaypoint(
     ...waypoint,
     id: waypoint.id || `wp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
   };
-  await addRtdbSquadWaypoint(roomId, newWaypoint);
+  const room = await fetchRtdbSquadRoom(roomId);
+  const currentWaypoints = room?.waypoints || [];
+  await addRtdbSquadWaypoint(roomId, [...currentWaypoints, newWaypoint]);
 }
 
 /**
@@ -556,7 +557,9 @@ export async function addSquadPing(
   };
 
   if (roomId) {
-    await addRtdbSquadPing(roomId, newPing);
+    const room = await fetchRtdbSquadRoom(roomId);
+    const currentPings = room?.pings || [];
+    await addRtdbSquadPing(roomId, [...currentPings, newPing]);
   }
 
   return newPing;
@@ -585,7 +588,11 @@ export async function toggleCollectibleSync(
   collectibleId: string
 ): Promise<void> {
   if (!roomId || !collectibleId) return;
-  await toggleRtdbCollectibleSync(roomId, collectibleId);
+  const room = await fetchRtdbSquadRoom(roomId);
+  const current = room?.checkedCollectibles || [];
+  const exists = current.includes(collectibleId);
+  const updated = exists ? current.filter((id: string) => id !== collectibleId) : [...current, collectibleId];
+  await toggleRtdbCollectibleSync(roomId, updated);
 }
 
 /**
@@ -621,61 +628,69 @@ export function subscribeToSquadRoom(
   });
 }
 
-// LocalForage Cache Helpers
+// Local Cache Helpers using localStorage
 export async function cacheActiveRoom(roomId: string): Promise<void> {
+  if (typeof window === 'undefined') return;
   try {
-    await localforage.setItem('gtavi_squad_active_room_id', roomId);
+    localStorage.setItem('gtavi_squad_active_room_id', roomId);
   } catch (e) {
-    console.warn('localforage cacheActiveRoom error:', e);
+    console.warn('cacheActiveRoom error:', e);
   }
 }
 
 export async function getCachedActiveRoom(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
   try {
-    return await localforage.getItem<string>('gtavi_squad_active_room_id');
+    return localStorage.getItem('gtavi_squad_active_room_id');
   } catch {
     return null;
   }
 }
 
 export async function cacheSquadRoom(room: SquadRoom): Promise<void> {
+  if (typeof window === 'undefined') return;
   try {
-    await localforage.setItem(`gtavi_squad_room_${room.roomId}`, room);
+    localStorage.setItem(`gtavi_squad_room_${room.roomId}`, JSON.stringify(room));
   } catch (e) {
-    console.warn('localforage cacheSquadRoom error:', e);
+    console.warn('cacheSquadRoom error:', e);
   }
 }
 
 export async function getCachedSquadRoom(roomId: string): Promise<SquadRoom | null> {
+  if (typeof window === 'undefined') return null;
   try {
-    return await localforage.getItem<SquadRoom>(`gtavi_squad_room_${roomId}`);
+    const raw = localStorage.getItem(`gtavi_squad_room_${roomId}`);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
 export async function cacheCheckedCollectibles(list: string[]): Promise<void> {
+  if (typeof window === 'undefined') return;
   try {
-    await localforage.setItem('gtavi_squad_checked_collectibles', list);
+    localStorage.setItem('gtavi_squad_checked_collectibles', JSON.stringify(list));
   } catch (e) {
-    console.warn('localforage cacheCheckedCollectibles error:', e);
+    console.warn('cacheCheckedCollectibles error:', e);
   }
 }
 
 export async function getCachedCheckedCollectibles(): Promise<string[]> {
+  if (typeof window === 'undefined') return [];
   try {
-    const list = await localforage.getItem<string[]>('gtavi_squad_checked_collectibles');
-    return list || [];
+    const raw = localStorage.getItem('gtavi_squad_checked_collectibles');
+    return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
 export async function clearCachedRoom(): Promise<void> {
+  if (typeof window === 'undefined') return;
   try {
-    await localforage.removeItem('gtavi_squad_active_room_id');
+    localStorage.removeItem('gtavi_squad_active_room_id');
   } catch (e) {
-    console.warn('localforage clearCachedRoom error:', e);
+    console.warn('clearCachedRoom error:', e);
   }
 }
 

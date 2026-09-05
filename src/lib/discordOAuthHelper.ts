@@ -240,10 +240,10 @@ export async function processDiscordCallback(currentUserUid?: string): Promise<{
     }
   }
 
-  // 2. Check Search Params for Server Code callback (?discordLinked=true or ?discordError=...)
+  // 2. Check Search Params for Server Code callback (?discordLinked=true, ?discordConnected=true, or ?discordError=...)
   const searchParams = new URLSearchParams(window.location.search);
   const discordErrorParam = searchParams.get('discordError');
-  const discordLinkedParam = searchParams.get('discordLinked') === 'true';
+  const discordLinkedParam = searchParams.get('discordLinked') === 'true' || searchParams.get('discordConnected') === 'true';
   const discordIdParam = searchParams.get('discordId');
   const discordUsernameParam = searchParams.get('discordUsername');
   const discordAvatarParam = searchParams.get('discordAvatar');

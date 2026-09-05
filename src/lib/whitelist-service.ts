@@ -229,10 +229,7 @@ export async function saveFormConfig(
   const existingConfig = (await getFormConfig(serverId)) || (await getFormConfigBySlug(serverSlug));
 
   if (existingConfig && existingConfig.ownerUid) {
-    const isGlobalAdmin = Boolean(
-      isAdmin ||
-      (userEmail && ['admin@vicecity.app', 'lucia.vice@outlook.com', 'l4_admin@vicecity.app'].includes(userEmail.toLowerCase()))
-    );
+    const isGlobalAdmin = Boolean(isAdmin);
     const isOwner = Boolean(
       userUid && (
         existingConfig.ownerUid === userUid ||
@@ -1191,22 +1188,47 @@ export async function linkDiscordToUser(
     updatedAt: new Date().toISOString()
   };
 
+  // 1. Sync to MongoDB via backend REST API (Primary Source of Truth)
+  try {
+    const res = await fetch('/api/auth/discord/link-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid,
+        discordId: cleanId,
+        discordUsername: cleanTag,
+        discordAvatar: cleanAvatar
+      })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      console.warn('MongoDB Direct Discord link profile API reported failure:', data.error);
+    }
+  } catch (err) {
+    console.warn('Failed to link Discord in MongoDB REST API:', err);
+  }
+
+  // 2. Sync to Firestore (Real-time fallback/listener)
   try {
     await updateDoc(docRef, updates);
   } catch (err) {
     try {
       await setDoc(docRef, updates, { merge: true });
     } catch (setErr) {
-      console.warn('Failed to link Discord in Firestore, saving to localStorage:', setErr);
+      console.warn('Failed to link Discord in Firestore:', setErr);
     }
   }
 
-  // Sync to localStorage
+  // 3. Sync to localStorage & Dispatch Global Sync Events
   try {
     localStorage.setItem(`gtavi_discord_link_${uid}`, JSON.stringify(updates));
     localStorage.setItem('gtavi_discord_user_id', cleanId);
     localStorage.setItem('gtavi_discord_username', cleanTag);
     if (cleanAvatar) localStorage.setItem('gtavi_discord_avatar', cleanAvatar);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gtavi_discord_linked', { detail: { uid, ...updates } }));
+      window.dispatchEvent(new CustomEvent('gtavi_profile_updated', { detail: { uid, ...updates } }));
+    }
   } catch {}
 }
 
@@ -1258,7 +1280,7 @@ export async function unlinkDiscordFromUser(uid: string): Promise<void> {
 /**
  * Check persistent Discord OAuth connection and token status
  */
-export async function fetchDiscordAuthStatus(uid: string): Promise<{
+export async function fetchDiscordAuthStatus(uid: string, email?: string): Promise<{
   connected: boolean;
   discordId?: string | null;
   discordUsername?: string | null;
@@ -1270,9 +1292,12 @@ export async function fetchDiscordAuthStatus(uid: string): Promise<{
   linkedAt?: string | null;
   lastRefreshedAt?: string | null;
 }> {
-  if (!uid) return { connected: false };
+  if (!uid && !email) return { connected: false };
   try {
-    const res = await fetch(`/api/auth/discord/status?uid=${encodeURIComponent(uid)}`);
+    const params = new URLSearchParams();
+    if (uid) params.append('uid', uid);
+    if (email) params.append('email', email);
+    const res = await fetch(`/api/auth/discord/status?${params.toString()}`);
     if (!res.ok) throw new Error('Status fetch failed');
     const data = await res.json();
     return data;
@@ -1306,49 +1331,81 @@ export async function refreshDiscordOAuthToken(uid: string): Promise<{
 }
 
 /**
- * Fetch Full User Profile
+ * Fetch Full User Profile (with MongoDB source of truth and Firestore fallback)
  */
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  if (!uid) return null;
+
+  let mongoData: any = null;
+  let firestoreData: any = null;
+
+  // 1. Query MongoDB REST API (source of truth)
   try {
-    const docRef = doc(db, USERS_COLLECTION, uid);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const data = snap.data() as UserProfile;
-      // Merge with local discord cache if available
-      try {
-        const cachedDiscord = localStorage.getItem(`gtavi_discord_link_${uid}`);
-        if (cachedDiscord) {
-          const parsed = JSON.parse(cachedDiscord);
-          return { ...data, ...parsed };
-        }
-      } catch {}
-      return data;
+    const res = await fetch(`/api/user/profile?uid=${encodeURIComponent(uid)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        mongoData = json.data;
+      }
     }
-  } catch (err) {
-    console.warn(`Failed to fetch user profile for ${uid}:`, err);
+  } catch (apiErr) {
+    console.warn(`[getUserProfile] REST API fetch error for ${uid}:`, apiErr);
   }
 
-  // Check localStorage cache
+  // 2. Query Firestore collection only if mongoData is not found
+  if (!mongoData) {
+    try {
+      const docRef = doc(db, USERS_COLLECTION, uid);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        firestoreData = snap.data();
+      }
+    } catch (fsErr) {
+      console.warn(`[getUserProfile] Firestore fetch error for ${uid}:`, fsErr);
+    }
+  }
+
+  // If neither returned, check localStorage
+  let localData: any = null;
   try {
     const cachedDiscord = localStorage.getItem(`gtavi_discord_link_${uid}`);
     if (cachedDiscord) {
-      const parsed = JSON.parse(cachedDiscord);
-      return {
-        id: uid,
-        uid: uid,
-        username: 'GTA Player',
-        displayName: 'GTA Player',
-        email: '',
-        avatar: 'avatar_lucia',
-        role: 'User',
-        isVip: false,
-        joinedDate: new Date().toISOString(),
-        publishedBuildsCount: 0,
-        status: 'Active',
-        ...parsed
-      };
+      localData = JSON.parse(cachedDiscord);
     }
   } catch {}
+
+  const merged = {
+    ...(firestoreData || {}),
+    ...(mongoData || {}),
+    ...(localData || {})
+  };
+
+  if (mongoData || firestoreData || localData) {
+    // Resolve Discord fields across all possible schema variations
+    const resolvedDiscordId = merged.discordId || merged.claimedByDiscordId || merged.discordAuth?.discordId || null;
+    const resolvedDiscordUsername = merged.discordUsername || merged.claimedByDiscordUsername || merged.discordTag || merged.discordAuth?.discordUsername || null;
+    const resolvedDiscordAvatar = merged.discordAvatar || merged.discordAuth?.discordAvatar || null;
+    const resolvedDiscordConnected = Boolean(merged.discordConnected || resolvedDiscordId || resolvedDiscordUsername || merged.discordAuth);
+
+    return {
+      id: uid,
+      uid: uid,
+      username: merged.gamerTag || merged.username || 'GTA Player',
+      displayName: merged.displayName || merged.gamerTag || merged.username || 'GTA Player',
+      email: merged.email || '',
+      avatar: merged.avatar || 'avatar_lucia',
+      role: merged.role || 'User',
+      isVip: Boolean(merged.isVip),
+      joinedDate: merged.createdAt || merged.joinedDate || new Date().toISOString(),
+      publishedBuildsCount: merged.publishedBuildsCount || 0,
+      status: merged.status || 'Active',
+      ...merged,
+      discordId: resolvedDiscordId,
+      discordUsername: resolvedDiscordUsername,
+      discordAvatar: resolvedDiscordAvatar,
+      discordConnected: resolvedDiscordConnected
+    } as UserProfile;
+  }
 
   return null;
 }
@@ -1646,10 +1703,7 @@ export async function claimServerWithDiscord(params: {
 
   // Check if already claimed locally
   if (existingConfig?.isClaimed && existingConfig.ownerDiscordId && existingConfig.ownerDiscordId !== discordId) {
-    const isGlobalAdmin = Boolean(
-      isAdmin ||
-      (email && ['admin@vicecity.app', 'lucia.vice@outlook.com', 'l4_admin@vicecity.app'].includes(email.toLowerCase()))
-    );
+    const isGlobalAdmin = Boolean(isAdmin);
     if (!isGlobalAdmin) {
       throw new Error(
         `This server is already claimed by Discord ID <@${existingConfig.ownerDiscordId}>. Please contact the existing owner or staff if you believe this is in error.`
@@ -1766,10 +1820,7 @@ export async function transferServerOwnership(params: {
     throw new Error('Target server configuration could not be located.');
   }
 
-  const isGlobalAdmin = Boolean(
-    isAdmin ||
-    (currentUid && ['admin@vicecity.app', 'l4_admin@vicecity.app'].includes(currentUid.toLowerCase()))
-  );
+  const isGlobalAdmin = Boolean(isAdmin);
 
   const isCurrentOwner = Boolean(
     existingConfig.ownerDiscordId === currentDiscordId ||

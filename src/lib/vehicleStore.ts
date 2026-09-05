@@ -24,6 +24,7 @@ function sortVehicles(vehList: Vehicle[]): Vehicle[] {
 export const vehicleBundleEngine = new BundledStoreEngine<Vehicle>({
   bundleCollection: 'vehicle_catalog_bundles',
   bundleDocId: 'master_vehicle_bundle',
+  apiCollection: 'vehicles',
   storageKey: 'gtavi_cached_vehicles',
   updateEventName: VEHICLES_UPDATED_EVENT,
   defaultItems: VEHICLES_DATA,

@@ -3,8 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User as FirebaseUser, updateProfile } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import {
   GTA6_AVATARS,
   AvatarPreset,
@@ -81,13 +79,16 @@ export function AvatarCreatorModal({
     if (isOpen && currentUser?.uid) {
       const fetchProfile = async () => {
         try {
-          const snap = await getDoc(doc(db, 'userProfiles', currentUser.uid));
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data.role) setResolvedRole(data.role);
-            if (data.isVip !== undefined) setResolvedIsVip(data.isVip);
-            if (data.isStaff !== undefined) setResolvedIsStaff(data.isStaff);
-            if (data.isAdmin !== undefined) setResolvedIsAdmin(data.isAdmin);
+          const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+          if (apiRes.ok) {
+            const payload = await apiRes.json();
+            if (payload.success && payload.data) {
+              const data = payload.data;
+              if (data.role) setResolvedRole(data.role);
+              if (data.isVip !== undefined) setResolvedIsVip(data.isVip);
+              if (data.isStaff !== undefined) setResolvedIsStaff(data.isStaff);
+              if (data.isAdmin !== undefined) setResolvedIsAdmin(data.isAdmin);
+            }
           }
         } catch (err) {
           console.warn('Could not fetch user profile role info for avatar modal:', err);
@@ -207,19 +208,19 @@ export function AvatarCreatorModal({
       // 1. Persist to localStorage for instant local/offline availability
       localStorage.setItem('gtavi_active_avatar', selectedAvatarUrl);
 
-      // 2. If authenticated, persist to user's Firestore document in userProfiles collection
+      // 2. If authenticated, persist to user's MongoDB profile
       if (currentUser?.uid) {
-        const userDocRef = doc(db, 'userProfiles', currentUser.uid);
         const timestamp = new Date().toISOString();
 
-        await setDoc(
-          userDocRef,
-          {
+        await fetch('/api/user/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: currentUser.uid,
             avatar: selectedAvatarUrl,
             updatedAt: timestamp
-          },
-          { merge: true }
-        );
+          })
+        });
 
         // 3. Update Firebase Auth user photoURL
         try {

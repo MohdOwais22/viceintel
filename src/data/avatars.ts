@@ -849,8 +849,8 @@ export function resolveApplicantAvatar(avatarUrl?: string | null, usernameOrTag?
       return matchedPreset.fallbackSvgDataUri || matchedPreset.url;
     }
 
-    // 3. If it's a valid external HTTP(S) image URL (and not an old broken api.dicebear endpoint)
-    if ((cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) && !cleanUrl.includes('api.dicebear.com/7.x') && !cleanUrl.includes('api.dicebear.com/9.x')) {
+    // 3. If it's a valid external HTTP(S) image URL (e.g. Dicebear, Google, Discord, UploadThing, custom CDN)
+    if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
       return cleanUrl;
     }
   }

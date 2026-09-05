@@ -16,6 +16,9 @@
     "allowJs": true,
     "jsx": "preserve",
     "paths": {
+      "firebase/firestore": [
+        "./src/lib/db/firestoreMongoAdapter.ts"
+      ],
       "@/*": [
         "./*"
       ]

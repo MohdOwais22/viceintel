@@ -22,6 +22,7 @@ export interface RtdbMessage {
   text: string;
   channel: string;
   timestamp: string;
+  isBot?: boolean;
   isVip?: boolean;
   isMod?: boolean;
   isAdmin?: boolean;
@@ -251,7 +252,15 @@ export async function deleteRtdbChannel(channelId: string): Promise<boolean> {
 
   try {
     const chanRef = ref(rtdb, `customChannels/${channelId}`);
-    await remove(chanRef);
+    // Broadcast explicit deletion state so active client listeners receive update immediately
+    await set(chanRef, { isDeleted: true, deleted: true, status: 'Deleted', id: channelId });
+    setTimeout(async () => {
+      try {
+        await remove(chanRef);
+      } catch (e) {
+        // Ignore background removal error if already removed
+      }
+    }, 1500);
     return true;
   } catch (err) {
     console.warn('RTDB channel delete warning:', err);

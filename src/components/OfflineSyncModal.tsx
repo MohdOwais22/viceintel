@@ -106,23 +106,23 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({ isOpen, onCl
       return;
     }
     setIsSyncing(true);
-    setSyncProgressMessage('Connecting to Google Cloud Firestore Live Gateway...');
+    setSyncProgressMessage('Connecting to Vice City Central Database...');
 
     try {
       await new Promise((r) => setTimeout(r, 250));
-      setSyncProgressMessage('Pulling master vehicle catalog bundles (Thanh Le Pattern)...');
+      setSyncProgressMessage('Fetching vehicle catalog from database...');
       
       await new Promise((r) => setTimeout(r, 250));
-      setSyncProgressMessage('Pulling master weapon TTK matrices & custom staff specs...');
+      setSyncProgressMessage('Fetching weapon catalog & ballistics specs...');
       
       await new Promise((r) => setTimeout(r, 250));
-      setSyncProgressMessage('Pulling master map POI coordinates & custom landmark coordinates...');
+      setSyncProgressMessage('Fetching map locations & landmark coordinates...');
 
       await new Promise((r) => setTimeout(r, 250));
-      setSyncProgressMessage('Pulling master character gallery & syndicate lore...');
+      setSyncProgressMessage('Fetching character gallery & syndicate lore...');
 
       await new Promise((r) => setTimeout(r, 200));
-      setSyncProgressMessage('Compacting database payloads and updating Local Browser Caches...');
+      setSyncProgressMessage('Updating local browser offline cache...');
 
       const newMeta = await forceSyncFirestoreToLocal();
       setCacheStats(newMeta);

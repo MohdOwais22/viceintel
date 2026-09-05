@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   MessageSquare,
   Users,
@@ -280,6 +280,71 @@ export const formatChatTimestamp = (timestamp: any, useUtc: boolean = false): st
   const { dateLabel, timeLabel } = getChatMessageDateAndTime(timestamp, useUtc);
   return `${dateLabel}, ${timeLabel}`;
 };
+
+/**
+ * Robustly merges and deduplicates chat messages from multiple transports (RTDB, REST, MongoDB).
+ * Automatically reconciles local optimistic messages ('local_...') with authoritative incoming messages,
+ * preventing double-message rendering.
+ */
+export function mergeChatMessages(existing: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  let result = [...existing];
+
+  for (const inc of incoming) {
+    if (!inc) continue;
+
+    // 1. Exact ID match: update message in place (preserving reactions or deletion states)
+    const exactIdIdx = result.findIndex(p => p.id === inc.id);
+    if (exactIdIdx !== -1) {
+      result[exactIdIdx] = {
+        ...result[exactIdIdx],
+        ...inc,
+        reactions: { ...(result[exactIdIdx].reactions || {}), ...(inc.reactions || {}) }
+      };
+      continue;
+    }
+
+    // 2. Optimistic message reconciliation:
+    // If incoming message matches an optimistic local message (id starting with 'local_')
+    // from the same user in the same channel with identical text, reconcile it in place!
+    const incTime = parseToDate(inc.timestamp)?.getTime() || Date.now();
+    const optIdx = result.findIndex(p => {
+      if (!p.id || !p.id.startsWith('local_')) return false;
+      if (p.channel !== inc.channel) return false;
+      if (p.user !== inc.user) return false;
+      if ((p.content || '').trim() !== (inc.content || '').trim()) return false;
+      const pTime = parseToDate(p.timestamp)?.getTime() || 0;
+      return Math.abs(incTime - pTime) < 120000; // within 2 minutes
+    });
+
+    if (optIdx !== -1) {
+      result[optIdx] = {
+        ...result[optIdx],
+        ...inc,
+        id: inc.id // replace temporary local_ id with authoritative message id
+      };
+      continue;
+    }
+
+    // 3. Multi-transport deduplication:
+    // Check if another confirmed message already exists with identical content, user, and channel within 10 seconds
+    const isDuplicate = result.some(p => {
+      if (p.id === inc.id) return true;
+      if (p.channel === inc.channel && p.user === inc.user && (p.content || '').trim() === (inc.content || '').trim()) {
+        const pTime = parseToDate(p.timestamp)?.getTime() || 0;
+        if (p.timestamp === inc.timestamp || Math.abs(incTime - pTime) < 10000) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (!isDuplicate) {
+      result.push(inc);
+    }
+  }
+
+  return result;
+}
 
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
@@ -1691,7 +1756,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
           const data = snap.data();
           setUserProfileData(data);
           const vip = data.isVip === true || data.role === 'VIP Member' || isVipActive;
-          const adm = data.role === 'Admin' || data.isAdmin === true || currentUser.email === 'admin@vicecity.app' || currentUser.email === 'lucia.vice@outlook.com';
+          const adm = data.role === 'Admin' || data.isAdmin === true;
           const stf = adm || data.role === 'Staff' || data.isStaff === true;
           setIsVipUser(vip);
           setIsAdminUser(adm || isAdmin);
@@ -1708,35 +1773,101 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     return () => unsub();
   }, [currentUser, isVipActive, isAdmin, isStaff]);
 
-  // Sync custom VIP channels with Realtime Database & Firestore & auto-expire 24h deletion requests
+  // Helper to synchronize custom VIP channel changes to MongoDB
+  const syncChannelToMongo = useCallback(async (channelId: string, data: any, isDelete = false) => {
+    try {
+      if (isDelete) {
+        await fetch(`/api/db/customChannels/${channelId}`, { method: 'DELETE' });
+      } else {
+        await fetch(`/api/db/customChannels/${channelId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: channelId, ...data })
+        });
+      }
+    } catch (err) {
+      console.warn('MongoDB channel sync notice:', err);
+    }
+  }, []);
+
+  // Sync custom VIP channels with MongoDB & Realtime Database & auto-expire 24h deletion requests
   useEffect(() => {
-    let unsubChannels: () => void = () => {};
     let unsubRtdbChannels: () => void = () => {};
 
-    // 1. Subscribe to Realtime Database custom channels
-    try {
-      unsubRtdbChannels = subscribeRtdbChannels((rtdbChannels) => {
-        if (rtdbChannels && rtdbChannels.length > 0) {
-          setCustomChannels(prev => {
-            const map = new Map<string, CustomChannel>();
-            INITIAL_CUSTOM_CHANNELS.forEach(c => map.set(c.id, c));
-            prev.forEach(c => map.set(c.id, c));
-            rtdbChannels.forEach(c => {
-              if (c.isDeleted || c.deleted) {
-                map.delete(c.id);
-              } else {
-                map.set(c.id, {
+    // 1. Fetch channels from MongoDB customChannels collection
+    const fetchMongoChannels = async () => {
+      try {
+        const res = await fetch('/api/db/customChannels');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) {
+            const activeMongoMap = new Map<string, any>();
+
+            json.data.forEach((c: any) => {
+              const id = c.id || c.docId || String(c._id);
+              if (!c.isDeleted && !c.deleted && c.status !== 'Deleted') {
+                activeMongoMap.set(id, c);
+              }
+            });
+
+            setCustomChannels(prev => {
+              const map = new Map<string, CustomChannel>();
+              INITIAL_CUSTOM_CHANNELS.forEach(c => map.set(c.id, c));
+
+              activeMongoMap.forEach((c: any, id: string) => {
+                map.set(id, {
                   ...c,
+                  id,
+                  name: c.name || id,
                   members: Array.isArray(c.members) ? c.members : [],
                   pendingRequests: Array.isArray(c.pendingRequests) ? c.pendingRequests : [],
                   admins: Array.isArray(c.admins) ? c.admins : [],
                   bannedUsers: Array.isArray(c.bannedUsers) ? c.bannedUsers : []
                 } as CustomChannel);
-              }
+              });
+
+              return Array.from(map.values());
             });
-            return Array.from(map.values());
-          });
+          }
         }
+      } catch (err) {
+        console.warn('MongoDB customChannels sync notice:', err);
+      }
+    };
+
+    fetchMongoChannels();
+    const mongoInterval = setInterval(fetchMongoChannels, 15000);
+
+    // 2. Subscribe to Realtime Database custom channels
+    try {
+      unsubRtdbChannels = subscribeRtdbChannels((rtdbChannels) => {
+        if (!Array.isArray(rtdbChannels)) return;
+        setCustomChannels(prev => {
+          const map = new Map<string, CustomChannel>();
+          INITIAL_CUSTOM_CHANNELS.forEach(c => map.set(c.id, c));
+
+          prev.forEach(c => {
+            if (!c.id.startsWith('vip_')) {
+              map.set(c.id, c);
+            }
+          });
+
+          rtdbChannels.forEach(c => {
+            if (c.isDeleted || c.deleted || (c as any).status === 'Deleted') {
+              map.delete(c.id);
+            } else {
+              map.set(c.id, {
+                ...c,
+                members: Array.isArray(c.members) ? c.members : [],
+                pendingRequests: Array.isArray(c.pendingRequests) ? c.pendingRequests : [],
+                admins: Array.isArray(c.admins) ? c.admins : [],
+                bannedUsers: Array.isArray(c.bannedUsers) ? c.bannedUsers : []
+              } as CustomChannel);
+            }
+          });
+
+          return Array.from(map.values());
+        });
       });
     } catch (e) {
       console.warn('RTDB channels subscription warning:', e);
@@ -1744,6 +1875,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
 
     return () => {
       unsubRtdbChannels();
+      clearInterval(mongoInterval);
     };
   }, []);
 
@@ -1868,7 +2000,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     setTimeout(() => setReportSuccessToast(null), 4000);
   };
 
-  const isModerator = isAdminUser || isStaffUser || isAdmin || isStaff || (currentUser?.email === 'admin@vicecity.app') || (currentUser?.email === 'lucia.vice@outlook.com');
+  const isModerator = isAdminUser || isStaffUser || isAdmin || isStaff;
   
   // Attachment state
   const [attachedItem, setAttachedItem] = useState<ChatAttachment | null>(null);
@@ -2194,6 +2326,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     messageId: string;
     authorName: string;
     text: string;
+    channelId?: string;
   } | null>(null);
   const [reportReason, setReportReason] = useState<string>('adult');
   const [reportDetails, setReportDetails] = useState<string>('');
@@ -2255,6 +2388,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       console.warn('Firestore channel creation fallback:', err);
     }
     saveRtdbChannel(newChan).catch(err => console.warn('RTDB channel creation notice:', err));
+    syncChannelToMongo(newChan.id, newChan);
 
     setCustomChannels(prev => {
       const map = new Map<string, CustomChannel>();
@@ -2310,6 +2444,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       ];
 
       setCustomChannels(prev => prev.map(c => c.id === channel.id ? { ...c, pendingRequests: updatedRequests } : c));
+      syncChannelToMongo(channel.id, { pendingRequests: updatedRequests });
 
       await safeFirestoreWrite(async () => {
         const chanRef = doc(db, 'customChannels', channel.id);
@@ -2342,6 +2477,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       // Public Hub: Instant Join
       const updatedMembers = [...currentMembers, activeUsername];
       setCustomChannels(prev => prev.map(c => c.id === channel.id ? { ...c, members: updatedMembers } : c));
+      syncChannelToMongo(channel.id, { members: updatedMembers });
 
       try {
         const chanRef = doc(db, 'customChannels', channel.id);
@@ -2376,6 +2512,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
 
     const updatedMembers = (channel.members || []).filter(m => m !== activeUsername);
     setCustomChannels(prev => prev.map(c => c.id === channelId ? { ...c, members: updatedMembers } : c));
+    syncChannelToMongo(channelId, { members: updatedMembers });
 
     try {
       const chanRef = doc(db, 'customChannels', channelId);
@@ -2404,6 +2541,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     if (managingChannel?.id === channelId) {
       setManagingChannel(prev => prev ? { ...prev, members: updatedMembers, pendingRequests: updatedRequests } : null);
     }
+    syncChannelToMongo(channelId, { members: updatedMembers, pendingRequests: updatedRequests });
 
     try {
       const chanRef = doc(db, 'customChannels', channelId);
@@ -2427,6 +2565,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     if (managingChannel?.id === channelId) {
       setManagingChannel(prev => prev ? { ...prev, pendingRequests: updatedRequests } : null);
     }
+    syncChannelToMongo(channelId, { pendingRequests: updatedRequests });
 
     try {
       const chanRef = doc(db, 'customChannels', channelId);
@@ -2464,6 +2603,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     if (managingChannel?.id === channelId) {
       setManagingChannel(prev => prev ? { ...prev, members: updatedMembers } : null);
     }
+    syncChannelToMongo(channelId, { members: updatedMembers });
 
     try {
       const chanRef = doc(db, 'customChannels', channelId);
@@ -2506,6 +2646,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     if (managingChannel?.id === channelId) {
       setManagingChannel(prev => prev ? { ...prev, members: updatedMembers, bannedUsers: updatedBanned } : null);
     }
+    syncChannelToMongo(channelId, { members: updatedMembers, bannedUsers: updatedBanned });
 
     try {
       const chanRef = doc(db, 'customChannels', channelId);
@@ -2529,6 +2670,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     if (managingChannel?.id === channelId) {
       setManagingChannel(prev => prev ? { ...prev, bannedUsers: updatedBanned } : null);
     }
+    syncChannelToMongo(channelId, { bannedUsers: updatedBanned });
 
     try {
       const chanRef = doc(db, 'customChannels', channelId);
@@ -2558,16 +2700,23 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       }
     }
 
+    const approvalId = `pending_deletion_${channel.id}_${Date.now()}`;
+    const deletionPayload = {
+      id: approvalId,
+      type: 'channel_deletion_request',
+      title: `Request Channel Deletion: #${channel.name}`,
+      submittedBy: activeUsername,
+      submittedAt: 'Just now',
+      detail: `Creator @${activeUsername} requested permanent deletion of VIP hub "${channel.name}" (${channel.description}).`,
+      channelId: channel.id,
+      requestedAtMs: nowMs,
+      createdAt: new Date().toISOString()
+    };
+
     await safeFirestoreWrite(async () => {
-      await addDoc(collection(db, 'pendingApprovals'), {
-        type: 'channel_deletion_request',
-        title: `Request Channel Deletion: #${channel.name}`,
-        submittedBy: activeUsername,
-        submittedAt: 'Just now',
-        detail: `Creator @${activeUsername} requested permanent deletion of VIP hub "${channel.name}" (${channel.description}).`,
-        channelId: channel.id,
-        requestedAtMs: nowMs,
-        createdAt: new Date().toISOString()
+      await setDoc(doc(db, 'pendingApprovals', approvalId), {
+        ...deletionPayload,
+        createdAt: serverTimestamp()
       });
 
       await setDoc(doc(db, 'customChannels', channel.id), {
@@ -2576,13 +2725,55 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       }, { merge: true });
     });
 
+    try {
+      await fetch(`/api/admin/cms/pendingApprovals/${approvalId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deletionPayload)
+      });
+    } catch (err) {
+      console.warn('REST API channel deletion report submit error:', err);
+    }
+
     setCustomChannels(prev => prev.map(c => c.id === channel.id ? { ...c, deletionRequested: true, deletionRequestedAtMs: nowMs } : c));
     if (managingChannel?.id === channel.id) {
       setManagingChannel(prev => prev ? { ...prev, deletionRequested: true, deletionRequestedAtMs: nowMs } : null);
     }
+    syncChannelToMongo(channel.id, { deletionRequested: true, deletionRequestedAtMs: nowMs });
 
     setReportSuccessToast('⚠️ Deletion request submitted to Staff! Request will expire after 24 hours if not approved.');
     setTimeout(() => setReportSuccessToast(null), 5000);
+  };
+
+  // Immediate Direct Channel Deletion (Staff / Admin / Hub Creator Action)
+  const handleDirectDeleteChannel = async (channel: CustomChannel) => {
+    try {
+      await safeFirestoreWrite(async () => {
+        await deleteDoc(doc(db, 'customChannels', channel.id));
+      });
+    } catch (e) {
+      console.warn('Firestore channel delete notice:', e);
+    }
+
+    try {
+      await Promise.allSettled([
+        fetch(`/api/db/customChannels/${channel.id}`, { method: 'DELETE' }),
+        fetch(`/api/admin/cms/customChannels/${channel.id}`, { method: 'DELETE' })
+      ]);
+    } catch (e) {
+      console.warn('REST API channel delete notice:', e);
+    }
+
+    deleteRtdbChannel(channel.id).catch(e => console.warn('RTDB channel delete notice:', e));
+
+    setCustomChannels(prev => prev.filter(c => c.id !== channel.id));
+    if (activeChannel === channel.id) {
+      setActiveChannel('general');
+    }
+    setManagingChannel(null);
+
+    setReportSuccessToast(`🗑️ Custom Hub #${channel.name} permanently deleted!`);
+    setTimeout(() => setReportSuccessToast(null), 4000);
   };
 
   // Copy Channel Shareable Invite Link
@@ -2675,6 +2866,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     if (managingChannel?.id === channelId) {
       setManagingChannel(prev => prev ? { ...prev, admins: updatedAdmins } : null);
     }
+    syncChannelToMongo(channelId, { admins: updatedAdmins });
 
     try {
       const chanRef = doc(db, 'customChannels', channelId);
@@ -2932,19 +3124,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
             reactions: m.reactions || {}
           }));
 
-          setMessages(prev => {
-            const newToAdd = formattedRtdbMsgs.filter(m =>
-              !prev.some(p => p.id === m.id || (p.content === m.content && p.user === m.user && String(p.timestamp) === String(m.timestamp)))
-            );
-            const updated = prev.map(p => {
-              const rtdbMatch = formattedRtdbMsgs.find(m => m.id === p.id);
-              if (rtdbMatch && rtdbMatch.isDeleted) {
-                return { ...p, isDeleted: true, content: 'This message was deleted', attachment: undefined };
-              }
-              return p;
-            });
-            return [...updated, ...newToAdd];
-          });
+          setMessages(prev => mergeChatMessages(prev, formattedRtdbMsgs));
         }
       });
     } catch (e) {
@@ -2975,12 +3155,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
             attachment: m.isDeleted ? undefined : m.attachment,
             reactions: { '🔥': 2, '👍': 1 }
           }));
-          setMessages(prev => {
-            const newToAdd = apiMsgs.filter(m =>
-              !prev.some(p => p.id === m.id || (p.content === m.content && p.user === m.user && p.timestamp === m.timestamp))
-            );
-            return [...prev, ...newToAdd];
-          });
+          setMessages(prev => mergeChatMessages(prev, apiMsgs));
         }
       })
       .catch(err => console.warn('Chat API Sync fallback note:', err));
@@ -3074,10 +3249,33 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     prevMessagesCountRef.current = messages.length;
   }, [messages.length, activeChannel]);
 
-  const filteredMessages = messages.filter(m => m.channel === activeChannel && (
-    m.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.user.toLowerCase().includes(searchQuery.toLowerCase())
-  ));
+  const filteredMessages = useMemo(() => {
+    const channelMsgs = messages.filter(m => m.channel === activeChannel && (
+      m.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.user.toLowerCase().includes(searchQuery.toLowerCase())
+    ));
+
+    const seenIds = new Set<string>();
+    const seenContentKeys = new Set<string>();
+    const result: ChatMessage[] = [];
+
+    for (const msg of channelMsgs) {
+      if (seenIds.has(msg.id)) continue;
+      seenIds.add(msg.id);
+
+      // Deduplication guard against same content and user within 15 seconds
+      const timeMs = parseToDate(msg.timestamp)?.getTime() || 0;
+      const timeBucket = Math.floor(timeMs / 15000);
+      const contentKey = `${msg.user.toLowerCase()}_${msg.content.trim().toLowerCase()}_${timeBucket}`;
+
+      if (seenContentKeys.has(contentKey) && msg.id.startsWith('local_')) {
+        continue;
+      }
+      seenContentKeys.add(contentKey);
+      result.push(msg);
+    }
+    return result;
+  }, [messages, activeChannel, searchQuery]);
 
   // Handle Tagging user in text input
   const handleTagUser = (targetUsername: string) => {
@@ -3170,23 +3368,43 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     setReportSubmitting(true);
     const nowIso = new Date().toISOString();
     const reporterName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'ViceCityPlayer';
+    const reportDocId = `pending_report_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    const reportPayload = {
+      id: reportDocId,
+      type: 'message_report',
+      title: `Report: ${reportReason.toUpperCase()} by ${reportModalTarget.authorName}`,
+      author: reportModalTarget.authorName,
+      reporter: reporterName,
+      messageId: reportModalTarget.messageId,
+      content: reportModalTarget.text,
+      reason: reportReason,
+      details: reportDetails,
+      channel: reportModalTarget.channelId || 'general',
+      status: 'pending',
+      timestamp: nowIso
+    };
 
     try {
-      await addDoc(collection(db, 'pendingApprovals'), {
-        type: 'message_report',
-        title: `Report: ${reportReason.toUpperCase()} by ${reportModalTarget.authorName}`,
-        author: reportModalTarget.authorName,
-        reporter: reporterName,
-        messageId: reportModalTarget.messageId,
-        content: reportModalTarget.text,
-        reason: reportReason,
-        details: reportDetails,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        timestamp: nowIso
+      await setDoc(doc(db, 'pendingApprovals', reportDocId), {
+        ...reportPayload,
+        createdAt: serverTimestamp()
       });
     } catch (err) {
       console.warn('Report Firestore submission error:', err);
+    }
+
+    try {
+      await fetch(`/api/admin/cms/pendingApprovals/${reportDocId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...reportPayload,
+          createdAt: nowIso
+        })
+      });
+    } catch (err) {
+      console.warn('REST API report submit error:', err);
     }
 
     setReportSubmitting(false);
@@ -3236,7 +3454,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       avatar: currentAvatar,
       channel: activeChannel,
       content: newText,
-      timestamp: formatChatTimestamp(nowIso),
+      timestamp: nowIso,
       isVip: isVipUser,
       isMod: isStaffUser,
       isAdmin: isAdminUser,
@@ -3245,10 +3463,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       reactions: {}
     };
 
-    setMessages(prev => {
-      if (prev.some(m => m.content === optimisticMsg.content && m.user === optimisticMsg.user && m.timestamp === optimisticMsg.timestamp)) return prev;
-      return [...prev, optimisticMsg];
-    });
+    setMessages(prev => mergeChatMessages(prev, [optimisticMsg]));
 
     setMySentMessageIds(prev => {
       const next = [...prev, tempMsgId];
@@ -3272,6 +3487,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     }).catch(() => null);
 
     if (rtdbMsgId) {
+      setMessages(prev => prev.map(m => m.id === tempMsgId ? { ...m, id: rtdbMsgId } : m));
       setMySentMessageIds(prev => {
         const next = [...prev, rtdbMsgId];
         try { localStorage.setItem('gta6_my_chat_msg_ids', JSON.stringify(next)); } catch {}
@@ -3384,8 +3600,10 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       });
       const data = await res.json();
       if (data?.success && data?.data?.id) {
+        const serverId = data.data.id;
+        setMessages(prev => prev.map(m => (m.id === tempMsgId || m.id === rtdbMsgId) ? { ...m, id: serverId } : m));
         setMySentMessageIds(prev => {
-          const next = [...prev, data.data.id];
+          const next = [...prev, serverId];
           try { localStorage.setItem('gta6_my_chat_msg_ids', JSON.stringify(next)); } catch {}
           return next;
         });
@@ -4585,7 +4803,7 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
                             {!msg.isDeleted && !isOwnMessage && (
                               <button
                                 type="button"
-                                onClick={() => setReportModalTarget({ messageId: msg.id, authorName: msg.user, text: msg.content })}
+                                onClick={() => setReportModalTarget({ messageId: msg.id, authorName: msg.user, text: msg.content, channelId: activeChannel || 'general' })}
                                 className="p-1 hover:bg-amber-500/20 text-zinc-500 hover:text-amber-400 rounded transition flex items-center gap-1 text-[10px] font-bold cursor-pointer"
                                 title="Report message for adult content, phishing, or harassment"
                               >
@@ -6458,31 +6676,50 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
               </div>
             )}
 
-            {/* Request Staff Deletion Notice */}
-            <div className="bg-rose-950/30 border border-rose-500/40 p-3.5 rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-rose-400" /> Channel Deletion Safety Policy
-                </span>
-                <span className="text-[10px] text-zinc-400 italic">Staff Authorization Required</span>
-              </div>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">
-                To prevent malicious crew hijackings or accidental data loss, VIP channels are deleted exclusively by Vice City Staff upon creator request.
-              </p>
-              {managingChannel.deletionRequested ? (
-                <div className="px-3 py-1.5 bg-amber-500/20 text-amber-300 rounded-lg text-xs font-bold border border-amber-500/30 text-center">
-                  ⏳ Deletion Request Pending Staff Review
+            {/* Request Staff Deletion or Direct Delete */}
+            {(() => {
+              const currentActiveUsername = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'ViceCityPlayer';
+              const canDeleteHubDirect = isAdminUser || isStaffUser || managingChannel.creatorName === currentActiveUsername || managingChannel.creatorId === (currentUser?.uid || '');
+
+              return (
+                <div className="bg-rose-950/30 border border-rose-500/40 p-3.5 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                      <ShieldAlert className="w-4 h-4 text-rose-400" /> Channel Deletion Controls
+                    </span>
+                    <span className="text-[10px] text-zinc-400 italic">
+                      {canDeleteHubDirect ? 'Authorized Manager' : 'Staff Authorization Required'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Deleting a channel permanently removes all messages, chat logs, and member permissions across Vice City servers.
+                  </p>
+                  {canDeleteHubDirect ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDirectDeleteChannel(managingChannel)}
+                      className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete Hub Permanently</span>
+                    </button>
+                  ) : managingChannel.deletionRequested ? (
+                    <div className="px-3 py-1.5 bg-amber-500/20 text-amber-300 rounded-lg text-xs font-bold border border-amber-500/30 text-center">
+                      ⏳ Deletion Request Pending Staff Review
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleRequestStaffDeletion(managingChannel)}
+                      className="w-full py-2 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Request Staff Deletion</span>
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <button
-                  onClick={() => handleRequestStaffDeletion(managingChannel)}
-                  className="w-full py-2 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Request Staff Deletion</span>
-                </button>
-              )}
-            </div>
+              );
+            })()}
 
             <div className="flex justify-end pt-2 border-t border-zinc-800">
               <button

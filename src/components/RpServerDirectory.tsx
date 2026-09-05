@@ -127,8 +127,7 @@ export const RpServerDirectory: React.FC<RpServerDirectoryProps> = ({
     (currentUser as any)?.userLevel === 'L4' ||
     (currentUser as any)?.role === 'L4 Admin' ||
     (currentUser as any)?.role === 'Admin' ||
-    (currentUser as any)?.isAdmin ||
-    (currentUser?.email && ['admin@vicecity.app', 'l4_admin@vicecity.app'].includes(currentUser.email.toLowerCase()))
+    (currentUser as any)?.isAdmin
   );
 
   const isL3Staff = Boolean(

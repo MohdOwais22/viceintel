@@ -41,6 +41,7 @@ function sortBusinesses(items: Business[]): Business[] {
 export const businessBundleEngine = new BundledStoreEngine<Business>({
   bundleCollection: 'business_catalog_bundles',
   bundleDocId: 'master_business_bundle',
+  apiCollection: 'businesses',
   storageKey: 'gtavi_cached_businesses',
   updateEventName: BUSINESSES_UPDATED_EVENT,
   defaultItems: BUSINESSES_DATA,

@@ -1,13 +1,11 @@
-import { collection, query, where, getDocs, onSnapshot, limit } from 'firebase/firestore';
-import { db } from './firebase';
-import { globalGamerTagEngine, MetaGamerTagEngine } from './bloomFilterGamerTagEngine';
+import { globalGamerTagEngine } from './bloomFilterGamerTagEngine';
 
 export interface GamerTagValidationResult {
   isValid: boolean;
   isUnique: boolean;
   cleanTag: string;
   error?: string;
-  level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE';
+  level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE' | 'L3_MONGODB';
   latencyMs?: number;
   suggestions?: string[];
 }
@@ -23,7 +21,7 @@ const RESERVED_WORDS = [
 let isSnapshotInitialized = false;
 
 /**
- * Initializes real-time listener to keep the Meta Bloom Filter & Radix Trie synchronized with Firestore
+ * Initializes real-time listener to keep the Meta Bloom Filter & Radix Trie synchronized with MongoDB
  */
 export function initGamerTagEngineListener(): () => void {
   if (isSnapshotInitialized || typeof window === 'undefined') {
@@ -31,32 +29,8 @@ export function initGamerTagEngineListener(): () => void {
   }
   isSnapshotInitialized = true;
 
-  try {
-    const q = query(collection(db, 'userProfiles'), limit(10));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const batch: Array<{ tag: string; uid?: string }> = [];
-        snapshot.docs.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data?.username) {
-            batch.push({ tag: data.username, uid: docSnap.id });
-          }
-          if (data?.usernameLower && data.usernameLower !== data.username?.toLowerCase()) {
-            batch.push({ tag: data.usernameLower, uid: docSnap.id });
-          }
-        });
-        globalGamerTagEngine.bulkHydrate(batch);
-      },
-      (err) => {
-        console.warn('[GamerTag Engine] Snapshot listener warning:', err?.message);
-      }
-    );
-    return unsubscribe;
-  } catch (err) {
-    console.warn('[GamerTag Engine] Init error:', err);
-    return () => {};
-  }
+  // Real-time listener is handled on-demand via API verification. We can optionally fetch initial list here
+  return () => {};
 }
 
 // Auto-trigger initialization in client environments
@@ -115,8 +89,7 @@ export function validateGamerTagSyntax(rawTag: string): { isValid: boolean; clea
  *    - 0% False Negatives: If Bloom Filter says "Not Taken", it is 100% available!
  * 2. L2 Radix Trie / Set:
  *    - O(L) String Prefix Resolution for immediate in-memory match confirmation
- * 3. L3 Firestore & Server API Check:
- *    - Guaranteed fallback and real-time replication
+ * 3. L3 MongoDB single source of truth verification
  */
 export async function checkGamerTagUniqueness(
   tag: string,
@@ -125,7 +98,7 @@ export async function checkGamerTagUniqueness(
   isUnique: boolean;
   cleanTag: string;
   error?: string;
-  level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE';
+  level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_MONGODB';
   latencyMs?: number;
 }> {
   const syntaxCheck = validateGamerTagSyntax(tag);
@@ -134,7 +107,6 @@ export async function checkGamerTagUniqueness(
   }
 
   const cleanTag = syntaxCheck.cleanTag;
-  const tagLower = cleanTag.toLowerCase();
 
   // 1. Check Meta-Grade In-Memory Engine (Bloom Filter + Radix Trie)
   const instantResult = globalGamerTagEngine.verifyInstant(cleanTag, currentUid);
@@ -153,74 +125,32 @@ export async function checkGamerTagUniqueness(
   try {
     const startL3 = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
-    // 2. Query by lowercase field in Firestore
-    const qLower = query(
-      collection(db, 'userProfiles'),
-      where('usernameLower', '==', tagLower)
-    );
-    const snapLower = await getDocs(qLower);
-
-    const duplicateByLower = snapLower.docs.find(d => d.id !== currentUid && d.data()?.uid !== currentUid);
-    if (duplicateByLower) {
-      globalGamerTagEngine.registerHandle(cleanTag, duplicateByLower.id);
+    // Query our single-source-of-truth MongoDB-backed endpoint!
+    const resp = await fetch(`/api/auth/check-gamertag?tag=${encodeURIComponent(cleanTag)}${currentUid ? `&uid=${encodeURIComponent(currentUid)}` : ''}`);
+    if (resp.ok) {
+      const data = await resp.json();
       const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startL3;
-      return {
-        isUnique: false,
-        cleanTag,
-        error: `⚠️ GamerTag "${cleanTag}" is already taken! GamerTags must be unique.`,
-        level: 'L3_FIRESTORE',
-        latencyMs: Math.max(0.1, Number(elapsed.toFixed(2)))
-      };
-    }
-
-    // 3. Query by standard username field as fallback
-    const qStandard = query(
-      collection(db, 'userProfiles'),
-      where('username', '==', cleanTag)
-    );
-    const snapStandard = await getDocs(qStandard);
-
-    const duplicateByStandard = snapStandard.docs.find(d => d.id !== currentUid && d.data()?.uid !== currentUid);
-    if (duplicateByStandard) {
-      globalGamerTagEngine.registerHandle(cleanTag, duplicateByStandard.id);
-      const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startL3;
-      return {
-        isUnique: false,
-        cleanTag,
-        error: `⚠️ GamerTag "${cleanTag}" is already taken! GamerTags must be unique.`,
-        level: 'L3_FIRESTORE',
-        latencyMs: Math.max(0.1, Number(elapsed.toFixed(2)))
-      };
-    }
-
-    // 4. Auxiliary Server-side verification check
-    try {
-      const resp = await fetch(`/api/auth/check-gamertag?tag=${encodeURIComponent(cleanTag)}${currentUid ? `&uid=${encodeURIComponent(currentUid)}` : ''}`);
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data && data.isUnique === false) {
-          globalGamerTagEngine.registerHandle(cleanTag);
-          return {
-            isUnique: false,
-            cleanTag,
-            error: data.error || `⚠️ GamerTag "${cleanTag}" is already taken! GamerTags must be unique.`,
-            level: 'L3_FIRESTORE'
-          };
-        }
+      if (data && data.isUnique === false) {
+        globalGamerTagEngine.registerHandle(cleanTag);
+        return {
+          isUnique: false,
+          cleanTag,
+          error: data.error || `⚠️ GamerTag "${cleanTag}" is already taken! GamerTags must be unique.`,
+          level: 'L3_MONGODB',
+          latencyMs: Math.max(0.1, Number(elapsed.toFixed(2)))
+        };
       }
-    } catch {
-      // server check is auxiliary fallback
     }
 
     const totalElapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startL3;
     return {
       isUnique: true,
       cleanTag,
-      level: instantResult.level === 'L1_BLOOM' ? 'L1_BLOOM' : 'L3_FIRESTORE',
+      level: instantResult.level === 'L1_BLOOM' ? 'L1_BLOOM' : 'L3_MONGODB',
       latencyMs: Math.max(0.01, Number((instantResult.latencyMs || totalElapsed).toFixed(2)))
     };
   } catch (err: any) {
-    console.warn('[GamerTag Validation] Firestore check warning:', err);
+    console.warn('[GamerTag Validation] MongoDB check failed, fallback to bloom filter:', err);
     return { isUnique: true, cleanTag, level: 'L1_BLOOM', latencyMs: instantResult.latencyMs };
   }
 }

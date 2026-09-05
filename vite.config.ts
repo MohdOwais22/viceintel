@@ -23,6 +23,7 @@ export default defineConfig(() => {
     },
     resolve: {
       alias: {
+        'firebase/firestore': path.resolve(__dirname, 'src/lib/db/firestoreMongoAdapter.ts'),
         '@': path.resolve(__dirname, '.'),
       },
       dedupe: ['react', 'react-dom'],

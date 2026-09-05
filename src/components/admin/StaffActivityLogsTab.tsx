@@ -70,14 +70,7 @@ export const StaffActivityLogsTab: React.FC<StaffActivityLogsTabProps> = ({
   const currentDisplayName = auth.currentUser?.displayName || currentUser?.displayName || 'Admin_L4_Lucia';
   
   // Strict L4 Admin Authorization Gate
-  const isL4Admin = Boolean(
-    propIsAdmin ||
-    isAdminUser(undefined, currentEmail) ||
-    currentEmail === 'admin@vicecity.app' ||
-    currentEmail === 'lucia.vice@outlook.com' ||
-    currentEmail === 'l4_admin@vicecity.app' ||
-    Boolean(currentDisplayName?.toUpperCase()?.includes('L4'))
-  );
+  const isL4Admin = Boolean(propIsAdmin);
 
   const [logs, setLogs] = useState<StaffAuditLog[]>(INITIAL_STAFF_AUDIT_LOGS);
   const [isLoading, setIsLoading] = useState(false);

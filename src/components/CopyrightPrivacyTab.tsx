@@ -23,11 +23,13 @@ import {
   ChevronDown,
   ChevronUp,
   Send,
-  MessageSquare
+  MessageSquare,
+  Cookie
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { copyToClipboard } from '../lib/copyUtils';
 import { ENV } from '../lib/envConfig';
+import { openCookiePreferencesModal } from '../lib/cookieConsent';
 
 interface CopyrightPrivacyTabProps {
   initialSection?: string;
@@ -91,7 +93,7 @@ export const CopyrightPrivacyTab: React.FC<CopyrightPrivacyTabProps> = ({
     },
     {
       q: 'How does ViceIntel handle player personal data and authentication?',
-      a: 'We implement Google Firebase Authentication with industry-standard encryption. We collect only what is strictly necessary to maintain your player profile (GamerTag, optional avatar, email for authentication, and saved vehicle builds). We NEVER sell, lease, or monetize your personal information or distribute it to third-party data brokers.'
+      a: 'We implement industry-standard end-to-end encrypted authentication. We collect only what is strictly necessary to maintain your player profile (GamerTag, optional avatar, email for authentication, and saved vehicle builds). We NEVER sell, lease, or monetize your personal information or distribute it to third-party data brokers.'
     },
     {
       q: 'Can Vice Credits (VC) or VIP Passes be exchanged for real money?',
@@ -418,7 +420,7 @@ export const CopyrightPrivacyTab: React.FC<CopyrightPrivacyTabProps> = ({
                     </div>
                     <ul className="text-xs text-zinc-400 space-y-2 list-disc pl-4 leading-relaxed">
                       <li>
-                        <strong className="text-zinc-300">Account Credentials:</strong> Email address, unique GamerTag, and chosen GTA VI avatar icon via Firebase Auth.
+                        <strong className="text-zinc-300">Account Credentials:</strong> Email address, unique GamerTag, and chosen GTA VI avatar icon for player identification.
                       </li>
                       <li>
                         <strong className="text-zinc-300">Player Submissions:</strong> Custom vehicle setups, handling.meta tuning presets, and public community chat messages.
@@ -510,6 +512,17 @@ export const CopyrightPrivacyTab: React.FC<CopyrightPrivacyTabProps> = ({
                   <p className="text-zinc-400">
                     You can clear these stored cached datasets at any time using our built-in <strong>Offline Storage Manager</strong> or through your web browser settings.
                   </p>
+
+                  <div className="pt-2">
+                    <button
+                      id="privacy-open-cookie-preferences-btn"
+                      onClick={() => openCookiePreferencesModal()}
+                      className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-md active:scale-95"
+                    >
+                      <Cookie className="w-4 h-4 text-amber-400" />
+                      <span>Manage Cookie & Telemetry Preferences</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>

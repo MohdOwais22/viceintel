@@ -30,7 +30,11 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  RefreshCw
+  RefreshCw,
+  Lock,
+  Crown,
+  ShieldAlert,
+  LogIn
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -41,7 +45,11 @@ interface ConfigVisualEditorProps {
   isAiLoading: boolean;
   aiStatusMessage?: string;
   isProUser: boolean;
+  hasL2Clearance?: boolean;
+  userClearanceLevel?: number;
+  currentUser?: any;
   onOpenProModal: () => void;
+  onNavigateToAuth?: () => void;
 }
 
 export const ConfigVisualEditor: React.FC<ConfigVisualEditorProps> = ({
@@ -51,7 +59,11 @@ export const ConfigVisualEditor: React.FC<ConfigVisualEditorProps> = ({
   isAiLoading,
   aiStatusMessage,
   isProUser,
-  onOpenProModal
+  hasL2Clearance = false,
+  userClearanceLevel = 0,
+  currentUser = null,
+  onOpenProModal,
+  onNavigateToAuth
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'baselines' | 'jobs' | 'items' | 'handling' | 'ai_prompter'>('jobs');
   const [aiPrompt, setAiPrompt] = useState<string>('');
@@ -206,33 +218,35 @@ export const ConfigVisualEditor: React.FC<ConfigVisualEditorProps> = ({
   return (
     <div className="flex flex-col h-full bg-[#0d1117] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
       {/* Top Header & Framework Selection */}
-      <div className="p-4 border-b border-white/10 bg-black/40">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-          <div>
+      <div className="p-3.5 sm:p-4 border-b border-white/10 bg-black/40 space-y-3">
+        {/* Row 1: Title & Engine Badge */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 text-xs font-black uppercase tracking-wider rounded bg-rose-500/20 text-rose-400 border border-rose-500/40">
+              <span className="px-2 py-0.5 text-[11px] font-black uppercase tracking-wider rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 shrink-0">
                 Visual Studio
               </span>
-              <span className="text-xs text-zinc-400 font-mono">Zero-Syntax-Error Engine</span>
+              <span className="text-xs text-zinc-400 font-mono truncate">Zero-Syntax-Error Engine</span>
             </div>
             <input
               type="text"
               value={project.projectName}
               onChange={(e) => updateProjectField('projectName', e.target.value)}
-              className="mt-1 text-lg font-bold text-white bg-transparent border-b border-transparent hover:border-white/20 focus:border-rose-500 focus:outline-none w-full transition-colors"
+              className="mt-1 text-base sm:text-lg font-bold text-white bg-transparent border-b border-transparent hover:border-white/20 focus:border-rose-500 focus:outline-none w-full transition-colors truncate"
               placeholder="Project Name..."
+              title={project.projectName}
             />
           </div>
 
-          {/* Framework Picker */}
-          <div className="flex items-center gap-1 bg-zinc-900/90 p-1 rounded-lg border border-white/10">
+          {/* Framework Picker as Tactile Segmented Bar */}
+          <div className="flex items-center gap-1 bg-zinc-900/90 p-1 rounded-xl border border-white/10 shrink-0 overflow-x-auto">
             {(['qbcore', 'esx_legacy', 'standalone_lua', 'handling_meta'] as SupportedFramework[]).map((fw) => (
               <button
                 key={fw}
                 onClick={() => updateProjectField('framework', fw)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                   project.framework === fw
-                    ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-lg shadow-rose-500/25'
+                    ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-md shadow-rose-500/30'
                     : 'text-zinc-400 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -245,112 +259,134 @@ export const ConfigVisualEditor: React.FC<ConfigVisualEditorProps> = ({
           </div>
         </div>
 
-        {/* Real-time Economy Telemetry Banner */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
-          <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-white/5 flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-bold text-zinc-400">Avg Hourly Wage</span>
-              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">Live Math</span>
+        {/* Real-time Economy Telemetry Banner - Responsive Grid */}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 sm:gap-2.5 pt-1">
+          <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-white/5 flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] uppercase font-bold text-zinc-400 truncate">Avg Hourly Wage</span>
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 shrink-0 font-bold">Live Math</span>
             </div>
-            <span className="text-base font-black text-emerald-400 font-mono">
-              ${metrics.avgHourlyWage.toLocaleString()}<span className="text-xs text-zinc-400">/hr</span>
-            </span>
-            <span className="text-[9px] text-zinc-400 truncate">
-              Civ: ${metrics.legalAvgHourlyWage.toLocaleString()} · Crime: ${metrics.illegalAvgHourlyWage.toLocaleString()}
-            </span>
-          </div>
-
-          <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-white/5 flex flex-col justify-between">
-            <span className="text-[10px] uppercase font-bold text-zinc-400">Grind to Supercar</span>
-            <span className="text-base font-black text-amber-400 font-mono">
-              {metrics.hoursToSupercar} <span className="text-xs text-zinc-400">hrs</span>
-            </span>
-            <span className="text-[9px] text-zinc-400 truncate">
-              Benchmark: ${(project.economyBaselines.targetSupercarPrice / 1000).toFixed(0)}k car
+            <div className="my-0.5">
+              <span className="text-base sm:text-lg font-black text-emerald-400 font-mono">
+                ${metrics.avgHourlyWage.toLocaleString()}
+              </span>
+              <span className="text-xs text-zinc-400 ml-1">/hr</span>
+            </div>
+            <span className="text-[10px] text-zinc-400 truncate">
+              Civ: ${metrics.legalAvgHourlyWage >= 1000 ? `${(metrics.legalAvgHourlyWage / 1000).toFixed(1)}k` : metrics.legalAvgHourlyWage} · Crime: ${metrics.illegalAvgHourlyWage >= 1000 ? `${(metrics.illegalAvgHourlyWage / 1000).toFixed(1)}k` : metrics.illegalAvgHourlyWage}
             </span>
           </div>
 
-          <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-white/5 flex flex-col justify-between">
-            <span className="text-[10px] uppercase font-bold text-zinc-400">Illegal Disparity</span>
-            <span className="text-base font-black text-cyan-400 font-mono">
-              {metrics.wageDisparityRatio}x <span className="text-xs text-zinc-400">ratio</span>
+          <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-white/5 flex flex-col justify-between min-w-0">
+            <span className="text-[10px] uppercase font-bold text-zinc-400 truncate">Grind to Supercar</span>
+            <div className="my-0.5">
+              <span className="text-base sm:text-lg font-black text-amber-400 font-mono">
+                {metrics.hoursToSupercar}
+              </span>
+              <span className="text-xs text-zinc-400 ml-1">hrs</span>
+            </div>
+            <span className="text-[10px] text-zinc-400 truncate">
+              Benchmark: ${(project.economyBaselines.targetSupercarPrice / 1000).toFixed(0)}k vehicle
             </span>
-            <span className="text-[9px] text-zinc-400 truncate">
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-white/5 flex flex-col justify-between min-w-0">
+            <span className="text-[10px] uppercase font-bold text-zinc-400 truncate">Disparity Ratio</span>
+            <div className="my-0.5">
+              <span className="text-base sm:text-lg font-black text-cyan-400 font-mono">
+                {metrics.wageDisparityRatio}x
+              </span>
+              <span className="text-xs text-zinc-400 ml-1">ratio</span>
+            </div>
+            <span className="text-[10px] text-zinc-400 truncate">
               {metrics.wageDisparityRatio > 2.5 ? 'High Crime Incentive' : 'Balanced Spread'}
             </span>
           </div>
 
-          <div className={`p-2.5 rounded-lg border flex flex-col justify-between ${metrics.ratingColor}`}>
-            <span className="text-[10px] uppercase font-bold opacity-80">Economy Velocity</span>
-            <span className="text-xs font-black truncate">{metrics.rating}</span>
-            <span className="text-[9px] opacity-80 truncate">
+          <div className={`p-2.5 rounded-xl border flex flex-col justify-between min-w-0 ${metrics.ratingColor}`}>
+            <span className="text-[10px] uppercase font-bold opacity-80 truncate">Economy Velocity</span>
+            <span className="text-sm sm:text-base font-black truncate my-0.5">{metrics.rating}</span>
+            <span className="text-[10px] opacity-80 truncate">
               Velocity: {metrics.velocityScore}/100
             </span>
           </div>
         </div>
       </div>
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex border-b border-white/10 bg-zinc-950/80 px-2 overflow-x-auto scrollbar-none">
-        <button
-          onClick={() => setActiveSubTab('jobs')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
-            activeSubTab === 'jobs'
-              ? 'border-rose-500 text-rose-400 bg-rose-500/10'
-              : 'border-transparent text-zinc-400 hover:text-white'
-          }`}
-        >
-          <Briefcase className="w-3.5 h-3.5" />
-          Jobs & Tiers ({project.jobs.length})
-        </button>
+      {/* Navigation Sub-Tabs with Smooth Touch Scroll */}
+      <div className="relative border-b border-white/10 bg-zinc-950/80">
+        <div className="flex px-2 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+          <button
+            onClick={() => setActiveSubTab('jobs')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+              activeSubTab === 'jobs'
+                ? 'border-rose-500 text-rose-400 bg-rose-500/10'
+                : 'border-transparent text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Briefcase className="w-3.5 h-3.5" />
+            <span>Jobs & Tiers ({project.jobs.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubTab('items')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
-            activeSubTab === 'items'
-              ? 'border-rose-500 text-rose-400 bg-rose-500/10'
-              : 'border-transparent text-zinc-400 hover:text-white'
-          }`}
-        >
-          <Package className="w-3.5 h-3.5" />
-          Item Registry ({project.items.length})
-        </button>
+          <button
+            onClick={() => setActiveSubTab('items')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+              activeSubTab === 'items'
+                ? 'border-rose-500 text-rose-400 bg-rose-500/10'
+                : 'border-transparent text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>Item Registry ({project.items.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubTab('baselines')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
-            activeSubTab === 'baselines'
-              ? 'border-rose-500 text-rose-400 bg-rose-500/10'
-              : 'border-transparent text-zinc-400 hover:text-white'
-          }`}
-        >
-          <Sliders className="w-3.5 h-3.5" />
-          Economy Baselines
-        </button>
+          <button
+            onClick={() => setActiveSubTab('baselines')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+              activeSubTab === 'baselines'
+                ? 'border-rose-500 text-rose-400 bg-rose-500/10'
+                : 'border-transparent text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Economy Baselines</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubTab('handling')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
-            activeSubTab === 'handling'
-              ? 'border-rose-500 text-rose-400 bg-rose-500/10'
-              : 'border-transparent text-zinc-400 hover:text-white'
-          }`}
-        >
-          <Car className="w-3.5 h-3.5" />
-          Vehicle Handling
-        </button>
+          <button
+            onClick={() => setActiveSubTab('handling')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+              activeSubTab === 'handling'
+                ? 'border-rose-500 text-rose-400 bg-rose-500/10'
+                : 'border-transparent text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Car className="w-3.5 h-3.5" />
+            <span>Vehicle Handling</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubTab('ai_prompter')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
-            activeSubTab === 'ai_prompter'
-              ? 'border-rose-500 text-rose-400 bg-rose-500/10'
-              : 'border-transparent text-zinc-400 hover:text-white'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-          AI Script Synthesizer
-        </button>
+          <button
+            onClick={() => setActiveSubTab('ai_prompter')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+              activeSubTab === 'ai_prompter'
+                ? 'border-rose-500 text-rose-400 bg-rose-500/10'
+                : 'border-transparent text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+            <span>AI Script Studio</span>
+            {!hasL2Clearance ? (
+              <span className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold tracking-tight">
+                <Lock className="w-2.5 h-2.5 text-amber-400" />
+                <span>VIP ONLY</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-mono font-bold tracking-tight">
+                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                <span>VIP UNLOCKED</span>
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Sub-Tab Scrollable Content */}
@@ -521,25 +557,30 @@ export const ConfigVisualEditor: React.FC<ConfigVisualEditorProps> = ({
                             {job.grades.map((grade, gIdx) => (
                               <div
                                 key={gIdx}
-                                className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-2 bg-zinc-900/90 rounded-lg border border-white/5 text-xs"
+                                className="flex flex-wrap lg:flex-nowrap items-center gap-2.5 p-2.5 bg-zinc-900/90 rounded-xl border border-white/5 text-xs"
                               >
-                                <span className="font-mono text-zinc-500 font-bold px-1.5">G{grade.grade}</span>
+                                <span className="font-mono text-zinc-400 font-bold px-2 py-1 rounded-md bg-black/40 border border-white/5 text-[11px] shrink-0 text-center min-w-[34px]">
+                                  G{grade.grade}
+                                </span>
+                                
                                 <input
                                   type="text"
-                                  placeholder="Grade Key (e.g. recruit)"
+                                  placeholder="Lua key (e.g. recruit)"
                                   value={grade.name}
                                   onChange={(e) => handleUpdateGrade(job.id, gIdx, { name: e.target.value })}
-                                  className="bg-black/50 border border-white/10 rounded px-2 py-1 text-white text-xs w-28 focus:border-rose-500 focus:outline-none"
+                                  className="bg-black/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-white text-xs w-28 sm:w-32 focus:border-rose-500 focus:outline-none shrink-0"
                                 />
+
                                 <input
                                   type="text"
-                                  placeholder="Display Label"
+                                  placeholder="Display Label (e.g. Cadet)"
                                   value={grade.label}
                                   onChange={(e) => handleUpdateGrade(job.id, gIdx, { label: e.target.value })}
-                                  className="bg-black/50 border border-white/10 rounded px-2 py-1 text-white text-xs flex-1 focus:border-rose-500 focus:outline-none"
+                                  className="bg-black/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-white text-xs flex-1 min-w-[120px] focus:border-rose-500 focus:outline-none"
                                 />
-                                <div className="flex items-center gap-1">
-                                  <span className="text-zinc-500">$</span>
+
+                                <div className="flex items-center gap-1.5 bg-black/50 border border-white/10 rounded-lg px-2 py-1 shrink-0">
+                                  <span className="text-zinc-500 font-bold">$</span>
                                   <input
                                     type="number"
                                     placeholder="Payment"
@@ -547,24 +588,27 @@ export const ConfigVisualEditor: React.FC<ConfigVisualEditorProps> = ({
                                     onChange={(e) =>
                                       handleUpdateGrade(job.id, gIdx, { payment: Number(e.target.value) })
                                     }
-                                    className="bg-black/50 border border-white/10 rounded px-2 py-1 text-emerald-400 font-mono text-xs w-20 focus:border-rose-500 focus:outline-none"
+                                    className="bg-transparent text-emerald-400 font-mono text-xs w-20 focus:outline-none font-bold"
                                   />
                                 </div>
-                                <label className="flex items-center gap-1 text-[11px] text-zinc-400 cursor-pointer">
+
+                                <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 hover:border-white/20 text-xs text-zinc-300 cursor-pointer shrink-0 transition-colors">
                                   <input
                                     type="checkbox"
                                     checked={grade.isBoss || false}
                                     onChange={(e) => handleUpdateGrade(job.id, gIdx, { isBoss: e.target.checked })}
                                     className="rounded border-zinc-700 text-rose-500 focus:ring-rose-500"
                                   />
-                                  <span>Boss</span>
+                                  <span className="font-semibold text-[11px]">Boss</span>
                                 </label>
+
                                 <button
                                   onClick={() => handleRemoveGrade(job.id, gIdx)}
                                   disabled={job.grades.length <= 1}
-                                  className="p-1 text-zinc-600 hover:text-rose-400 disabled:opacity-30"
+                                  className="p-2 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors disabled:opacity-25 cursor-pointer ml-auto sm:ml-0"
+                                  title="Delete rank grade"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
                             ))}
@@ -623,7 +667,8 @@ export const ConfigVisualEditor: React.FC<ConfigVisualEditorProps> = ({
                     </div>
                     <button
                       onClick={() => handleRemoveItem(idx)}
-                      className="p-1 text-zinc-500 hover:text-rose-400"
+                      className="p-2 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                      title="Delete item"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -977,67 +1022,224 @@ export const ConfigVisualEditor: React.FC<ConfigVisualEditorProps> = ({
         {/* ===================== TAB: AI PROMPTER ===================== */}
         {activeSubTab === 'ai_prompter' && (
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-gradient-to-br from-rose-950/40 via-zinc-900 to-black border border-rose-500/30 space-y-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-rose-400 animate-spin" />
-                <h4 className="text-sm font-bold text-white">AI Script & Logic Synthesizer</h4>
-                <span className="ml-auto text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                  Gemini 3.7 Flash Engine
-                </span>
-              </div>
-              <p className="text-xs text-zinc-300">
-                Describe any custom FiveM job, illicit heist contract, inventory catalog, or vehicle tuning spec. The AI generates structured data verified through the zero-syntax-error compiler.
-              </p>
+            {!hasL2Clearance ? (
+              /* Security Protocol 403: L2 Clearance Gate */
+              <div className="space-y-4">
+                <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-rose-950/60 via-zinc-950 to-black border-2 border-rose-500/40 shadow-2xl relative overflow-hidden space-y-4">
+                  {/* Atmospheric Glow */}
+                  <div className="absolute top-0 right-0 w-80 h-80 bg-rose-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+                  <div className="absolute -bottom-10 -left-10 w-60 h-60 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-              <textarea
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder="e.g. Create a 4-tier Vice City Port Smuggler job with boat deliveries, police count checks, and oxy prescription items..."
-                rows={3}
-                className="w-full bg-black/60 border border-white/10 rounded-lg p-3 text-xs text-white placeholder-zinc-500 focus:border-rose-500 focus:outline-none resize-none"
-              />
+                  {/* Header */}
+                  <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500/20 to-rose-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-lg shadow-rose-500/10">
+                        <Lock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 font-mono">
+                            Security Protocol 403
+                          </span>
+                          <span className="text-xs font-mono text-amber-300 font-bold">VIP Clearance Restricted</span>
+                        </div>
+                        <h3 className="text-base sm:text-lg font-black text-white tracking-wide mt-0.5">
+                          AI Script & Logic Synthesizer Locked
+                        </h3>
+                      </div>
+                    </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[11px] text-zinc-500">
-                  {isAiLoading ? aiStatusMessage || 'Synthesizing verified Lua tables...' : 'Ready for natural language prompt'}
-                </span>
+                    <span className="text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400">
+                      Gemini 3.7 Flash Engine
+                    </span>
+                  </div>
 
-                <button
-                  disabled={isAiLoading || !aiPrompt.trim()}
-                  onClick={() => onSynthesizeAi(aiPrompt)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-lg shadow-rose-600/30 transition-all"
-                >
-                  {isAiLoading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Synthesizing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4" />
+                  {/* Clearance Telemetry Status */}
+                  <div className="relative p-3.5 rounded-xl bg-zinc-900/90 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-black/40 border border-white/5 text-zinc-400">
+                        <ShieldAlert className="w-5 h-5 text-amber-400" />
+                      </div>
+                      <div>
+                        <div className="text-zinc-400 text-[11px]">Active Session Clearance:</div>
+                        <div className="font-bold font-mono flex items-center gap-1.5 mt-0.5">
+                          <span className={userClearanceLevel >= 2 ? 'text-emerald-400' : 'text-amber-400'}>
+                            {userClearanceLevel === 1 ? 'Citizen (Standard User)' : 'Guest / Unauthenticated'}
+                          </span>
+                          <span className="text-zinc-500 font-normal">·</span>
+                          <span className="text-rose-400 font-semibold">Requires VIP Clearance</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {currentUser ? (
+                        <button
+                          onClick={onOpenProModal}
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-black font-black text-xs shadow-lg shadow-rose-500/20 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        >
+                          <Crown className="w-3.5 h-3.5" />
+                          <span>Unlock VIP Clearance</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={onNavigateToAuth}
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                          <span>Sign In / Check Clearance</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Operational Briefing */}
+                  <div className="relative space-y-2 text-xs text-zinc-300 leading-relaxed">
+                    <p>
+                      The <strong>Gemini 3.7 Flash AI Script Synthesizer</strong> evaluates natural language job narratives, illicit contracts, and handling curves into structured QBCore & ESX Lua tables verified through the zero-syntax-error compiler.
+                    </p>
+                    <p className="text-zinc-400 text-[11px]">
+                      Access to server-side AI compilation is exclusively reserved for <strong>VIP Members</strong>, <strong>Staff</strong>, and <strong>Administrators</strong>. Standard Citizen accounts must elevate clearance to initiate natural language synthesis.
+                    </p>
+                  </div>
+
+                  {/* Clearance Privileges Grid */}
+                  <div className="relative grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                      <div className="flex items-center gap-2 text-rose-400 font-bold text-xs">
+                        <Zap className="w-3.5 h-3.5 text-rose-400" />
+                        <span>AI Script & Heist Synthesis</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        Describe multi-tier roles, illegal drug runs, or police response timers to automatically compile complete Lua tables.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Zero-Syntax-Error Verification</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        Deterministic compiler checks ensuring QBCore & ESX Legacy code contains no unclosed brackets or nil references.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                        <Crown className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Full Resource ZIP Bundles</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        Export complete production packages with fxmanifest.lua, config.lua, and schema.sql ready for txAdmin.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                      <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
+                        <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Priority Queue Bandwidth</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        Dedicated high-throughput Gemini model reasoning with instant compile execution.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Locked / Disabled Preview of the Prompt Box */}
+                <div className="relative rounded-xl border border-white/10 bg-black/40 p-4 opacity-40 select-none space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-zinc-400 flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      Prompt Console (Locked — VIP Clearance Required)
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-500 font-bold">VIP SECURITY GATE</span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-black/70 border border-white/5 text-zinc-500 text-xs font-mono">
+                    e.g. Create a 4-tier Vice City Port Smuggler job with boat deliveries, police count checks, and oxy prescription items...
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      disabled
+                      className="px-4 py-2 bg-zinc-800 text-zinc-500 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-not-allowed"
+                    >
+                      <Lock className="w-3 h-3" />
                       <span>Synthesize Script Config</span>
-                    </>
-                  )}
-                </button>
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Unlocked AI Script & Logic Synthesizer for VIP Personnel */
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-gradient-to-br from-rose-950/40 via-zinc-900 to-black border border-rose-500/30 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-rose-400 animate-spin" />
+                    <h4 className="text-sm font-bold text-white">AI Script & Logic Synthesizer</h4>
+                    <span className="ml-auto text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      VIP Clearance Verified
+                    </span>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                      Gemini 3.7 Flash Engine
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-300">
+                    Describe any custom FiveM job, illicit heist contract, inventory catalog, or vehicle tuning spec. The AI generates structured data verified through the zero-syntax-error compiler.
+                  </p>
 
-            {/* Prompt Ideas */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-zinc-400">1-Click Prompt Ideas:</span>
-              <div className="grid grid-cols-1 gap-2">
-                {promptStarters.map((starter, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setAiPrompt(starter)}
-                    className="p-2.5 rounded-lg bg-zinc-900/60 hover:bg-zinc-800/80 border border-white/5 text-left text-xs text-zinc-300 hover:text-white transition-colors flex items-start gap-2"
-                  >
-                    <span className="text-rose-400 font-bold">⚡</span>
-                    <span>{starter}</span>
-                  </button>
-                ))}
+                  <textarea
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="e.g. Create a 4-tier Vice City Port Smuggler job with boat deliveries, police count checks, and oxy prescription items..."
+                    rows={3}
+                    className="w-full bg-black/60 border border-white/10 rounded-lg p-3 text-xs text-white placeholder-zinc-500 focus:border-rose-500 focus:outline-none resize-none"
+                  />
+
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] text-zinc-500">
+                      {isAiLoading ? aiStatusMessage || 'Synthesizing verified Lua tables...' : 'Ready for natural language prompt'}
+                    </span>
+
+                    <button
+                      disabled={isAiLoading || !aiPrompt.trim()}
+                      onClick={() => onSynthesizeAi(aiPrompt)}
+                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer"
+                    >
+                      {isAiLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Synthesizing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4" />
+                          <span>Synthesize Script Config</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Prompt Ideas */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-zinc-400">1-Click Prompt Ideas:</span>
+                  <div className="grid grid-cols-1 gap-2">
+                    {promptStarters.map((starter, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setAiPrompt(starter)}
+                        className="p-2.5 rounded-lg bg-zinc-900/60 hover:bg-zinc-800/80 border border-white/5 text-left text-xs text-zinc-300 hover:text-white transition-colors flex items-start gap-2 cursor-pointer"
+                      >
+                        <span className="text-rose-400 font-bold">⚡</span>
+                        <span>{starter}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

@@ -44,9 +44,7 @@ import {
   Info
 } from 'lucide-react';
 import { User as FirebaseUser, updateProfile, signOut, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc, setDoc, getDocs, collection, query, where, deleteField } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
-import { safeFirestoreWrite } from '../lib/firebase/firestoreCircuitBreaker';
+import { auth } from '../lib/firebase';
 import { claimDailyReward, getRewardCooldown, claim30DayVipPass, claimStreakMilestone, convertVcToVipPass, checkUserRewardStatus, getTimestampFromClaimDate } from '../lib/rewardUtils';
 import { linkDiscordToUser, unlinkDiscordFromUser, fetchDiscordAuthStatus, refreshDiscordOAuthToken } from '../lib/whitelist-service';
 import {
@@ -351,29 +349,47 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     if (!currentUser) return;
     setClaimingIds((prev) => ({ ...prev, [notificationId]: true }));
     try {
-      // 1. Get current user's profile
-      const userRef = doc(db, 'userProfiles', currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        const currentBalance = userData.vcBalance || 0;
-        
-        // 2. Add reward to user profile
-        await setDoc(userRef, {
-          vcBalance: currentBalance + rewardVcAmount,
-          lastRewardReason: `Claimed Tuning Champion prize: ${rewardVcAmount} VC Cash`,
-          lastRewardedAt: Date.now()
-        }, { merge: true });
+      // 1. Get current user's profile from MongoDB API
+      let currentBalance = 0;
+      let userData: any = {};
+      try {
+        const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+        if (apiRes.ok) {
+          const payload = await apiRes.json();
+          if (payload.success && payload.data) {
+            userData = payload.data;
+            currentBalance = userData.vcBalance || 0;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('MongoDB profile fetch failed during prize claim:', apiErr);
       }
 
-      // 3. Mark the notification metadata as claimed: true and read: true
-      const notifRef = doc(db, 'userNotifications', notificationId);
-      await setDoc(notifRef, {
-        read: true,
-        metadata: {
-          claimed: true
-        }
-      }, { merge: true });
+      const updatePayload = {
+        uid: currentUser.uid,
+        vcBalance: currentBalance + rewardVcAmount,
+        lastRewardReason: `Claimed Tuning Champion prize: ${rewardVcAmount} VC Cash`,
+        lastRewardedAt: Date.now(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // 2. Update via POST to MongoDB profile API
+      await fetch('/api/user/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatePayload)
+      });
+
+      // 3. Mark the notification as read via MongoDB API
+      try {
+        await fetch('/api/user/notifications/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: notificationId })
+        });
+      } catch (notifErr) {
+        console.warn('Notification claim flag sync warning:', notifErr);
+      }
 
       // Local update
       onMarkAsRead(notificationId);
@@ -478,7 +494,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     checking: boolean;
     available: boolean | null;
     message?: string;
-    level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE';
+    level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE' | 'L3_MONGODB';
     latencyMs?: number;
   }>({ checking: false, available: null });
 
@@ -580,6 +596,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   // Persistent Discord OAuth Token State
   const [discordAuthStatus, setDiscordAuthStatus] = useState<{
     connected?: boolean;
+    discordId?: string | null;
+    discordUsername?: string | null;
+    discordAvatar?: string | null;
     hasPersistentTokens?: boolean;
     expiresAt?: number | null;
     isExpired?: boolean;
@@ -593,9 +612,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   // Cached Discord values fallback
   const localDiscordId = typeof window !== 'undefined' ? localStorage.getItem('gtavi_discord_user_id') : null;
   const localDiscordUsername = typeof window !== 'undefined' ? localStorage.getItem('gtavi_discord_username') : null;
-  const activeDiscordId = discordId || localDiscordId || '';
-  const activeDiscordUsername = discordUsername || localDiscordUsername || '';
-  const isDiscordLinked = Boolean(activeDiscordId && (activeDiscordUsername || discordConnected));
+  const activeDiscordId = discordId || discordAuthStatus?.discordId || localDiscordId || '';
+  const activeDiscordUsername = discordUsername || discordAuthStatus?.discordUsername || localDiscordUsername || '';
+  const isDiscordLinked = Boolean(activeDiscordUsername || activeDiscordId || discordConnected || discordAuthStatus?.connected);
 
   const handleConnectDiscordOAuth = () => {
     if (!currentUser) return;
@@ -879,15 +898,34 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         try {
           // Check reward status on mount (resets streak if >48h elapsed)
           const rewardStatus = await checkUserRewardStatus(currentUser.uid);
-          setRewardStreak(rewardStatus.rewardStreak);
-          setDailyStreak(rewardStatus.dailyStreak);
+          let highestStreak = Math.max(rewardStatus.rewardStreak || 0, rewardStatus.dailyStreak || 0);
+          
           if (rewardStatus.lastClaimDate) setLastClaimDate(rewardStatus.lastClaimDate);
           if (rewardStatus.lastLogin) setLastLogin(rewardStatus.lastLogin);
           if (typeof rewardStatus.vcBalance === 'number') setCredits(rewardStatus.vcBalance);
 
-          const userSnap = await getDoc(doc(db, 'userProfiles', currentUser.uid));
-          if (userSnap.exists()) {
-            const data = userSnap.data();
+          let data: any = null;
+          try {
+            const emailParam = currentUser.email ? `&email=${encodeURIComponent(currentUser.email)}` : '';
+            const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}${emailParam}`);
+            if (apiRes.ok) {
+              const payload = await apiRes.json();
+              if (payload.success && payload.data) {
+                data = payload.data;
+              }
+            }
+          } catch (apiErr) {
+            console.warn('MongoDB profile API fetch failed:', apiErr);
+          }
+
+          if (data) {
+            highestStreak = Math.max(
+              highestStreak,
+              data.dailyStreak || 0,
+              data.rewardStreak || 0,
+              data.streakCount || 0
+            );
+
             if (data.avatar) {
               setSelectedAvatar(data.avatar);
             }
@@ -897,9 +935,41 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             if (data.email) {
               setPrimaryContactEmail(data.email);
             }
-            if (data.discordId) setDiscordId(data.discordId);
-            if (data.discordUsername) setDiscordUsername(data.discordUsername);
-            if (data.discordConnected !== undefined) setDiscordConnected(Boolean(data.discordConnected));
+            const savedLocalLink = typeof window !== 'undefined' ? localStorage.getItem(`gtavi_discord_link_${currentUser.uid}`) : null;
+            let localLinkData: any = null;
+            if (savedLocalLink) {
+              try { localLinkData = JSON.parse(savedLocalLink); } catch {}
+            }
+
+            const localDiscordId = (typeof window !== 'undefined' ? localStorage.getItem('gtavi_discord_user_id') : null) || localLinkData?.discordId || '';
+            const localDiscordUsername = (typeof window !== 'undefined' ? localStorage.getItem('gtavi_discord_username') : null) || localLinkData?.discordUsername || '';
+
+            const resolvedDiscordUsername = data.discordUsername || data.claimedByDiscordUsername || data.discordTag || data.discordAuth?.discordUsername || rewardStatus.discordUsername || localDiscordUsername;
+            const resolvedDiscordId = data.discordId || data.claimedByDiscordId || data.discordAuth?.discordId || rewardStatus.discordId || localDiscordId;
+            const resolvedDiscordConnected = Boolean(data.discordConnected || resolvedDiscordUsername || resolvedDiscordId || data.discordAuth || localLinkData?.discordConnected || rewardStatus.discordConnected);
+
+            if (resolvedDiscordId) {
+              setDiscordId(resolvedDiscordId);
+              try { localStorage.setItem('gtavi_discord_user_id', resolvedDiscordId); } catch {}
+            }
+            if (resolvedDiscordUsername) {
+              setDiscordUsername(resolvedDiscordUsername);
+              try { localStorage.setItem('gtavi_discord_username', resolvedDiscordUsername); } catch {}
+            }
+            if (resolvedDiscordConnected) setDiscordConnected(true);
+            if (data.discordAvatar || data.discordAuth?.discordAvatar) {
+              setGoogleAvatarUrl(data.discordAvatar || data.discordAuth?.discordAvatar);
+            }
+            setDiscordAuthStatus({
+              connected: resolvedDiscordConnected,
+              discordId: resolvedDiscordId,
+              discordUsername: resolvedDiscordUsername,
+              discordAvatar: data.discordAvatar || data.discordAuth?.discordAvatar || null,
+              hasPersistentTokens: Boolean(data.discordAuth?.accessToken || data.discordAuth?.refreshToken),
+              scope: Array.isArray(data.discordAuth?.scopes) ? data.discordAuth.scopes.join(' ') : 'identify email guilds',
+              linkedAt: data.discordAuth?.connectedAt || data.updatedAt || null,
+              lastRefreshedAt: data.discordAuth?.updatedAt || null
+            });
             if (Array.isArray(data.changeHistory) && data.changeHistory.length > history.length) {
               history = data.changeHistory;
             }
@@ -913,8 +983,13 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               localStorage.setItem(`gtavi_lastLogin_${currentUser.uid}`, String(data.lastLogin));
             }
 
-            const currentRewardStreakVal = rewardStatus.rewardStreak;
-            const currentStreakVal = rewardStatus.dailyStreak;
+            setDailyStreak(highestStreak);
+            setRewardStreak(highestStreak);
+            localStorage.setItem(`gtavi_streak_${currentUser.uid}`, String(highestStreak));
+            localStorage.setItem(`gtavi_rewardStreak_${currentUser.uid}`, String(highestStreak));
+
+            const currentRewardStreakVal = highestStreak;
+            const currentStreakVal = highestStreak;
 
             if (data.lastClaimDate) {
               const claimDateStr = String(data.lastClaimDate);
@@ -934,15 +1009,19 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 const VIP_30_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
                 const now = Date.now();
                 const vipUntilIso = new Date(now + VIP_30_DAYS_MS).toISOString();
-                await setDoc(doc(db, 'userProfiles', currentUser.uid), {
-                  isVip: true,
-                  userLevel: 'VIP',
-                  vipUntil: vipUntilIso,
-                  vipExpires: vipUntilIso.split('T')[0],
-                  claimed30DayVip: true,
-                  lastClaimed30DayVipStreak: currentRewardStreakVal,
-                  updatedAt: new Date().toISOString()
-                }, { merge: true });
+                await fetch('/api/user/profile', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    uid: currentUser.uid,
+                    isVip: true,
+                    userLevel: 'VIP',
+                    vipUntil: vipUntilIso,
+                    vipExpires: vipUntilIso.split('T')[0],
+                    claimed30DayVip: true,
+                    lastClaimed30DayVipStreak: currentRewardStreakVal
+                  })
+                });
                 onUpgradeToVip?.();
               } catch (err) {
                 console.warn('Auto VIP grant update failed:', err);
@@ -962,21 +1041,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           console.warn('Could not read user profile doc:', e);
         }
 
-        // Check persistent Discord OAuth token status
-        try {
-          const authStatus = await fetchDiscordAuthStatus(currentUser.uid);
-          if (authStatus) {
-            setDiscordAuthStatus(authStatus);
-            if (authStatus.connected) {
-              setDiscordConnected(true);
-              if (authStatus.discordId) setDiscordId(authStatus.discordId);
-              if (authStatus.discordUsername) setDiscordUsername(authStatus.discordUsername);
-            }
-          }
-        } catch (authErr) {
-          console.warn('Could not read Discord OAuth status:', authErr);
-        }
-
         const recent = history.filter(h => Date.now() - h.timestamp < ONE_YEAR_MS);
         setChangesUsedThisYear(recent.length);
       };
@@ -986,7 +1050,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
       // Listen for popup OAuth messages for instant, no-reload state sync in iframe environments
       const handlePopupMessage = (event: MessageEvent) => {
         const origin = event.origin;
-        if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('viceintel.app')) {
+        if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('viceintel.app') && origin !== window.location.origin) {
           return;
         }
 
@@ -996,7 +1060,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           setDiscordUsername(data.discordUsername);
           setDiscordConnected(true);
           setDiscordNotice({ type: 'success', msg: `Discord account ${data.discordUsername} linked successfully!` });
-          fetchDiscordAuthStatus(currentUser.uid).then(status => setDiscordAuthStatus(status));
+          loadProfileData();
         } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
           setDiscordNotice({ type: 'error', msg: `Discord connection notice: ${event.data.error}` });
           setShowDiscordLinkModal(true);
@@ -1019,10 +1083,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     }
     setIsSavingContactEmail(true);
     try {
-      await setDoc(doc(db, 'userProfiles', currentUser.uid), {
-        email: primaryContactEmail.trim(),
-        emailUpdatedAt: new Date().toISOString()
-      }, { merge: true });
+      await fetch('/api/user/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: currentUser.uid,
+          email: primaryContactEmail.trim(),
+          emailUpdatedAt: new Date().toISOString()
+        })
+      });
 
       setContactEmailNotice({
         type: 'success',
@@ -1064,33 +1133,23 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     `;
 
     try {
-      const { collection, addDoc } = await import('firebase/firestore');
-
-      await safeFirestoreWrite(async () => {
-        // 1. Queue in Firestore 'mail' collection
-        await addDoc(collection(db, 'mail'), {
-          to: [targetEmail],
-          message: {
-            subject: `[TEST VIP REMINDER] ⚠️ Subscription Expiring in ${daysLeft} Days (@${username})`,
-            html: renderedHtml
-          },
-          createdAt: nowIso
-        });
-
-        // 2. Deliver to In-App Notifications
-        await addDoc(collection(db, 'userNotifications'), {
-          userId: currentUser.uid,
+      // 1. Deliver to In-App Notifications via MongoDB REST API
+      await fetch('/api/user/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUserId: currentUser.uid,
           username,
           type: 'VIP_EXPIRY_ALERT',
           title: `⚠️ VIP Subscription Expiring in ${daysLeft} Days`,
           message: `Your VIP Pass will expire on ${expireDate}. Reminder email sent to ${targetEmail}.`,
           daysRemaining: daysLeft,
-          isRead: false,
+          read: false,
           createdAt: nowIso
-        });
+        })
       });
 
-      // Also call server API endpoint to save in sentEmails and server logs
+      // 2. Also call server API endpoint to save in sentEmails and server logs
       try {
         await fetch('/api/email/send-test-vip-expiry-alert', {
           method: 'POST',
@@ -1111,13 +1170,13 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         subject: `[TEST VIP REMINDER] ⚠️ Subscription Expiring in ${daysLeft} Days (@${username})`,
         html: renderedHtml,
         timestamp: new Date().toLocaleTimeString(),
-        status: 'Queued in Firestore mail collection & Delivered to In-App Notifications',
+        status: 'Delivered to In-App Notifications & Dispatched',
         isInAppDelivered: true,
         isPlaceholderAlert: isPlaceholder
       });
       setShowEmailPreviewModal(true);
 
-      setTestVipAlertNotice(`✅ Test VIP email dispatched to ${targetEmail}! (Delivered to In-App Notifications & Firestore Mail)`);
+      setTestVipAlertNotice(`✅ Test VIP email dispatched to ${targetEmail}! (Delivered to In-App Notifications)`);
     } catch (err: any) {
       setTestVipAlertNotice(`❌ Failed to send test email: ${err.message || 'Unknown error'}`);
     } finally {
@@ -1171,6 +1230,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         setDailyStreak(res.dailyStreak);
         setRewardStreak(res.rewardStreak);
         if (res.lastClaimDate) setLastClaimDate(res.lastClaimDate);
+        setTimeRemainingMs(res.timeRemainingMs || 24 * 60 * 60 * 1000);
 
         playNotificationChime(true);
         setClaimRewardSuccess({
@@ -1342,13 +1402,16 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         photoURL: getSafePhotoURL(targetAvatar, currentUser.displayName || currentUser.email)
       });
 
-      // 2. Sync to Firestore userProfiles document
-      const userDocRef = doc(db, 'userProfiles', currentUser.uid);
-      await setDoc(userDocRef, {
-        uid: currentUser.uid,
-        avatar: targetAvatar,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      // 2. Sync to MongoDB profile API
+      await fetch('/api/user/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: currentUser.uid,
+          avatar: targetAvatar,
+          updatedAt: new Date().toISOString()
+        })
+      });
 
       setSelectedAvatar(targetAvatar);
       setAvatarSaved(true);
@@ -1406,15 +1469,18 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
       }
 
       try {
-        const userSnap = await getDoc(doc(db, 'userProfiles', currentUser.uid));
-        if (userSnap.exists() && Array.isArray(userSnap.data()?.changeHistory)) {
-          const fsHistory = userSnap.data().changeHistory;
-          if (fsHistory.length > history.length) {
-            history = fsHistory;
+        const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+        if (apiRes.ok) {
+          const payload = await apiRes.json();
+          if (payload.success && payload.data && Array.isArray(payload.data.changeHistory)) {
+            const mongoHistory = payload.data.changeHistory;
+            if (mongoHistory.length > history.length) {
+              history = mongoHistory;
+            }
           }
         }
       } catch (e) {
-        console.warn('Could not read user profile doc:', e);
+        console.warn('Could not read user profile history from MongoDB API:', e);
       }
 
       const recentChanges = history.filter(h => now - h.timestamp < ONE_YEAR_MS);
@@ -1436,13 +1502,13 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         localStorage.setItem(`gtavi_tag_history_${currentUser.uid}`, JSON.stringify(history));
       }
 
-      // Sync to Firestore
-      const userDocRef = doc(db, 'userProfiles', currentUser.uid);
+      // Sync to MongoDB
       const nowStr = new Date().toISOString();
-      await setDoc(userDocRef, {
+      const profilePayload = {
         uid: currentUser.uid,
         username: trimmedTag,
         usernameLower: trimmedTag.toLowerCase(),
+        gamerTag: trimmedTag, // ensure bot/whitelist compatibility
         email: currentUser.email || '',
         avatar: selectedAvatar,
         role: isAdmin ? 'Admin' : isStaff ? 'Staff' : isVipActive ? 'VIP Member' : 'User',
@@ -1450,7 +1516,18 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         isAdmin,
         changeHistory: history,
         updatedAt: nowStr
-      }, { merge: true });
+      };
+
+      // 1. Save to MongoDB (Source of truth)
+      try {
+        await fetch('/api/user/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(profilePayload)
+        });
+      } catch (mongoErr) {
+        console.warn('MongoDB profile sync error:', mongoErr);
+      }
 
       // Update Auth Profile
       await updateProfile(currentUser, {
@@ -1588,6 +1665,12 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                   <Mail className="w-3.5 h-3.5 text-zinc-500" />
                   {currentUser.email || 'Anonymous Player'}
                 </span>
+                {activeDiscordUsername && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-0.5 bg-indigo-500/15 border border-indigo-500/40 rounded-lg text-indigo-300 font-extrabold text-[11px] shadow-sm">
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>@{activeDiscordUsername.replace(/^@+/, '')}</span>
+                  </span>
+                )}
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-zinc-500" />
                   Gamer Tag Changes: {changesUsedThisYear}/2 Used
@@ -3350,6 +3433,62 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 <span>Auth Provider: <strong className="text-zinc-200">Encrypted Cloud Auth / OAuth</strong></span>
                 <span>Role: <strong className="text-amber-400">{isAdmin ? 'Admin' : isStaff ? 'Staff' : isVipActive ? 'VIP Member' : 'Player'}</strong></span>
               </div>
+            </div>
+
+            {/* Linked Discord Account Card */}
+            <div className="md:col-span-2 p-4 bg-zinc-950 rounded-xl border border-zinc-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-400 font-extrabold flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" /> Linked Discord Identity & Permissions
+                </span>
+                <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-full border ${
+                  isDiscordLinked
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}>
+                  {isDiscordLinked ? 'Linked & Verified' : 'Not Linked'}
+                </span>
+              </div>
+
+              {isDiscordLinked ? (
+                <div className="flex items-center justify-between flex-wrap gap-3 bg-zinc-900/90 p-3 rounded-xl border border-zinc-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 shrink-0">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-white font-mono">
+                        @{activeDiscordUsername ? activeDiscordUsername.replace(/^@+/, '') : 'DiscordUser'}
+                      </p>
+                      <p className="text-[11px] text-zinc-400 font-mono">
+                        Snowflake ID: <span className="text-zinc-300">{activeDiscordId || 'Synced'}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleUnlinkDiscordAccount}
+                      className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold rounded-lg transition cursor-pointer"
+                    >
+                      Unlink
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between flex-wrap gap-3 bg-zinc-900/90 p-3 rounded-xl border border-zinc-800">
+                  <p className="text-xs text-zinc-400">
+                    No Discord account linked. Link your Discord to unlock FiveM server whitelist & staff roles.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleConnectDiscordOAuth}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-lg transition cursor-pointer border border-indigo-400/30"
+                  >
+                    Connect Discord
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

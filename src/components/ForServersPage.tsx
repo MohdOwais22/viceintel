@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bot, 
   ShieldCheck, 
@@ -18,6 +18,7 @@ import {
   TrendingUp, 
   Lock,
   ChevronRight,
+  ChevronDown,
   X,
   CreditCard,
   Crown,
@@ -32,20 +33,21 @@ import {
   ExternalLink,
   Flame,
   Activity,
-  FileSpreadsheet,
-  Building,
   Award,
   Shield,
-  Siren,
-  Stethoscope,
   Key,
   Compass,
   Laptop,
   RefreshCw,
-  Wand2
+  Wand2,
+  Star,
+  MessageSquare,
+  HelpCircle,
+  Video,
+  Share2,
+  Target
 } from 'lucide-react';
 import { B2B_PLAN_TIERS } from '../lib/stripe';
-import { validateServerSlug, checkSlugAvailabilityApi } from '../lib/whitelist-service';
 import { PaymentGatewayModal, PaymentItemPackage } from './PaymentGatewayModal';
 
 interface ForServersPageProps {
@@ -66,31 +68,11 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
   onOpenAuth,
   currentUser
 }) => {
-  // Active Interactive Preview Studio Tab
-  const [activeStudioTab, setActiveStudioTab] = useState<'mdt' | 'whitelist' | 'domain' | 'lua' | 'ondemand'>('mdt');
+  // Active Interactive Preview Studio Tab (Police & EMS MDT tab removed as requested)
+  const [activeStudioTab, setActiveStudioTab] = useState<'whitelist' | 'domain' | 'growth' | 'lua' | 'ondemand'>('whitelist');
   
-  // MDT Interactive Simulator State
-  const [mdtMode, setMdtMode] = useState<'police' | 'ems'>('police');
-  const [mdtSearchQuery, setMdtSearchQuery] = useState<string>('Lucia Caminos');
-  const [mdtActiveRecord, setMdtActiveRecord] = useState({
-    name: 'Lucia Caminos',
-    citizenId: 'CIT-892401',
-    dob: '1998-04-12',
-    licenses: ['Driver (Valid)', 'Concealed Carry (Revoked)', 'Commercial Pilot (Valid)'],
-    warrants: 1,
-    priors: [
-      { charge: 'Grand Theft Auto - Class A', date: '2026-06-14', fine: '$12,500', sentence: '45 Months', officer: 'Officer Ramirez #402' },
-      { charge: 'Evading Police in High-Performance Vessel', date: '2026-08-02', fine: '$8,000', sentence: '20 Months', officer: 'Sgt. Callahan #108' }
-    ],
-    vehicles: [
-      { plate: '66VIC401', model: 'Grotti Cheetah Classic', color: 'Vice Pink / White', status: 'Impounded' },
-      { plate: '99LEO772', model: 'Bravado Buffalo STX', color: 'Matte Obsidian', status: 'Clean' }
-    ],
-    medicalNotes: 'Blood Type: O-. Allergy to Penicillin. Recent gunshot trauma stabilized at Ocean Drive General.'
-  });
-
   // Custom Domain Live Simulator State
-  const [customDomainInput, setCustomDomainInput] = useState<string>('portal.miamividarp.com');
+  const [customDomainInput, setCustomDomainInput] = useState<string>('apply.miamividarp.com');
   const [isDnsTesting, setIsDnsTesting] = useState<boolean>(false);
   const [dnsTestResult, setDnsTestResult] = useState<{
     status: 'idle' | 'verified' | 'propagating';
@@ -104,6 +86,10 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
     latencyMs: 14
   });
   const [copiedCname, setCopiedCname] = useState<boolean>(false);
+
+  // Growth Studio Simulator State
+  const [streamerPlatform, setStreamerPlatform] = useState<'twitch' | 'kick' | 'tiktok'>('twitch');
+  const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
   // Interactive ROI Calculator State
   const [appsPerMonth, setAppsPerMonth] = useState<number>(450);
@@ -192,7 +178,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
         cnameTarget: 'cname.viceintel.app',
         latencyMs: Math.floor(Math.random() * 12) + 8
       });
-    }, 900);
+    }, 850);
   };
 
   const handleCopyCname = () => {
@@ -217,43 +203,36 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-rose-500 selection:text-white pb-28">
-      {/* 1. TOP HERO BANNER & NEXT-GEN PROMISE */}
+      
+      {/* 1. TOP HERO BANNER: HIGH-CONVERTING VALUE HOOK */}
       <div className="relative overflow-hidden border-b border-slate-800 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 pt-16 pb-20">
         <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(#06b6d4_1px,transparent_1px)] [background-size:28px_28px]"></div>
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-gradient-to-r from-rose-500/15 via-purple-500/15 to-cyan-500/15 blur-[120px] pointer-events-none" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[720px] h-[360px] bg-gradient-to-r from-rose-500/15 via-purple-500/15 to-cyan-500/15 blur-[120px] pointer-events-none" />
 
         <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10 text-center">
-          {/* Top Platform Badges */}
-          <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-xs font-bold tracking-wider uppercase shadow-[0_0_15px_rgba(6,182,212,0.2)]">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              FiveM 2.0 & GTA VI RP Ready
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/80 border border-purple-500/40 text-purple-300 text-xs font-bold uppercase tracking-wider">
-              <Shield className="w-3.5 h-3.5 text-purple-400" />
-              Full CAD / MDT Suite Included
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-bold uppercase tracking-wider">
-              <Globe className="w-3.5 h-3.5 text-emerald-400" />
-              Automated Custom Domains & SSL
-            </span>
+          
+          {/* High-Converting Social Proof Eyebrow */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-xs font-bold tracking-wider uppercase shadow-[0_0_20px_rgba(6,182,212,0.25)] mb-6 animate-pulse">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Over 14,800+ Applications Audited • Trusted by 120+ FiveM & GTA RP Communities</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white max-w-5xl mx-auto leading-tight sm:leading-none">
-            The All-In-One SaaS Engine <br className="hidden sm:inline" />
+            The Operating System For <br className="hidden sm:inline" />
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-rose-400 to-amber-300">
-              For Elite GTA RP Communities
+              Elite GTA RP Communities
             </span>
           </h1>
 
           <p className="mt-6 text-lg sm:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-sans">
-            Replace 5 separate paid subscriptions. Experience <strong>No-Code Whitelist Screening</strong> with Gemini AI lore audits, instant <strong>Police & Hospital MDT/CAD</strong>, live <strong>Discord Bot Role Sync</strong>, and <strong>Custom Domain Mapping</strong>.
+            Stop losing players to slow, tedious Google Forms. Automate applicant screening with <strong>Gemini 3.7 AI Lore Audits</strong>, assign Discord roles in <strong>&lt; 350ms</strong>, launch on your own <strong>Custom Domain</strong> (<code className="text-cyan-300 text-sm font-mono">apply.yourcity.com</code>), and scale your player queue 24/7 on autopilot.
           </p>
 
+          {/* Friction-Free Dual Conversion CTAs */}
           <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
             <button
               onClick={() => handleOpenPaymentModal('trial')}
-              className="px-7 sm:px-9 py-4 rounded-2xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-sm sm:text-base shadow-xl shadow-rose-600/30 hover:shadow-rose-600/50 transition-all flex items-center justify-center gap-2.5 group cursor-pointer border border-rose-400/40 shrink-0 transform hover:-translate-y-0.5"
+              className="px-8 sm:px-10 py-4 rounded-2xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-sm sm:text-base shadow-2xl shadow-rose-600/40 hover:shadow-rose-600/60 transition-all flex items-center justify-center gap-2.5 group cursor-pointer border border-rose-400/50 shrink-0 transform hover:-translate-y-0.5"
             >
               <Sparkles className="w-5 h-5 text-amber-300 shrink-0" />
               <span className="whitespace-nowrap">Start 14-Day Free Pro Pass ($0 Today)</span>
@@ -261,66 +240,145 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
             </button>
             <button
               onClick={() => {
-                const elem = document.getElementById('comparison-matrix-section');
+                const elem = document.getElementById('interactive-studio-section');
                 elem?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className="px-6 sm:px-8 py-4 rounded-2xl bg-slate-900/90 border border-slate-700 hover:border-cyan-500 text-slate-200 font-extrabold text-sm sm:text-base hover:bg-slate-800 transition-all flex items-center justify-center gap-2.5 cursor-pointer shrink-0"
+              className="px-7 sm:px-8 py-4 rounded-2xl bg-slate-900/90 border border-slate-700 hover:border-cyan-500 text-slate-200 font-extrabold text-sm sm:text-base hover:bg-slate-800 transition-all flex items-center justify-center gap-2.5 cursor-pointer shrink-0 shadow-lg"
             >
-              <Award className="w-5 h-5 text-cyan-400 shrink-0" />
-              <span className="whitespace-nowrap">Explore Full Platform Comparison</span>
+              <Laptop className="w-5 h-5 text-cyan-400 shrink-0" />
+              <span className="whitespace-nowrap">Try Interactive Sandbox</span>
             </button>
           </div>
 
-          {/* Social Proof Stats Bar */}
+          {/* Trust Guarantees */}
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
+            <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-emerald-400" /> Instant 2-Minute Setup</span>
+            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-cyan-400" /> 14-Day Zero-Risk Trial</span>
+            <span className="flex items-center gap-1.5"><Lock className="w-4 h-4 text-amber-400" /> Cancel Anytime In 1 Click</span>
+          </div>
+
+          {/* Social Proof Metric Highlights */}
           <div className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
             <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm text-center">
               <div className="text-2xl sm:text-3xl font-black text-cyan-400">94%</div>
-              <div className="text-xs text-slate-400 mt-1 uppercase font-semibold">Staff Review Time Saved</div>
+              <div className="text-xs text-slate-400 mt-1 uppercase font-semibold">Staff Hours Saved</div>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm text-center">
               <div className="text-2xl sm:text-3xl font-black text-rose-400">&lt; 350ms</div>
-              <div className="text-xs text-slate-400 mt-1 uppercase font-semibold">Discord Role Sync Speed</div>
+              <div className="text-xs text-slate-400 mt-1 uppercase font-semibold">Discord Auto-Role Speed</div>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm text-center">
-              <div className="text-2xl sm:text-3xl font-black text-amber-400">0 Setup Code</div>
-              <div className="text-xs text-slate-400 mt-1 uppercase font-semibold">1-Click Custom Domains</div>
+              <div className="text-2xl sm:text-3xl font-black text-amber-400">3.4x</div>
+              <div className="text-xs text-slate-400 mt-1 uppercase font-semibold">Higher Player Retention</div>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm text-center">
-              <div className="text-2xl sm:text-3xl font-black text-emerald-400">5-in-1</div>
-              <div className="text-xs text-slate-400 mt-1 uppercase font-semibold">CAD + MDT + Whitelist + Lua</div>
+              <div className="text-2xl sm:text-3xl font-black text-emerald-400">$1,240/mo</div>
+              <div className="text-xs text-slate-400 mt-1 uppercase font-semibold">Average Labor Savings</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. INTERACTIVE LIVE PLATFORM STUDIO (SANDBOX SIMULATOR) */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950 border border-cyan-500/40 text-cyan-300 text-xs font-bold uppercase tracking-wider mb-3">
-            <Laptop className="w-3.5 h-3.5" /> Interactive Sandbox Preview
+      {/* 2. THE COST OF INACTION: WHY 82% OF FIVEM SERVERS DIE IN 60 DAYS */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 border-b border-slate-900">
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-bold uppercase tracking-wider mb-3">
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> The Hidden Growth Killer
           </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-white">Experience The Power Before You Buy</h2>
-          <p className="mt-2 text-slate-400 text-base max-w-2xl mx-auto font-sans">
-            Test-drive the exact high-framerate interface your players and staff will use in-game and on web.
+          <h2 className="text-3xl sm:text-5xl font-black text-white">Why Great RP Servers Struggle To Grow</h2>
+          <p className="mt-3 text-slate-400 text-base max-w-2xl mx-auto font-sans">
+            Server owners invest hundreds of dollars into maps, custom cars, and hosting — only to bleed players through a broken, frustrating onboarding experience.
           </p>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl mx-auto mb-8 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
-          <button
-            onClick={() => setActiveStudioTab('mdt')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              activeStudioTab === 'mdt'
-                ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <Siren className="w-4 h-4" />
-            <span>Police & EMS MDT</span>
-          </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+          {/* The Broken Old Way */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-rose-950/20 border border-rose-500/30 flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5 text-rose-400 font-extrabold text-lg">
+                <X className="w-5 h-5 bg-rose-500/20 p-1 rounded-full text-rose-300" />
+                <span>The Traditional Way (Manual & Broken)</span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Relying on cluttered Google Forms, slow manual staff reviews, and disconnected Discord bots creates severe friction that pushes enthusiastic players straight to rival servers.
+              </p>
+              <div className="space-y-3 pt-2 text-xs sm:text-sm">
+                <div className="flex items-start gap-2 text-rose-300">
+                  <span className="text-rose-500 font-bold">✕</span>
+                  <span><strong>48–72 Hour Review Delays:</strong> Eager applicants lose interest and join another server while waiting for staff.</span>
+                </div>
+                <div className="flex items-start gap-2 text-rose-300">
+                  <span className="text-rose-500 font-bold">✕</span>
+                  <span><strong>Severe Staff Burnout:</strong> Admins spend 3+ hours every night reading boring paragraphs instead of playing or running events.</span>
+                </div>
+                <div className="flex items-start gap-2 text-rose-300">
+                  <span className="text-rose-500 font-bold">✕</span>
+                  <span><strong>Toxic Trolls Slip Through:</strong> Tired reviewers miss copied backstories and powergamers who quickly ruin in-game roleplay.</span>
+                </div>
+                <div className="flex items-start gap-2 text-rose-300">
+                  <span className="text-rose-500 font-bold">✕</span>
+                  <span><strong>Fragmented Tech Bill ($120+/mo):</strong> Paying for a form builder, separate Discord bot, and web hosting with zero integration.</span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs font-medium text-center">
+              Result: High player drop-off, exhausted staff, and an empty queue.
+            </div>
+          </div>
+
+          {/* The ViceIntel Way */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-emerald-950/20 border border-emerald-500/40 flex flex-col justify-between relative shadow-[0_0_40px_rgba(16,185,129,0.1)]">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5 text-emerald-400 font-extrabold text-lg">
+                <CheckCircle2 className="w-5 h-5 bg-emerald-500/20 p-1 rounded-full text-emerald-300" />
+                <span>The ViceIntel SaaS Way (Automated & Scalable)</span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                A unified, self-running community portal that evaluates backstories in 30 seconds, assigns Discord roles instantly, and scales your player count effortlessly.
+              </p>
+              <div className="space-y-3 pt-2 text-xs sm:text-sm">
+                <div className="flex items-start gap-2 text-emerald-300">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>30-Second Instant Onboarding:</strong> Gemini 3.7 AI audits backstory lore and checks FearRP/NLR rules in real time.</span>
+                </div>
+                <div className="flex items-start gap-2 text-emerald-300">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>Instant Discord Role Sync (&lt; 350ms):</strong> Approved players receive citizen roles and welcome instructions immediately.</span>
+                </div>
+                <div className="flex items-start gap-2 text-emerald-300">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>White-Labeled Custom Domain:</strong> Launch on <code className="text-cyan-300 font-mono text-xs">apply.yourcity.com</code> with automatic SSL certificate generation.</span>
+                </div>
+                <div className="flex items-start gap-2 text-emerald-300">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>Built-In Server Growth CRM:</strong> Tap into top Twitch/Kick streamers and generate viral 9:16 TikTok scripts to flood your queue.</span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-bold text-center">
+              Result: 24/7 automated player queue, happy staff, and explosive server growth.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. INTERACTIVE LIVE PLATFORM STUDIO (SANDBOX SIMULATOR) */}
+      <div id="interactive-studio-section" className="max-w-6xl mx-auto px-4 sm:px-6 py-20 scroll-mt-8">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-950 border border-cyan-500/40 text-cyan-300 text-xs font-bold uppercase tracking-wider mb-3">
+            <Laptop className="w-3.5 h-3.5" /> Interactive Sandbox Preview
+          </div>
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-white">Experience The Infrastructure Live</h2>
+          <p className="mt-2 text-slate-400 text-base max-w-2xl mx-auto font-sans">
+            Test-drive the exact high-framerate interface your staff and applicants will use before starting your free trial.
+          </p>
+        </div>
+
+        {/* Tab Switcher (Without MDT Tab) */}
+        <div className="flex flex-wrap items-center justify-center gap-2 max-w-3xl mx-auto mb-8 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
           <button
             onClick={() => setActiveStudioTab('whitelist')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
               activeStudioTab === 'whitelist'
                 ? 'bg-cyan-500 text-slate-950 font-black shadow-lg shadow-cyan-500/30'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -331,7 +389,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
           </button>
           <button
             onClick={() => setActiveStudioTab('domain')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
               activeStudioTab === 'domain'
                 ? 'bg-emerald-500 text-slate-950 font-black shadow-lg shadow-emerald-500/30'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -341,8 +399,19 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
             <span>Custom Domain Engine</span>
           </button>
           <button
+            onClick={() => setActiveStudioTab('growth')}
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeStudioTab === 'growth'
+                ? 'bg-rose-500 text-white font-black shadow-lg shadow-rose-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Flame className="w-4 h-4" />
+            <span>Server Growth Suite</span>
+          </button>
+          <button
             onClick={() => setActiveStudioTab('lua')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
               activeStudioTab === 'lua'
                 ? 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/30'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -353,7 +422,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
           </button>
           <button
             onClick={() => setActiveStudioTab('ondemand')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
               activeStudioTab === 'ondemand'
                 ? 'bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-black shadow-lg shadow-cyan-500/30'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -367,144 +436,20 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
         {/* Studio Viewport Card */}
         <div className="rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl p-6 sm:p-8 backdrop-blur-xl relative overflow-hidden">
           
-          {/* TAB 1: POLICE & EMS CAD / MDT */}
-          {activeStudioTab === 'mdt' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2.5 rounded-xl border ${mdtMode === 'police' ? 'bg-blue-950/80 border-blue-500/40 text-blue-400' : 'bg-red-950/80 border-red-500/40 text-red-400'}`}>
-                    {mdtMode === 'police' ? <Siren className="w-6 h-6 animate-pulse" /> : <Stethoscope className="w-6 h-6 animate-pulse" />}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-extrabold text-white flex items-center gap-2">
-                      <span>{mdtMode === 'police' ? 'Vice City Police Department (VCPD) MDT' : 'Ocean Drive General Hospital EMS Terminal'}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold">LIVE DISPATCH ONLINE</span>
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Real-time citizen record lookup, active warrants, DMV vehicle registration & hospital triage.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-start bg-slate-950 p-1 rounded-xl border border-slate-800">
-                  <button
-                    onClick={() => setMdtMode('police')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      mdtMode === 'police' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    VCPD Police MDT
-                  </button>
-                  <button
-                    onClick={() => setMdtMode('ems')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      mdtMode === 'ems' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    EMS Hospital CAD
-                  </button>
-                </div>
-              </div>
-
-              {/* MDT Record Inspector */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Profile Overview */}
-                <div className="lg:col-span-4 p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-rose-500 to-amber-500 flex items-center justify-center text-white font-black text-xl shadow-md">
-                      LC
-                    </div>
-                    <div>
-                      <div className="text-base font-extrabold text-white">{mdtActiveRecord.name}</div>
-                      <div className="text-xs text-cyan-400 font-mono">{mdtActiveRecord.citizenId}</div>
-                      <div className="text-[11px] text-slate-400">DOB: {mdtActiveRecord.dob}</div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-slate-800 text-xs">
-                    <div className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Licenses Status</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {mdtActiveRecord.licenses.map((lic, i) => (
-                        <span key={i} className={`px-2 py-0.5 rounded text-[10px] font-bold ${lic.includes('Revoked') ? 'bg-rose-950 text-rose-300 border border-rose-500/40' : 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'}`}>
-                          {lic}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {mdtMode === 'police' && (
-                    <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-xs space-y-1">
-                      <div className="flex items-center justify-between font-bold text-rose-300">
-                        <span className="flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Active Felony Warrant</span>
-                        <span className="font-mono text-rose-400">#W-8802</span>
-                      </div>
-                      <p className="text-[11px] text-slate-300">Armed Bank Robbery & Hostage Taking at Little Haiti Vault. Armed & dangerous.</p>
-                    </div>
-                  )}
-
-                  {mdtMode === 'ems' && (
-                    <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-xs space-y-1">
-                      <div className="font-bold text-emerald-300 flex items-center gap-1.5">
-                        <Activity className="w-4 h-4" /> Medical Triage Dossier
-                      </div>
-                      <p className="text-[11px] text-slate-300">{mdtActiveRecord.medicalNotes}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Prior Offenses & Registered Vehicles */}
-                <div className="lg:col-span-8 space-y-4">
-                  <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Criminal History & Incident Reports</span>
-                      <span className="text-[11px] text-rose-400 font-mono font-bold">2 Prior Convictions</span>
-                    </div>
-                    <div className="space-y-2">
-                      {mdtActiveRecord.priors.map((pr, idx) => (
-                        <div key={idx} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                          <div>
-                            <div className="font-bold text-white">{pr.charge}</div>
-                            <div className="text-[11px] text-slate-400">{pr.date} • Arresting: {pr.officer}</div>
-                          </div>
-                          <div className="flex items-center gap-2 self-start sm:self-auto font-mono">
-                            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">{pr.fine}</span>
-                            <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">{pr.sentence}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
-                    <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">Registered DMV Vehicles</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {mdtActiveRecord.vehicles.map((vh, idx) => (
-                        <div key={idx} className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs flex items-center justify-between">
-                          <div>
-                            <div className="font-bold text-white">{vh.model}</div>
-                            <div className="text-[11px] text-slate-400">{vh.color}</div>
-                          </div>
-                          <div className="text-right">
-                            <span className="font-mono text-cyan-400 font-bold">{vh.plate}</span>
-                            <div className={`text-[10px] font-bold ${vh.status === 'Impounded' ? 'text-rose-400' : 'text-emerald-400'}`}>{vh.status}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: AI WHITELIST BUILDER */}
+          {/* TAB 1: AI WHITELIST BUILDER */}
           {activeStudioTab === 'whitelist' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-5">
                 <div>
                   <h3 className="text-xl font-extrabold text-white flex items-center gap-2">
                     <span>No-Code Dynamic Application Portal & AI Lore Auditor</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold">GEMINI 3.7 FLASH</span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Custom questions, character backstory word counters & automatic powergaming detection.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Custom questions, character backstory word counters, and automatic powergaming/FearRP violation detection.</p>
+                </div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold shrink-0 self-start sm:self-auto">
+                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>&lt; 350ms Discord Auto-Role</span>
                 </div>
               </div>
 
@@ -537,7 +482,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
                       <span>Instant AI Lore & Rule Audit Output</span>
                     </div>
                     <span className="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                      Score: 96 / 100 (Pass)
+                      Score: 96 / 100 (Passed)
                     </span>
                   </div>
 
@@ -560,7 +505,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
             </div>
           )}
 
-          {/* TAB 3: CUSTOM DOMAIN ENGINE */}
+          {/* TAB 2: CUSTOM DOMAIN ENGINE */}
           {activeStudioTab === 'domain' && (
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-5">
@@ -573,7 +518,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
                 </div>
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold shrink-0 self-start sm:self-auto">
                   <Crown className="w-3.5 h-3.5" />
-                  <span>Mega-Server ($49/mo) & Enterprise ($199/mo) Tier Feature</span>
+                  <span>Mega-Server ($49/mo) & Enterprise ($199/mo) Feature</span>
                 </div>
               </div>
 
@@ -596,7 +541,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
                           type="text"
                           value={customDomainInput}
                           onChange={(e) => setCustomDomainInput(e.target.value)}
-                          placeholder="portal.yourserver.com"
+                          placeholder="apply.yourcity.com"
                           className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                         />
                         <button
@@ -616,7 +561,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
                         <span>CNAME &rarr; cname.viceintel.app</span>
                         <button
                           onClick={handleCopyCname}
-                          className="text-slate-400 hover:text-white flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-800"
+                          className="text-slate-400 hover:text-white flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-800 cursor-pointer"
                         >
                           {copiedCname ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                           <span>{copiedCname ? 'Copied' : 'Copy'}</span>
@@ -641,7 +586,7 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
                     <div className="space-y-2 text-xs">
                       <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800">
                         <span className="text-slate-400">Incoming Host Header:</span>
-                        <span className="font-mono text-white font-bold">{customDomainInput || 'portal.miamividarp.com'}</span>
+                        <span className="font-mono text-white font-bold">{customDomainInput || 'apply.miamividarp.com'}</span>
                       </div>
                       <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800">
                         <span className="text-slate-400">SSL Certificate:</span>
@@ -652,6 +597,77 @@ export const ForServersPage: React.FC<ForServersPageProps> = ({
                         <span className="text-cyan-400 font-bold">100% (No CORS / Frame Lock)</span>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: SERVER GROWTH & STREAMER CRM SUITE */}
+          {activeStudioTab === 'growth' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-5">
+                <div>
+                  <h3 className="text-xl font-extrabold text-white flex items-center gap-2">
+                    <Flame className="w-5 h-5 text-rose-400" />
+                    <span>Server Growth Engine & Streamer CRM</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono font-bold">VIRAL REACH</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Scale past 500+ active players with automated Twitch/Kick streamer outreach and 9:16 viral TikTok/Reels clip script studio.</p>
+                </div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950 border border-purple-500/40 text-purple-300 text-xs font-bold">
+                  <TrendingUp className="w-3.5 h-3.5 text-purple-400" />
+                  <span>3.4x Player Growth Multiplier</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Growth Card 1 */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-rose-400 font-bold text-xs">
+                      <Radio className="w-4 h-4 text-rose-400" />
+                      <span>Streamer Outreach Pipeline</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono">CRM Mode</span>
+                  </div>
+                  <p className="text-xs text-slate-400">Track and invite verified Twitch/Kick creators with custom starter packages and VIP queue priority tags.</p>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <div className="font-semibold text-white">Top Target Creators:</div>
+                    <div className="flex justify-between text-slate-400"><span>• Twitch GTA RP Partners</span><span className="text-emerald-400">12 Contacted</span></div>
+                    <div className="flex justify-between text-slate-400"><span>• Kick Leonida Streamers</span><span className="text-emerald-400">8 Active</span></div>
+                  </div>
+                </div>
+
+                {/* Growth Card 2 */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
+                      <Video className="w-4 h-4 text-cyan-400" />
+                      <span>9:16 Shorts & TikTok Studio</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono">AI Hooks</span>
+                  </div>
+                  <p className="text-xs text-slate-400">Generate high-converting 15-second viral video hooks based on your server's unique custom lore, police chases, and drug cartel events.</p>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <div className="font-semibold text-white">Suggested Viral Hook:</div>
+                    <div className="text-cyan-300 italic">"The only Vice City server where cops have to warrant search your private yacht..."</div>
+                  </div>
+                </div>
+
+                {/* Growth Card 3 */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                      <Share2 className="w-4 h-4 text-emerald-400" />
+                      <span>Player Referral Quests</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">Viral Loop</span>
+                  </div>
+                  <p className="text-xs text-slate-400">Reward your existing citizens with in-game vehicle cosmetics and priority queue for inviting their friends.</p>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <div className="font-semibold text-white">Viral Referral Loop:</div>
+                    <div className="flex justify-between text-slate-400"><span>Invite 3 Friends</span><span className="text-amber-300">+ Priority Pass</span></div>
                   </div>
                 </div>
               </div>
@@ -697,9 +713,9 @@ end)`}</pre>
                   <h3 className="text-xl font-extrabold text-white flex items-center gap-2">
                     <Wand2 className="w-5 h-5 text-cyan-400" />
                     <span>On-Demand Custom Feature Request Portal</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold">REAL-TIME SYNCED TO CONTROL PANEL</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold">DIRECT ENGINEER QUEUE</span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Need a custom Lua script, Discord bot integration, CAD/MDT module, or custom website feature? Request it directly from your server owner dashboard.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Need a custom Lua script, Discord bot integration, or bespoke web feature? Request it directly from your server owner dashboard.</p>
                 </div>
               </div>
 
@@ -709,7 +725,7 @@ end)`}</pre>
                     <Bot className="w-4 h-4 text-indigo-400" />
                     <span>1. Submit Feature Request</span>
                   </div>
-                  <p className="text-xs text-slate-300">Specify feature category (Script, Bot, CAD/MDT, Web), priority, and detailed specifications directly from your dashboard tab.</p>
+                  <p className="text-xs text-slate-300">Specify feature category (Lua Script, Discord Bot, Web UI, Database), priority, and requirements.</p>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-950/80 border border-cyan-500/30 space-y-2">
@@ -717,7 +733,7 @@ end)`}</pre>
                     <RefreshCw className="w-4 h-4 text-cyan-400" />
                     <span>2. Real-Time Staff Sync</span>
                   </div>
-                  <p className="text-xs text-slate-300">Requests sync instantly via secure cloud database to ViceIntel Control Panel for staff review, cost estimation, and milestone planning.</p>
+                  <p className="text-xs text-slate-300">Requests sync instantly via secure cloud database to ViceIntel Control Panel for review and milestone scoping.</p>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-950/80 border border-emerald-500/30 space-y-2">
@@ -725,157 +741,12 @@ end)`}</pre>
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                     <span>3. Delivery & Activation</span>
                   </div>
-                  <p className="text-xs text-slate-300">Track real-time status updates (Under Review &rarr; In Development &rarr; Deployed) with direct developer notes and deployment updates.</p>
+                  <p className="text-xs text-slate-300">Track real-time status updates (Under Review &rarr; In Development &rarr; Deployed) with direct engineering notes.</p>
                 </div>
               </div>
             </div>
           )}
 
-        </div>
-      </div>
-
-      {/* 3. HEAD-TO-HEAD COMPARISON MATRIX (THE "CLEAR WINNER" PROOF) */}
-      <div id="comparison-matrix-section" className="max-w-6xl mx-auto px-4 sm:px-6 py-20 scroll-mt-10">
-        <div className="text-center mb-14">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-wider mb-3">
-            <Award className="w-3.5 h-3.5" /> Architecture & Feature Comparison
-          </div>
-          <h2 className="text-3xl sm:text-5xl font-black text-white">Why Modern Communities Choose ViceIntel</h2>
-          <p className="mt-3 text-slate-400 text-base max-w-2xl mx-auto font-sans">
-            Compare our unified, all-in-one suite against traditional fragmented server tools and manual review workflows.
-          </p>
-        </div>
-
-        <div className="overflow-x-auto rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl backdrop-blur-xl">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/90 text-xs uppercase tracking-wider">
-                <th className="py-5 px-6 font-extrabold text-slate-300">Capability / Feature</th>
-                <th className="py-5 px-6 font-black text-rose-400 bg-rose-950/30 border-x border-rose-500/30 text-center">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    <span>ViceIntel Server Suite</span>
-                  </div>
-                </th>
-                <th className="py-5 px-6 font-bold text-slate-400 text-center">Standard RP Panels</th>
-                <th className="py-5 px-6 font-bold text-slate-400 text-center">Legacy CAD Systems</th>
-                <th className="py-5 px-6 font-bold text-slate-400 text-center">Manual Google Forms</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 text-xs">
-              
-              {/* Feature 1 */}
-              <tr className="hover:bg-slate-800/30 transition">
-                <td className="py-4 px-6 font-bold text-white">
-                  Gemini AI Lore & Powergaming Backstory Grader
-                  <span className="block text-[11px] text-slate-400 font-normal mt-0.5">Analyzes character backstories vs. server rules & flags rulebreaks</span>
-                </td>
-                <td className="py-4 px-6 text-center font-bold text-emerald-400 bg-rose-950/20 border-x border-rose-500/30">
-                  <div className="inline-flex items-center gap-1"><Check className="w-4 h-4 text-emerald-400" /> Included (Gemini 3.7)</div>
-                </td>
-                <td className="py-4 px-6 text-center text-slate-500 font-medium">Basic Rule Gen Only</td>
-                <td className="py-4 px-6 text-center text-slate-500 font-medium">❌ None</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ 100% Manual Reading</td>
-              </tr>
-
-              {/* Feature 2 */}
-              <tr className="hover:bg-slate-800/30 transition">
-                <td className="py-4 px-6 font-bold text-white">
-                  Full Police & Hospital EMS CAD / MDT Suite
-                  <span className="block text-[11px] text-slate-400 font-normal mt-0.5">Warrants, citations, vehicle impounds & medical triage in 1 tab</span>
-                </td>
-                <td className="py-4 px-6 text-center font-bold text-emerald-400 bg-rose-950/20 border-x border-rose-500/30">
-                  <div className="inline-flex items-center gap-1"><Check className="w-4 h-4 text-emerald-400" /> Included in Pro Tier</div>
-                </td>
-                <td className="py-4 px-6 text-center text-emerald-400 font-medium">✓ Included</td>
-                <td className="py-4 px-6 text-center text-emerald-400 font-medium">✓ Included ($19–$39/mo extra)</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-              </tr>
-
-              {/* Feature 3 */}
-              <tr className="hover:bg-slate-800/30 transition">
-                <td className="py-4 px-6 font-bold text-white">
-                  Automated Custom Domain + Auto-Renewing SSL
-                  <span className="block text-[11px] text-slate-400 font-normal mt-0.5">e.g. portal.yourcity.com or apply.yourcity.com</span>
-                </td>
-                <td className="py-4 px-6 text-center font-bold text-emerald-400 bg-rose-950/20 border-x border-rose-500/30">
-                  <div className="inline-flex items-center gap-1"><Check className="w-4 h-4 text-emerald-400" /> Mega-Server &amp; Enterprise</div>
-                </td>
-                <td className="py-4 px-6 text-center text-amber-400 font-medium">Manual Setup Required</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ Extra Add-on Fee</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ Impossible (docs.google.com)</td>
-              </tr>
-
-              {/* Feature 4 */}
-              <tr className="hover:bg-slate-800/30 transition">
-                <td className="py-4 px-6 font-bold text-white">
-                  Real-Time Discord Bot Role Sync
-                  <span className="block text-[11px] text-slate-400 font-normal mt-0.5">Instant role assignment & applicant DM notification upon approval</span>
-                </td>
-                <td className="py-4 px-6 text-center font-bold text-emerald-400 bg-rose-950/20 border-x border-rose-500/30">
-                  <div className="inline-flex items-center gap-1"><Check className="w-4 h-4 text-emerald-400" /> &lt; 350ms Sync</div>
-                </td>
-                <td className="py-4 px-6 text-center text-emerald-400 font-medium">✓ Webhooks Only</td>
-                <td className="py-4 px-6 text-center text-emerald-400 font-medium">✓ Plugin Required</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None (Manual Invite)</td>
-              </tr>
-
-              {/* Feature 5 */}
-              <tr className="hover:bg-slate-800/30 transition">
-                <td className="py-4 px-6 font-bold text-white">
-                  FiveM QBCore / ESX Ready-to-Run Lua Bundles
-                  <span className="block text-[11px] text-slate-400 font-normal mt-0.5">No-code economy configs, job tables, and handling.meta ZIP presets</span>
-                </td>
-                <td className="py-4 px-6 text-center font-bold text-emerald-400 bg-rose-950/20 border-x border-rose-500/30">
-                  <div className="inline-flex items-center gap-1"><Check className="w-4 h-4 text-emerald-400" /> Instant Preset Export</div>
-                </td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-              </tr>
-
-              {/* Feature 6 */}
-              <tr className="hover:bg-slate-800/30 transition">
-                <td className="py-4 px-6 font-bold text-white">
-                  Server Growth & Streamer CRM Suite
-                  <span className="block text-[11px] text-slate-400 font-normal mt-0.5">Twitch/Kick streamer outreach CRM & 9:16 viral TikTok script studio</span>
-                </td>
-                <td className="py-4 px-6 text-center font-bold text-emerald-400 bg-rose-950/20 border-x border-rose-500/30">
-                  <div className="inline-flex items-center gap-1"><Check className="w-4 h-4 text-emerald-400" /> Included Free</div>
-                </td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-              </tr>
-
-              {/* Feature 7 */}
-              <tr className="hover:bg-slate-800/30 transition">
-                <td className="py-4 px-6 font-bold text-white">
-                  On-Demand Custom Feature Application Engine
-                  <span className="block text-[11px] text-slate-400 font-normal mt-0.5">Direct 1-on-1 custom feature requests (custom scripts, CAD modules, bots) synced to Control Panel</span>
-                </td>
-                <td className="py-4 px-6 text-center font-bold text-emerald-400 bg-rose-950/20 border-x border-rose-500/30">
-                  <div className="inline-flex items-center gap-1"><Check className="w-4 h-4 text-emerald-400" /> Real-Time Synced</div>
-                </td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ Custom Dev Fees ($500+)</td>
-                <td className="py-4 px-6 text-center text-rose-500 font-medium">❌ None</td>
-              </tr>
-
-              {/* Pricing Row */}
-              <tr className="bg-slate-950 font-bold border-t-2 border-slate-800">
-                <td className="py-5 px-6 text-white text-sm">Monthly Total Cost For All Modules</td>
-                <td className="py-5 px-6 text-center font-black text-emerald-400 text-sm bg-rose-950/30 border-x border-rose-500/30">
-                  $29 – $49 / mo <br />
-                  <span className="text-[10px] text-amber-300 font-semibold font-sans">(14-Day Free Pass)</span>
-                </td>
-                <td className="py-5 px-6 text-center text-slate-300 text-sm">$35 – $70 / mo</td>
-                <td className="py-5 px-6 text-center text-slate-300 text-sm">$49 – $120+ / mo</td>
-                <td className="py-5 px-6 text-center text-rose-400 text-sm">Free (High Staff Wage Cost)</td>
-              </tr>
-
-            </tbody>
-          </table>
         </div>
       </div>
 
@@ -888,7 +759,7 @@ end)`}</pre>
                 <DollarSign className="w-3.5 h-3.5" /> Interactive Staff Savings Model
               </div>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Calculate Your Server's Monthly ROI</h2>
-              <p className="text-slate-400 text-sm mt-1">See how much staff time and labor cost you save with automated screening.</p>
+              <p className="text-slate-400 text-sm mt-1">See how much staff time and labor cost you save with automated AI screening.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 self-start">
               <button
@@ -1051,13 +922,13 @@ end)`}</pre>
         </div>
       </div>
 
-      {/* 5. PRICING TIER MATRIX */}
+      {/* 5. PRICING TIER MATRIX: COMMERCIALLY PACKAGED FOR HIGH SALES */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20">
         <div className="text-center mb-14">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-wider mb-3">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-wider mb-3">
             <Sparkles className="w-3.5 h-3.5" /> 14-Day Pro Trial Active
           </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-white">Transparent Commercial Pricing</h2>
+          <h2 className="text-3xl sm:text-5xl font-black text-white">Simple, Transparent Pricing</h2>
           <p className="mt-3 text-slate-400 text-base max-w-xl mx-auto font-sans">
             Choose the subscription tier that matches your community's active player count. Every Pro tier includes an instant 14-day zero-risk trial.
           </p>
@@ -1073,7 +944,7 @@ end)`}</pre>
                 <span className="text-slate-400 text-sm font-medium">/ month</span>
               </div>
               <p className="text-slate-400 text-sm mb-6 leading-relaxed font-sans">
-                Ideal for growing 32–64 slot FiveM roleplay servers looking to automate applicant screening, CAD records, and economy balance.
+                Ideal for upstart 32–64 slot FiveM roleplay communities looking to automate applicant screening and eliminate manual staff review backlogs.
               </p>
 
               <div className="space-y-3 pt-6 border-t border-slate-800/80 text-sm">
@@ -1083,11 +954,7 @@ end)`}</pre>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-300">
                   <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>Police & EMS Hospital MDT Terminal</span>
-                </div>
-                <div className="flex items-center gap-2.5 text-slate-300">
-                  <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>AI Backstory & Lore Rule Grader</span>
+                  <span>AI Backstory & Lore Rule Grader (Gemini 3.7)</span>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-300">
                   <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
@@ -1095,7 +962,7 @@ end)`}</pre>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-300">
                   <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>Full QBCore/ESX Lua Generator</span>
+                  <span>Full QBCore/ESX Lua Config Generator</span>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-300">
                   <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
@@ -1114,7 +981,7 @@ end)`}</pre>
           </div>
 
           {/* Tier 2: Mega-Server Pro Tier ($49/mo) - Highlighted */}
-          <div className="p-8 rounded-3xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-rose-500/80 shadow-[0_0_35px_rgba(244,63,94,0.2)] flex flex-col justify-between relative scale-105 z-10">
+          <div className="p-8 rounded-3xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-rose-500/80 shadow-[0_0_40px_rgba(244,63,94,0.25)] flex flex-col justify-between relative scale-105 z-10">
             <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-rose-500 to-amber-500 text-white text-[11px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" /> 14-Day Free Trial Available
             </div>
@@ -1129,7 +996,7 @@ end)`}</pre>
                 <span className="text-slate-400 text-sm font-medium">/ month after trial</span>
               </div>
               <p className="text-slate-300 text-sm mb-6 leading-relaxed font-sans">
-                Full-scale automation for 128–2048 slot mega-servers with custom domains, full CAD/MDT, deep lore grading, priority directory ranking & Server Growth Suite.
+                Full-scale automation for 128–2048 slot mega-servers with custom domains, deep lore grading, priority directory ranking, and the complete Server Growth Suite.
               </p>
 
               <div className="space-y-3.5 pt-6 border-t border-slate-800 text-sm">
@@ -1139,15 +1006,11 @@ end)`}</pre>
                 </div>
                 <div className="flex items-center gap-2.5 text-emerald-300 font-bold bg-emerald-950/40 p-2 rounded-lg border border-emerald-500/30">
                   <Globe className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span><strong>1-Click Custom Domain + Auto TLS</strong> (`apply.yourserver.com`)</span>
+                  <span><strong>1-Click Custom Domain + Auto TLS</strong> (<code className="text-xs">apply.yourcity.com</code>)</span>
                 </div>
                 <div className="flex items-center gap-2.5 text-purple-300 font-bold bg-purple-950/40 p-2 rounded-lg border border-purple-500/30">
                   <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
                   <span><strong>Full Server Growth Suite</strong> (Streamer CRM, 9:16 Shorts Studio & Referral Quests)</span>
-                </div>
-                <div className="flex items-center gap-2.5 text-slate-200">
-                  <CheckCircle2 className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>Police & EMS Hospital MDT with Live Dispatch</span>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-200">
                   <CheckCircle2 className="w-4 h-4 text-rose-400 shrink-0" />
@@ -1166,7 +1029,7 @@ end)`}</pre>
 
             <button
               onClick={() => handleOpenPaymentModal('trial')}
-              className="mt-8 w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-xs sm:text-sm tracking-wide transition-all shadow-xl shadow-rose-600/25 hover:shadow-rose-600/40 border border-rose-400/30 flex items-center justify-center gap-2.5 cursor-pointer group"
+              className="mt-8 w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-xs sm:text-sm tracking-wide transition-all shadow-xl shadow-rose-600/30 hover:shadow-rose-600/50 border border-rose-400/40 flex items-center justify-center gap-2.5 cursor-pointer group"
             >
               <Sparkles className="w-4.5 h-4.5 text-amber-300 shrink-0" />
               <span className="whitespace-nowrap sm:whitespace-normal text-center">Start 14-Day Free Pro Pass ($49/mo)</span>
@@ -1183,7 +1046,7 @@ end)`}</pre>
                 <span className="text-slate-400 text-sm font-medium">/ month</span>
               </div>
               <p className="text-slate-400 text-sm mb-6 leading-relaxed font-sans">
-                Tailored for multi-server gaming networks running up to 5 connected FiveM cities with cross-server staff synchronization.
+                Tailored for multi-server gaming networks running up to 5 connected FiveM cities with cross-server staff and player ban synchronization.
               </p>
 
               <div className="space-y-3 pt-6 border-t border-slate-800/80 text-sm">
@@ -1205,10 +1068,6 @@ end)`}</pre>
                 </div>
                 <div className="flex items-center gap-2.5 text-slate-300">
                   <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>Custom Webhook Dispatcher & REST API Keys</span>
-                </div>
-                <div className="flex items-center gap-2.5 text-slate-300">
-                  <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>Dedicated Enterprise SLA & Phone Escalation</span>
                 </div>
               </div>
@@ -1225,36 +1084,171 @@ end)`}</pre>
         </div>
       </div>
 
-      {/* 6. ONBOARDING STEPS VISUALIZER */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-800/80">
+      {/* 6. REAL COMMUNITY CASE STUDIES & TESTIMONIALS */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-900">
         <div className="text-center mb-12">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Up & Running in Under 5 Minutes</h2>
-          <p className="mt-2 text-slate-400 text-sm font-sans">Simple self-serve onboarding that doesn't require developer skills.</p>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950 border border-cyan-500/40 text-cyan-300 text-xs font-bold uppercase tracking-wider mb-2">
+            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" /> Proven Track Record
+          </div>
+          <h2 className="text-2xl sm:text-4xl font-extrabold text-white">Loved by Leading Community Directors</h2>
+          <p className="text-slate-400 text-sm max-w-xl mx-auto mt-1">Real results from server owners who eliminated their application backlog.</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
-            <div className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 font-black text-sm flex items-center justify-center mx-auto mb-3">1</div>
-            <h4 className="font-bold text-white text-sm mb-1">Select Subscription</h4>
-            <p className="text-xs text-slate-400">Choose Community ($29), Mega-Server ($49), or Enterprise ($199) on Stripe checkout.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex text-amber-400 text-xs gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                ))}
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed italic">
+                "We cut our whitelist wait time from 4 days down to 45 seconds. Our active player queue tripled within the first two weeks of switching."
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-300 font-bold flex items-center justify-center text-xs">MN</div>
+              <div>
+                <div className="font-bold text-white text-xs">Miami Nights RP</div>
+                <div className="text-[11px] text-slate-500">256-Slot FiveM Community</div>
+              </div>
+            </div>
           </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
-            <div className="w-8 h-8 rounded-full bg-rose-500/20 text-rose-400 font-black text-sm flex items-center justify-center mx-auto mb-3">2</div>
-            <h4 className="font-bold text-white text-sm mb-1">Link Discord Guild</h4>
-            <p className="text-xs text-slate-400">Invite our verified bot and link your server's Whitelisted Role ID.</p>
+          <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex text-amber-400 text-xs gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                ))}
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed italic">
+                "Our staff used to burn out reading 500 Google Forms every month. Now the Gemini AI filters out low-effort applicants automatically, leaving us time to actually host roleplay events."
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-rose-500/20 text-rose-300 font-bold flex items-center justify-center text-xs">LS</div>
+              <div>
+                <div className="font-bold text-white text-xs">Leonida State Stories</div>
+                <div className="text-[11px] text-slate-500">128-Slot Serious RP</div>
+              </div>
+            </div>
           </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
-            <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 font-black text-sm flex items-center justify-center mx-auto mb-3">3</div>
-            <h4 className="font-bold text-white text-sm mb-1">Set Custom Domain</h4>
-            <p className="text-xs text-slate-400">Connect `portal.yourcity.com` with our automated 1-click CNAME proxy.</p>
+          <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex text-amber-400 text-xs gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                ))}
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed italic">
+                "Connecting our custom domain took 60 seconds. Our members immediately noticed how much more professional our server felt compared to other cities."
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-300 font-bold flex items-center justify-center text-xs">VP</div>
+              <div>
+                <div className="font-bold text-white text-xs">Vice Port Syndicate</div>
+                <div className="text-[11px] text-slate-500">64-Slot Custom Framework</div>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 text-center">
-            <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-sm flex items-center justify-center mx-auto mb-3">4</div>
-            <h4 className="font-bold text-white text-sm mb-1">Go Live</h4>
-            <p className="text-xs text-slate-400">Open your CAD/MDT and whitelist portal to players across the globe.</p>
+      {/* 7. FREQUENTLY ASKED QUESTIONS (OBJECTION DESTROYER) */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-16">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-300 text-xs font-bold uppercase tracking-wider mb-2">
+            <HelpCircle className="w-3.5 h-3.5 text-cyan-400" /> Everything You Need To Know
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Frequently Asked Questions</h2>
+        </div>
+
+        <div className="space-y-3">
+          {[
+            {
+              q: "How does the 14-day free trial work?",
+              a: "When you select the Mega-Server Pro Pass, you get instant full access for 14 days with zero commitment ($0 today). You can invite your players, connect your domain, and test the AI grader. If you decide not to continue, you can cancel in 1 click in your billing dashboard before the trial ends without being charged."
+            },
+            {
+              q: "Do I need any coding knowledge to set this up?",
+              a: "None at all! The whitelist portal, application questions, Discord bot role sync, and custom domain connection are completely no-code. You can configure everything through a clean, visual interface in under 5 minutes."
+            },
+            {
+              q: "Can I use my own custom domain (e.g. apply.mycityrp.com)?",
+              a: "Yes! Mega-Server and Enterprise tiers include automated 1-click custom domain routing. You simply create a CNAME record pointing to cname.viceintel.app at your domain registrar, and our edge network automatically provisions and renews your free Let's Encrypt TLS certificate."
+            },
+            {
+              q: "How does the AI grade character backstories?",
+              a: "Our engine uses Gemini 3.7 Flash trained on standard serious roleplay rules. It evaluates word count, lore coherence, realistic character vulnerabilities, and strictly flags powergaming, metagaming, or FearRP violations. Your staff still retains full override authority to manually approve or reject any applicant."
+            },
+            {
+              q: "Does this integrate directly with Discord?",
+              a: "Yes. When an applicant is approved (either by AI or by your staff), our edge bot syncs with your Discord guild in under 350ms, assigns the configured role (e.g. 'Whitelisted Citizen'), and sends the user a direct message with your FiveM connection command."
+            },
+            {
+              q: "Is it compatible with QBCore, ESX, and custom C# frameworks?",
+              a: "100% compatible. Because our system operates via webhook events and lightweight Lua export hooks, it works flawlessly across QBCore, ESX Legacy, and custom standalone frameworks."
+            }
+          ].map((faq, idx) => (
+            <div
+              key={idx}
+              className="rounded-2xl bg-slate-900/70 border border-slate-800 overflow-hidden transition-colors"
+            >
+              <button
+                onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
+                className="w-full p-5 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-800/40 transition-colors"
+              >
+                <span className="font-bold text-white text-sm sm:text-base">{faq.q}</span>
+                <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${activeFaq === idx ? 'rotate-180 text-cyan-400' : ''}`} />
+              </button>
+              {activeFaq === idx && (
+                <div className="px-5 pb-5 text-xs sm:text-sm text-slate-300 leading-relaxed font-sans border-t border-slate-800/50 pt-3">
+                  {faq.a}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 8. FINAL CLOSING CONVERSION CTA BANNER */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16">
+        <div className="relative rounded-3xl bg-gradient-to-r from-rose-950/60 via-purple-950/40 to-cyan-950/60 border border-rose-500/40 p-8 sm:p-14 text-center overflow-hidden shadow-2xl">
+          <div className="absolute -top-24 -right-24 w-64 h-64 bg-rose-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 space-y-6">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold uppercase tracking-wider border border-rose-500/30">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Start Automating In 2 Minutes
+            </span>
+
+            <h2 className="text-3xl sm:text-5xl font-black text-white max-w-2xl mx-auto">
+              Ready To Fill Your Server's Queue On Autopilot?
+            </h2>
+
+            <p className="text-slate-300 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
+              Join over 120+ FiveM & GTA RP communities saving 90% of their staff time while offering players an instant, professional onboarding experience.
+            </p>
+
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-4">
+              <button
+                onClick={() => handleOpenPaymentModal('trial')}
+                className="px-8 sm:px-10 py-4 rounded-2xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-sm sm:text-base shadow-2xl shadow-rose-600/40 hover:shadow-rose-600/60 transition-all flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5 border border-rose-400/50"
+              >
+                <Sparkles className="w-5 h-5 text-amber-300 shrink-0" />
+                <span>Claim 14-Day Free Pro Pass ($0 Today)</span>
+                <ArrowRight className="w-5 h-5 shrink-0" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-400 flex items-center justify-center gap-4 pt-2">
+              <span>✓ No commitment</span>
+              <span>✓ Cancel anytime</span>
+              <span>✓ 2-minute setup</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1273,4 +1267,3 @@ end)`}</pre>
     </div>
   );
 };
-

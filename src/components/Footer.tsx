@@ -19,10 +19,12 @@ import {
   BookOpen,
   Bug,
   Info,
-  RefreshCw
+  RefreshCw,
+  Cookie
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { getDocsNavigationTarget, getAdminNavigationTarget } from '../lib/subdomainRouter';
+import { openCookiePreferencesModal } from '../lib/cookieConsent';
 
 interface FooterProps {
   onNavigate?: (tab: ActiveTab) => void;
@@ -329,6 +331,19 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenReportModal, o
               >
                 <Shield className="w-3.5 h-3.5 text-rose-400" />
                 <span>Copyright & Privacy Policy</span>
+              </button>
+              <span className="text-zinc-700 hidden sm:inline">•</span>
+              <button
+                id="footer-nav-cookie-preferences-btn"
+                onClick={(e) => {
+                  e.preventDefault();
+                  openCookiePreferencesModal();
+                }}
+                className="text-zinc-300 hover:text-white font-medium transition cursor-pointer flex items-center gap-1.5 py-1 px-1.5 rounded-lg hover:bg-zinc-900 active:scale-95"
+                title="Manage cookie consent and telemetry preferences"
+              >
+                <Cookie className="w-3.5 h-3.5 text-amber-400" />
+                <span>Cookie Preferences</span>
               </button>
               {onOpenReportModal && (
                 <>

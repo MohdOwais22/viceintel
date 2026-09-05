@@ -151,13 +151,13 @@ export const OnDemandFeatureAdminCms: React.FC<OnDemandFeatureAdminCmsProps> = (
             <span className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5">
               <Wand2 className="w-3.5 h-3.5 text-indigo-400" /> Executive Control Panel
             </span>
-            <span className="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[11px] font-bold uppercase tracking-wider">
-              On-Demand Queue Sync
+            <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">
+              Paid Commissions Desk
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white">On-Demand Feature Applications</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-white">Custom Development & Commission Quotes</h2>
           <p className="text-xs text-zinc-300 max-w-xl">
-            Review custom script, CAD extension, and bot requests submitted by RP Server Owners. Updating status and developer specs syncs instantly to their dashboard.
+            Review custom script, UI, physics, and bot commission requests submitted by RP Server Owners. Provide binding quotes, set milestone schedules, and sync progress to their dashboard.
           </p>
         </div>
 

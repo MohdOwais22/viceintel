@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import localforage from 'localforage';
 import {
   ServerConfigProject,
   DEFAULT_PROJECT_PRESETS,
@@ -14,6 +13,7 @@ import { LuaCodePreview } from './LuaCodePreview';
 import { HostingPromoCard } from '../affiliates/HostingPromoCard';
 import { auth, db } from '../../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getUserClearanceLevel, hasL2Clearance, getClearanceBadgeText } from '../../lib/rbac';
 import {
   Sparkles,
   Save,
@@ -30,7 +30,9 @@ import {
   ChevronDown,
   Layers,
   ArrowRight,
-  TrendingUp
+  TrendingUp,
+  Lock,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -49,18 +51,28 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
   const [isSaveSuccess, setIsSaveSuccess] = useState<boolean>(false);
   const [activePresetId, setActivePresetId] = useState<string>(DEFAULT_PROJECT_PRESETS[0].configId);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [isProUser, setIsProUser] = useState<boolean>(false);
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
 
   const [isResetSuccess, setIsResetSuccess] = useState<boolean>(false);
 
-  // Hydrate from localforage on initial mount
+  // Compute actual clearance level (0: Guest, 1: L1 Citizen, 2: L2 VIP, 3: L3 Staff, 4: L4 Admin)
+  const clearanceLevel = getUserClearanceLevel(userProfile || (currentUser ? { clearanceLevel: 1 } : null));
+  const hasClearanceL2 = hasL2Clearance(userProfile) || isProUser;
+
+  // Hydrate from localStorage on initial mount
   useEffect(() => {
-    async function loadCachedProject() {
+    function loadCachedProject() {
       try {
-        const cached = await localforage.getItem<ServerConfigProject>(STORAGE_KEY_PROJECT);
-        if (cached && cached.jobs && cached.economyBaselines) {
-          setProject(cached);
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem(STORAGE_KEY_PROJECT);
+          if (raw) {
+            const cached = JSON.parse(raw);
+            if (cached && cached.jobs && cached.economyBaselines) {
+              setProject(cached);
+            }
+          }
         }
       } catch (e) {
         console.warn('[ScriptStudio] Failed to load cached project:', e);
@@ -81,25 +93,34 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
           const snap = await getDoc(profileRef);
           if (snap.exists()) {
             const data = snap.data();
-            const isVipOrAdmin = data.isVip || data.role === 'Admin' || data.role === 'Staff' || data.role === 'VIP Member';
+            setUserProfile(data);
+            const lvl = getUserClearanceLevel(data);
+            const isVipOrAdmin = lvl >= 2 || data.isVip || data.role === 'Admin' || data.role === 'Staff' || data.role === 'VIP Member';
             setIsProUser(isVipOrAdmin);
+          } else {
+            setUserProfile({ role: 'User', clearanceLevel: 1 });
+            setIsProUser(false);
           }
         } catch (err) {
           console.warn('[ScriptStudio] Profile check notice:', err);
+          setUserProfile({ role: 'User', clearanceLevel: 1 });
         }
       } else {
+        setUserProfile(null);
         setIsProUser(false);
       }
     });
     return () => unsub();
   }, []);
 
-  // Auto-save to localforage upon project edits
+  // Auto-save to localStorage upon project edits
   useEffect(() => {
-    if (!isHydrated) return;
-    localforage.setItem(STORAGE_KEY_PROJECT, project).catch((err) => {
+    if (!isHydrated || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_KEY_PROJECT, JSON.stringify(project));
+    } catch (err) {
       console.warn('[ScriptStudio] Auto-save notice:', err);
-    });
+    }
   }, [project, isHydrated]);
 
   // Load Preset
@@ -109,11 +130,22 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
     freshProject.updatedAt = Date.now();
     setProject(freshProject);
     setActivePresetId(preset.configId);
-    localforage.setItem(STORAGE_KEY_PROJECT, freshProject).catch(() => {});
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY_PROJECT, JSON.stringify(freshProject));
+      } catch {}
+    }
   };
 
   // AI Logic Synthesizer
   const handleSynthesizeAi = async (prompt: string) => {
+    // Strictly enforce VIP clearance
+    if (!hasClearanceL2) {
+      setAiStatusMessage('Security Protocol 403: VIP clearance required.');
+      setIsProModalOpen(true);
+      return;
+    }
+
     setIsAiLoading(true);
     setAiStatusMessage('Connecting to Gemini 3.7 Flash Engine & FiveM Compiler...');
 
@@ -125,7 +157,10 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
           prompt,
           framework: project.framework,
           category: project.category,
-          currentProject: project
+          currentProject: project,
+          userClearance: clearanceLevel,
+          isVip: hasClearanceL2,
+          enforceClearance: true
         })
       });
 
@@ -188,13 +223,17 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
     defaultPreset.updatedAt = Date.now();
     setProject(defaultPreset);
     setActivePresetId(DEFAULT_PROJECT_PRESETS[0].configId);
-    localforage.setItem(STORAGE_KEY_PROJECT, defaultPreset).catch(() => {});
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY_PROJECT, JSON.stringify(defaultPreset));
+      } catch {}
+    }
     setIsResetSuccess(true);
     setTimeout(() => setIsResetSuccess(false), 2500);
   };
 
   return (
-    <div className="min-h-screen bg-[#06090e] text-zinc-100 flex flex-col">
+    <div className="min-h-screen bg-[#06090e] text-zinc-100 flex flex-col pb-16 sm:pb-20">
       {/* Studio Header Bar */}
       <div className="border-b border-white/10 bg-[#0a0f16] px-4 py-3 sticky top-0 z-30 shadow-xl backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -295,6 +334,10 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
             isAiLoading={isAiLoading}
             aiStatusMessage={aiStatusMessage}
             isProUser={isProUser}
+            hasL2Clearance={hasClearanceL2}
+            userClearanceLevel={clearanceLevel}
+            currentUser={currentUser}
+            onNavigateToAuth={onNavigateToAuth}
             onOpenProModal={() => setIsProModalOpen(true)}
           />
         </div>
@@ -341,24 +384,29 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
                   <Crown className="w-7 h-7 text-black" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-white">FiveM Studio Pro Membership</h3>
-                  <p className="text-xs text-zinc-400">$29/mo · Unlimited Multi-File FiveM Resource Bundles</p>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 font-mono">
+                      VIP Clearance
+                    </span>
+                    <h3 className="text-lg font-black text-white">FiveM Studio Pro Membership</h3>
+                  </div>
+                  <p className="text-xs text-zinc-400">Unlock Gemini 3.7 Flash AI Script Synthesizer & Resource Bundles</p>
                 </div>
               </div>
 
               <div className="space-y-3 text-xs text-zinc-300">
                 <div className="p-3 bg-zinc-900/80 rounded-xl border border-white/5 space-y-2">
                   <span className="font-bold text-white uppercase text-[10px] tracking-wider text-rose-400">
-                    What's Included:
+                    VIP Privileges Included:
                   </span>
                   <ul className="space-y-2">
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span><strong>1-Click Multi-File ZIP Bundles</strong> (fxmanifest, config, jobs, items, handling, SQL)</span>
+                      <span><strong>AI Script & Logic Synthesizer</strong> (Gemini 3.7 Flash Engine with zero syntax errors)</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span><strong>Unlimited AI Script Synthesis</strong> powered by Gemini 3.7 Flash</span>
+                      <span><strong>1-Click Multi-File ZIP Bundles</strong> (fxmanifest, config, jobs, items, handling, SQL)</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -366,7 +414,7 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span><strong>Gini Income Disparity & Anti-Inflation Matrix</strong></span>
+                      <span><strong>Gini Income Disparity & Anti-Inflation Economy Matrix</strong></span>
                     </li>
                   </ul>
                 </div>
@@ -382,11 +430,17 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
                 <button
                   onClick={() => {
                     setIsProUser(true);
+                    setUserProfile((prev: any) => ({
+                      ...(prev || {}),
+                      clearanceLevel: 'VIP',
+                      isVip: true,
+                      role: 'VIP Member'
+                    }));
                     setIsProModalOpen(false);
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer"
                 >
-                  <span>Activate Pro License ($29/mo)</span>
+                  <span>Activate VIP Clearance ($29/mo)</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

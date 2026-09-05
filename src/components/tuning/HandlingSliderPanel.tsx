@@ -38,6 +38,7 @@ interface HandlingSliderPanelProps {
   onVehicleModelChange: (model: string) => void;
   onOpenSaveModal: () => void;
   isLoggedIn: boolean;
+  initialTab?: 'quick' | 'engine' | 'tires' | 'suspension';
 }
 
 export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
@@ -46,9 +47,17 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
   vehicleModel,
   onVehicleModelChange,
   onOpenSaveModal,
-  isLoggedIn
+  isLoggedIn,
+  initialTab
 }) => {
-  const [activeTab, setActiveTab] = useState<'quick' | 'engine' | 'tires' | 'suspension'>('quick');
+  const [activeTab, setActiveTab] = useState<'quick' | 'engine' | 'tires' | 'suspension'>(initialTab || 'quick');
+
+  // Sync active tab if initialTab changes from parent
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [copied, setCopied] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [importXmlText, setImportXmlText] = useState<string>('');
@@ -147,7 +156,7 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
     <div className="flex flex-col gap-5 text-white">
       {/* Vehicle Preset & Model Selector Banner */}
       <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 shadow-2xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
           <div>
             <div className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
               <Car className="w-4 h-4" /> Base Vehicle Chassis
@@ -157,12 +166,12 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
             </h3>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full md:w-auto flex-1 max-w-md justify-start md:justify-end">
             {/* Vehicle Model Selector Dropdown */}
             <select
               value={vehicleModel}
               onChange={(e) => onVehicleModelChange(e.target.value)}
-              className="bg-zinc-950 border border-zinc-800 text-white rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-rose-500 w-full sm:w-56 cursor-pointer"
+              className="bg-zinc-950 border border-zinc-800 text-white rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-rose-500 w-full sm:w-64 max-w-full cursor-pointer truncate"
             >
               <optgroup label="GTA VI Database Vehicles">
                 {VEHICLES_DATA.map((v) => (
@@ -182,29 +191,29 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
             <button
               type="button"
               onClick={() => setIsImportModalOpen(true)}
-              className="px-3 py-2 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+              className="px-3 py-2 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 hover:text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-95"
               title="Import or paste handling.meta XML"
             >
-              <Upload className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Import XML</span>
+              <Upload className="w-3.5 h-3.5 text-rose-400" />
+              <span>Import XML</span>
             </button>
           </div>
         </div>
 
-        {/* Quick Presets One-Click Bar */}
+        {/* Quick Presets One-Click Bar (Clean Structured Responsive Grid) */}
         <div className="mt-4">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2 flex items-center gap-1">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2.5 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" /> One-Click Tuning Presets:
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {Object.entries(DEFAULT_HANDLING_PRESETS).map(([key, preset]) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => handleLoadPreset(key)}
-                className="px-3 py-1.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 hover:border-rose-500/60 rounded-xl text-xs font-bold text-zinc-300 hover:text-white transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                className="px-3 py-2.5 bg-zinc-950/80 hover:bg-zinc-850 border border-zinc-800/90 hover:border-rose-500/60 rounded-xl text-xs font-bold text-zinc-300 hover:text-white transition-all flex items-center gap-2 cursor-pointer shadow-sm active:scale-[0.98] group min-h-[42px]"
               >
-                <span>
+                <span className="text-base shrink-0 group-hover:scale-110 transition-transform">
                   {preset.tag === 'drift'
                     ? '🏎️'
                     : preset.tag === 'race'
@@ -215,7 +224,7 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
                     ? '🌲'
                     : '🚗'}
                 </span>
-                <span>{preset.label}</span>
+                <span className="truncate">{preset.label}</span>
               </button>
             ))}
           </div>
@@ -225,57 +234,57 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
       {/* Sliders Group Tabs (Quick Tuning / Engine / Tires / Suspension) */}
       <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-2 border-b border-zinc-800 pb-3 mb-5">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 flex-1 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-1.5 flex-1 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
             <button
               type="button"
               onClick={() => setActiveTab('quick')}
-              className={`px-2 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
+              className={`px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer text-center min-h-[38px] ${
                 activeTab === 'quick'
                   ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="truncate">Stage 1 Quick</span>
+              <span className="whitespace-nowrap">Stage 1 Quick</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('engine')}
-              className={`px-2 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
+              className={`px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer text-center min-h-[38px] ${
                 activeTab === 'engine'
                   ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
               }`}
             >
-              <Zap className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Engine & Power</span>
+              <Zap className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span className="whitespace-nowrap">Engine & Power</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('tires')}
-              className={`px-2 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
+              className={`px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer text-center min-h-[38px] ${
                 activeTab === 'tires'
                   ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
               }`}
             >
-              <Activity className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Tires & Grip</span>
+              <Activity className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+              <span className="whitespace-nowrap">Tires & Grip</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('suspension')}
-              className={`px-2 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
+              className={`px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer text-center min-h-[38px] ${
                 activeTab === 'suspension'
                   ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
               }`}
             >
-              <Layers className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Suspension</span>
+              <Layers className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+              <span className="whitespace-nowrap">Suspension</span>
             </button>
           </div>
 
@@ -304,14 +313,32 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
 
             {/* Quick Acceleration / Engine Force Slider */}
             <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5">
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Zap className="w-3.5 h-3.5 text-rose-400" />
                   <span>Engine Output & Acceleration</span>
                 </span>
-                <span className="text-xs font-mono font-bold text-rose-400">
-                  {Math.round((handlingData.fInitialDriveForce / 0.65) * 100)}% ({handlingData.fInitialDriveForce.toFixed(3)})
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('fInitialDriveForce', Math.max(0.1, Number((handlingData.fInitialDriveForce - 0.02).toFixed(3))))}
+                    className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition active:scale-95"
+                    title="Nudge down"
+                  >
+                    -
+                  </button>
+                  <span className="text-xs font-mono font-bold text-rose-400 min-w-[70px] text-center px-1.5 py-0.5 rounded bg-rose-950/40 border border-rose-500/20">
+                    {Math.round((handlingData.fInitialDriveForce / 0.65) * 100)}% ({handlingData.fInitialDriveForce.toFixed(3)})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('fInitialDriveForce', Math.min(0.65, Number((handlingData.fInitialDriveForce + 0.02).toFixed(3))))}
+                    className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition active:scale-95"
+                    title="Nudge up"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
               <input
                 type="range"
@@ -320,30 +347,48 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
                 step="0.01"
                 value={handlingData.fInitialDriveForce}
                 onChange={(e) => handleFieldChange('fInitialDriveForce', parseFloat(e.target.value))}
-                className="w-full accent-rose-500 cursor-pointer h-2 bg-zinc-800 rounded-lg"
+                className="w-full accent-rose-500 cursor-pointer h-2.5 bg-zinc-800 rounded-lg touch-manipulation"
               />
-              <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-0.5">
-                <span>Cruiser</span>
-                <span>Sports</span>
-                <span>Hypercar</span>
-                <span>Drag Rocket</span>
+              <div className="flex justify-between text-[10px] text-zinc-400 font-mono mt-1 px-0.5">
+                <span className={handlingData.fInitialDriveForce <= 0.22 ? 'text-rose-400 font-bold' : ''}>Cruiser</span>
+                <span className={handlingData.fInitialDriveForce > 0.22 && handlingData.fInitialDriveForce <= 0.38 ? 'text-rose-400 font-bold' : ''}>Sports</span>
+                <span className={handlingData.fInitialDriveForce > 0.38 && handlingData.fInitialDriveForce <= 0.52 ? 'text-rose-400 font-bold' : ''}>Hypercar</span>
+                <span className={handlingData.fInitialDriveForce > 0.52 ? 'text-rose-400 font-bold' : ''}>Drag Rocket</span>
               </div>
             </div>
 
             {/* Quick Drivetrain Bias Slider */}
             <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5">
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Activity className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Drivetrain Bias</span>
                 </span>
-                <span className="text-xs font-mono font-bold text-cyan-400">
-                  {handlingData.fDriveBiasFront <= 0.05
-                    ? '100% RWD'
-                    : handlingData.fDriveBiasFront >= 0.95
-                    ? '100% FWD'
-                    : `${Math.round((1 - handlingData.fDriveBiasFront) * 100)}% Rear / ${Math.round(handlingData.fDriveBiasFront * 100)}% Front AWD`}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('fDriveBiasFront', Math.max(0, Number((handlingData.fDriveBiasFront - 0.05).toFixed(2))))}
+                    className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition active:scale-95"
+                    title="Nudge Rear"
+                  >
+                    -
+                  </button>
+                  <span className="text-xs font-mono font-bold text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-950/40 border border-cyan-500/20">
+                    {handlingData.fDriveBiasFront <= 0.05
+                      ? '100% RWD'
+                      : handlingData.fDriveBiasFront >= 0.95
+                      ? '100% FWD'
+                      : `${Math.round((1 - handlingData.fDriveBiasFront) * 100)}% Rear / ${Math.round(handlingData.fDriveBiasFront * 100)}% Front AWD`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('fDriveBiasFront', Math.min(1, Number((handlingData.fDriveBiasFront + 0.05).toFixed(2))))}
+                    className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition active:scale-95"
+                    title="Nudge Front"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
               <input
                 type="range"
@@ -352,25 +397,57 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
                 step="0.05"
                 value={handlingData.fDriveBiasFront}
                 onChange={(e) => handleFieldChange('fDriveBiasFront', parseFloat(e.target.value))}
-                className="w-full accent-cyan-400 cursor-pointer h-2 bg-zinc-800 rounded-lg"
+                className="w-full accent-cyan-400 cursor-pointer h-2.5 bg-zinc-800 rounded-lg touch-manipulation"
               />
-              <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-0.5">
-                <span className="text-rose-400 font-bold">RWD (Drift)</span>
-                <span className="text-cyan-400 font-bold">50/50 AWD (Grip)</span>
-                <span className="text-emerald-400 font-bold">FWD (Street)</span>
+              <div className="flex justify-between text-[10px] font-mono mt-1 px-0.5">
+                <span className={handlingData.fDriveBiasFront <= 0.15 ? 'text-rose-400 font-bold underline' : 'text-zinc-500'}>RWD (Drift)</span>
+                <span className={handlingData.fDriveBiasFront > 0.35 && handlingData.fDriveBiasFront < 0.65 ? 'text-cyan-400 font-bold underline' : 'text-zinc-500'}>50/50 AWD (Grip)</span>
+                <span className={handlingData.fDriveBiasFront >= 0.85 ? 'text-emerald-400 font-bold underline' : 'text-zinc-500'}>FWD (Street)</span>
               </div>
             </div>
 
             {/* Quick Cornering Grip Slider */}
             <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5">
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Activity className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Cornering Grip & Tire Compound</span>
                 </span>
-                <span className="text-xs font-mono font-bold text-emerald-400">
-                  {handlingData.fTractionCurveMax.toFixed(2)}x
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const maxVal = Math.max(1.2, Number((handlingData.fTractionCurveMax - 0.05).toFixed(2)));
+                      onChange({
+                        ...handlingData,
+                        fTractionCurveMax: maxVal,
+                        fTractionCurveMin: Math.max(0.8, Number((maxVal * 0.82).toFixed(2)))
+                      });
+                    }}
+                    className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition active:scale-95"
+                    title="Nudge down"
+                  >
+                    -
+                  </button>
+                  <span className="text-xs font-mono font-bold text-emerald-400 min-w-[50px] text-center px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-500/20">
+                    {handlingData.fTractionCurveMax.toFixed(2)}x
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const maxVal = Math.min(3.4, Number((handlingData.fTractionCurveMax + 0.05).toFixed(2)));
+                      onChange({
+                        ...handlingData,
+                        fTractionCurveMax: maxVal,
+                        fTractionCurveMin: Math.max(0.8, Number((maxVal * 0.82).toFixed(2)))
+                      });
+                    }}
+                    className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition active:scale-95"
+                    title="Nudge up"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
               <input
                 type="range"
@@ -386,25 +463,43 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
                     fTractionCurveMin: Math.max(0.8, Number((maxVal * 0.82).toFixed(2)))
                   });
                 }}
-                className="w-full accent-emerald-400 cursor-pointer h-2 bg-zinc-800 rounded-lg"
+                className="w-full accent-emerald-400 cursor-pointer h-2.5 bg-zinc-800 rounded-lg touch-manipulation"
               />
-              <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-0.5">
-                <span>Low Grip / Slippery</span>
-                <span>Street Sport</span>
-                <span>Sticky Semi-Slicks</span>
+              <div className="flex justify-between text-[10px] text-zinc-400 font-mono mt-1 px-0.5">
+                <span className={handlingData.fTractionCurveMax <= 1.8 ? 'text-emerald-400 font-bold' : ''}>Low Grip / Slippery</span>
+                <span className={handlingData.fTractionCurveMax > 1.8 && handlingData.fTractionCurveMax <= 2.6 ? 'text-emerald-400 font-bold' : ''}>Street Sport</span>
+                <span className={handlingData.fTractionCurveMax > 2.6 ? 'text-emerald-400 font-bold' : ''}>Sticky Semi-Slicks</span>
               </div>
             </div>
 
             {/* Quick Drift & Slide Slide Multiplier */}
             <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5">
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-rose-400" />
                   <span>Oversteer & Drift Slide Tendency</span>
                 </span>
-                <span className="text-xs font-mono font-bold text-rose-400">
-                  {((handlingData.fTractionLossMult ?? 1.0) < 0.9 ? 'Long Gliding Drift' : (handlingData.fTractionLossMult ?? 1.0) > 1.3 ? 'Fast Grip Snap' : 'Balanced Flow')}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('fTractionLossMult', Math.max(0.5, Number(((handlingData.fTractionLossMult ?? 1.0) - 0.05).toFixed(2))))}
+                    className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition active:scale-95"
+                    title="Nudge down"
+                  >
+                    -
+                  </button>
+                  <span className="text-xs font-mono font-bold text-rose-400 px-1.5 py-0.5 rounded bg-rose-950/40 border border-rose-500/20">
+                    {((handlingData.fTractionLossMult ?? 1.0) < 0.9 ? 'Gliding Drift' : (handlingData.fTractionLossMult ?? 1.0) > 1.3 ? 'Fast Grip Snap' : 'Balanced')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('fTractionLossMult', Math.min(2.0, Number(((handlingData.fTractionLossMult ?? 1.0) + 0.05).toFixed(2))))}
+                    className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition active:scale-95"
+                    title="Nudge up"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
               <input
                 type="range"
@@ -413,12 +508,12 @@ export const HandlingSliderPanel: React.FC<HandlingSliderPanelProps> = ({
                 step="0.05"
                 value={handlingData.fTractionLossMult ?? 1.0}
                 onChange={(e) => handleFieldChange('fTractionLossMult', parseFloat(e.target.value))}
-                className="w-full accent-rose-500 cursor-pointer h-2 bg-zinc-800 rounded-lg"
+                className="w-full accent-rose-500 cursor-pointer h-2.5 bg-zinc-800 rounded-lg touch-manipulation"
               />
-              <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-0.5">
-                <span>Extended Drift Slide</span>
-                <span>Neutral</span>
-                <span>Rapid Recovery</span>
+              <div className="flex justify-between text-[10px] text-zinc-400 font-mono mt-1 px-0.5">
+                <span className={(handlingData.fTractionLossMult ?? 1.0) < 0.9 ? 'text-rose-400 font-bold' : ''}>Extended Drift Slide</span>
+                <span className={(handlingData.fTractionLossMult ?? 1.0) >= 0.9 && (handlingData.fTractionLossMult ?? 1.0) <= 1.3 ? 'text-zinc-200 font-bold' : ''}>Neutral</span>
+                <span className={(handlingData.fTractionLossMult ?? 1.0) > 1.3 ? 'text-rose-400 font-bold' : ''}>Rapid Recovery</span>
               </div>
             </div>
 

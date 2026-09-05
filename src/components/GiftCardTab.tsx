@@ -320,39 +320,47 @@ export const GiftCardTab: React.FC<GiftCardTabProps> = ({
     }
   }, [pricing.vipVcValue]);
 
-  // Load User Profile Data & Claims from Firestore
-  useEffect(() => {
+  // Load User Profile Data & Claims from MongoDB
+  const fetchUserProfile = async () => {
     if (!currentUser) return;
-
-    const userDocRef = doc(db, 'userProfiles', currentUser.uid);
-    const unsub = onSnapshot(userDocRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (typeof data.vcBalance === 'number') {
-          setUserVcBalance(data.vcBalance);
-        } else if (typeof data.credits === 'number') {
-          setUserVcBalance(data.credits);
-        }
-        if (Array.isArray(data.claimedVouchers)) {
-          setClaimedCodes(data.claimedVouchers);
-        }
-        if (Array.isArray(data.voucherLogs)) {
-          setRedemptionLogs(data.voucherLogs);
-        }
-        if (data.vipExpires) {
-          setUserVipExpires(data.vipExpires);
-        } else {
-          setUserVipExpires('');
-        }
-        if (data.vipUntil) {
-          setUserVipUntil(typeof data.vipUntil === 'number' ? new Date(data.vipUntil).toISOString() : String(data.vipUntil));
-        } else {
-          setUserVipUntil('');
+    try {
+      const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+      if (apiRes.ok) {
+        const payload = await apiRes.json();
+        if (payload.success && payload.data) {
+          const data = payload.data;
+          if (typeof data.vcBalance === 'number') {
+            setUserVcBalance(data.vcBalance);
+          } else if (typeof data.credits === 'number') {
+            setUserVcBalance(data.credits);
+          }
+          if (Array.isArray(data.claimedVouchers)) {
+            setClaimedCodes(data.claimedVouchers);
+          }
+          if (Array.isArray(data.voucherLogs)) {
+            setRedemptionLogs(data.voucherLogs);
+          }
+          if (data.vipExpires) {
+            setUserVipExpires(data.vipExpires);
+          } else {
+            setUserVipExpires('');
+          }
+          if (data.vipUntil) {
+            setUserVipUntil(typeof data.vipUntil === 'number' ? new Date(data.vipUntil).toISOString() : String(data.vipUntil));
+          } else {
+            setUserVipUntil('');
+          }
         }
       }
-    });
+    } catch (err) {
+      console.warn('Could not fetch user profile for gift card tab:', err);
+    }
+  };
 
-    return () => unsub();
+  useEffect(() => {
+    if (currentUser) {
+      fetchUserProfile();
+    }
   }, [currentUser]);
 
   // Fetch User's Purchased Vouchers from Firestore
@@ -672,7 +680,14 @@ export const GiftCardTab: React.FC<GiftCardTabProps> = ({
         }
       }
 
-      await setDoc(doc(db, 'userProfiles', currentUser.uid), updatePayload, { merge: true });
+      await fetch('/api/user/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: currentUser.uid,
+          ...updatePayload
+        })
+      });
 
       setUserVcBalance(newVcBalance);
       setClaimedCodes(updatedClaimed);

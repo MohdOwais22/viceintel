@@ -20,6 +20,58 @@ export interface UploadResult {
   key?: string;
 }
 
+async function compressImageFile(file: File, targetMaxBytes: number): Promise<File> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !file.type.startsWith('image/')) {
+      return resolve(file);
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        const maxDim = 1920;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(file);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return resolve(file);
+            const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, '') + '.webp', {
+              type: 'image/webp',
+              lastModified: Date.now(),
+            });
+            resolve(compressedFile);
+          },
+          'image/webp',
+          0.82
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 /**
  * Uploads a local image File to UploadThing through the backend upload gateway
  * @param file The image File to upload
@@ -39,16 +91,16 @@ export async function uploadImageAsset(
     throw new Error('Please select a valid image file (PNG, JPG, WEBP, GIF, SVG)');
   }
 
-  // Check file size (max 4MB for general, 2MB for avatar)
+  let uploadFile = file;
   const maxBytes = endpoint === 'avatar' ? 2 * 1024 * 1024 : 4 * 1024 * 1024;
-  if (file.size > maxBytes) {
-    throw new Error(
-      `File size exceeds ${endpoint === 'avatar' ? '2MB' : '4MB'} limit. Please compress or choose a smaller image.`
-    );
+  if (uploadFile.size > maxBytes && typeof window !== 'undefined') {
+    try {
+      uploadFile = await compressImageFile(file, maxBytes);
+    } catch {}
   }
 
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', uploadFile);
   formData.append('endpoint', endpoint);
 
   const response = await fetch('/api/upload/direct', {

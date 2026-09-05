@@ -38,7 +38,10 @@ import {
   Crosshair,
   Sparkles,
   ChevronRight,
-  ShieldAlert
+  ChevronDown,
+  ShieldAlert,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 
 interface TunerVisualizerProps {
@@ -64,6 +67,8 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
   const [simMode, setSimMode] = useState<SimulationMode>('drag');
   const [cameraView, setCameraView] = useState<CameraViewMode>('orbit');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [viewportSize, setViewportSize] = useState<'standard' | 'expanded' | 'tall'>('expanded');
+  const viewportContainerRef = useRef<HTMLDivElement | null>(null);
 
   // 3D Capability Detection
   const [is3DSupported, setIs3DSupported] = useState<boolean | null>(null);
@@ -109,12 +114,19 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
   // 3D Orbit Camera angles & refs
   const [autoRotate, setAutoRotate] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(1.0);
   const rotXRef = useRef<number>(18);
   const rotYRef = useRef<number>(-35);
   const zoomRef = useRef<number>(1.0);
   const autoRotateRef = useRef<boolean>(false);
   const isDraggingRef = useRef<boolean>(false);
   const lastMousePos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const touchStartPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const touchIntentRef = useRef<'scroll' | 'orbit' | null>(null);
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef<number>(1.0);
+  const simTimeRef = useRef<number>(0);
+  const pedalsRef = useRef<HTMLDivElement | null>(null);
 
   // Telemetry references for high-performance canvas loops
   const speedMphRef = useRef<number>(0);
@@ -326,6 +338,7 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
     if (!simRunning) return;
 
     let lastTime = performance.now();
+    let simTime = 0;
     const maxGears = Math.max(4, Math.min(8, handlingData.nInitialDriveGears || 6));
     const mass = Math.max(800, handlingData.fMass || 1500);
     const driveForce = handlingData.fInitialDriveForce || 0.35;
@@ -336,8 +349,10 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
 
     const interval = setInterval(() => {
       const now = performance.now();
-      const dt = Math.min(0.05, (now - lastTime) / 1000) * simSpeedMultiplier;
+      const rawDt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
+      const dt = rawDt * simSpeedMultiplier;
+      simTime += dt;
 
       // Handle Inputs based on active Simulation Mode
       let t = 0;
@@ -356,11 +371,11 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
         // Automatic full-throttle launch through gears
         t = 1.0;
         b = 0;
-        steer = Math.sin(now * 0.003) * 1.5; // slight steering correction
+        steer = Math.sin(simTime * 4.5) * 1.5; // steering correction scaled by sim speed
       } else if (simMode === 'skidpad') {
         // Continuous figure-8 slalom or circular skidpad
-        t = 0.75 + Math.sin(now * 0.002) * 0.2;
-        steer = Math.sin(now * 0.0018) * 30; // oscillate left-right
+        t = 0.75 + Math.sin(simTime * 3.2) * 0.2;
+        steer = Math.sin(simTime * 2.8) * 30; // oscillate left-right scaled by sim speed
         b = steer > 22 && Math.random() > 0.6 ? 0.4 : 0;
       } else if (simMode === 'dyno') {
         // Fixed chassis rolling dyno
@@ -510,18 +525,22 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
       rotXRef.current = 18;
       rotYRef.current = -35;
       zoomRef.current = 1.0;
+      setZoomLevel(1.0);
     } else if (cameraView === 'chase') {
       rotXRef.current = 8;
       rotYRef.current = 180;
       zoomRef.current = 1.1;
+      setZoomLevel(1.1);
     } else if (cameraView === 'aerial') {
       rotXRef.current = 75;
       rotYRef.current = 0;
       zoomRef.current = 0.9;
+      setZoomLevel(0.9);
     } else if (cameraView === 'suspension') {
       rotXRef.current = 12;
       rotYRef.current = -85;
       zoomRef.current = 1.4;
+      setZoomLevel(1.4);
     }
   }, [cameraView]);
 
@@ -541,7 +560,7 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
     const render3D = () => {
       time += 0.035 * simSpeedMultiplierRef.current;
       if (autoRotateRef.current && !isDraggingRef.current) {
-        rotYRef.current = (rotYRef.current + 0.35) % 360;
+        rotYRef.current = (rotYRef.current + 0.35 * simSpeedMultiplierRef.current) % 360;
       }
 
       const width = canvas.width;
@@ -562,8 +581,9 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
         const y2 = y * Math.cos(radX) - z1 * Math.sin(radX);
         const z2 = y * Math.sin(radX) + z1 * Math.cos(radX);
 
-        const fov = 440 * zoomRef.current;
-        const scale = fov / (fov + z2 + 380);
+        const baseFov = 520;
+        const perspective = baseFov / (baseFov + z2 + 300);
+        const scale = perspective * 1.65 * zoomRef.current;
         return {
           px: cx + x1 * scale,
           py: cy + y2 * scale,
@@ -681,10 +701,10 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
       // Update and draw particles
       for (let pIdx = particles.length - 1; pIdx >= 0; pIdx--) {
         const p = particles[pIdx];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.z += p.vz;
-        p.life -= 0.025;
+        p.x += p.vx * simSpeedMultiplierRef.current;
+        p.y += p.vy * simSpeedMultiplierRef.current;
+        p.z += p.vz * simSpeedMultiplierRef.current;
+        p.life -= 0.025 * simSpeedMultiplierRef.current;
 
         if (p.life <= 0) {
           particles.splice(pIdx, 1);
@@ -983,7 +1003,7 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
     };
   }, [viewportMode]);
 
-  // Mouse Orbit Drag Handlers for 3D Viewport
+  // Mouse & Touch Orbit Drag Handlers for 3D Viewport
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     isDraggingRef.current = true;
     setIsDragging(true);
@@ -1004,17 +1024,177 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
     setIsDragging(false);
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    zoomRef.current = Math.max(0.6, Math.min(2.4, zoomRef.current - e.deltaY * 0.0015));
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      lastMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      touchIntentRef.current = null;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      pinchStartDistRef.current = null;
+    } else if (e.touches.length === 2) {
+      touchIntentRef.current = 'orbit';
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      pinchStartDistRef.current = dist;
+      pinchStartZoomRef.current = zoomRef.current;
+    }
   };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      const clientX = e.touches[0].clientX;
+      const clientY = e.touches[0].clientY;
+      const totalDx = Math.abs(clientX - touchStartPos.current.x);
+      const totalDy = Math.abs(clientY - touchStartPos.current.y);
+
+      // Determine intent on initial touch movement:
+      // If user swipes vertically (totalDy > totalDx), allow natural native page / container scrolling!
+      if (touchIntentRef.current === null) {
+        if (totalDy > 6 && totalDy > totalDx) {
+          touchIntentRef.current = 'scroll';
+          isDraggingRef.current = false;
+          setIsDragging(false);
+          return;
+        } else if (totalDx > 6) {
+          touchIntentRef.current = 'orbit';
+          isDraggingRef.current = true;
+          setIsDragging(true);
+        } else {
+          return;
+        }
+      }
+
+      // If vertical scroll intent was detected, do not intercept gesture - allow native scrolling!
+      if (touchIntentRef.current === 'scroll') {
+        return;
+      }
+
+      if (isDraggingRef.current) {
+        const dx = clientX - lastMousePos.current.x;
+        rotYRef.current = (rotYRef.current + dx * 0.75) % 360;
+        lastMousePos.current = { x: clientX, y: clientY };
+      }
+    } else if (e.touches.length === 2 && pinchStartDistRef.current !== null && pinchStartDistRef.current > 0) {
+      const currentDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const ratio = currentDist / pinchStartDistRef.current;
+      const nextZoom = Math.max(0.35, Math.min(2.8, Number((pinchStartZoomRef.current * ratio).toFixed(2))));
+      zoomRef.current = nextZoom;
+      setZoomLevel(nextZoom);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchIntentRef.current = null;
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    pinchStartDistRef.current = null;
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    // Only capture zoom if holding Ctrl or Meta key (CAD / maps standard),
+    // otherwise allow free natural page/container scrolling so the user can easily reach controls below!
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = -e.deltaY * 0.0018;
+      const nextZoom = Math.max(0.35, Math.min(2.8, Number((zoomRef.current + delta).toFixed(2))));
+      zoomRef.current = nextZoom;
+      setZoomLevel(nextZoom);
+    }
+  };
+
+  const handleZoomIn = () => {
+    const nextZoom = Math.min(2.8, Number((zoomRef.current + 0.25).toFixed(2)));
+    zoomRef.current = nextZoom;
+    setZoomLevel(nextZoom);
+  };
+
+  const handleZoomOut = () => {
+    const nextZoom = Math.max(0.35, Number((zoomRef.current - 0.25).toFixed(2)));
+    zoomRef.current = nextZoom;
+    setZoomLevel(nextZoom);
+  };
+
+  const handleResetZoom = () => {
+    zoomRef.current = 1.0;
+    setZoomLevel(1.0);
+  };
+
+  // Viewport Height classes based on standard / expanded / tall sizing
+  const viewportHeightClass = useMemo(() => {
+    if (isFullscreen) {
+      return 'h-[calc(100vh-280px)] min-h-[520px]';
+    }
+    switch (viewportSize) {
+      case 'standard':
+        return 'h-[380px] sm:h-[420px] md:h-[460px]';
+      case 'tall':
+        return 'h-[520px] sm:h-[600px] md:h-[680px] lg:h-[720px]';
+      case 'expanded':
+      default:
+        // Increased screen size with generous vertical and horizontal stage
+        return 'h-[440px] sm:h-[500px] md:h-[560px] lg:h-[600px]';
+    }
+  }, [isFullscreen, viewportSize]);
+
+  // Keep canvas width and height synchronized with the container's rendered box
+  useEffect(() => {
+    const el = viewportContainerRef.current;
+    if (!el) return;
+
+    const updateCanvasSize = () => {
+      const rect = el.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w > 0 && h > 0) {
+        if (canvas3DRef.current && (canvas3DRef.current.width !== w || canvas3DRef.current.height !== h)) {
+          canvas3DRef.current.width = w;
+          canvas3DRef.current.height = h;
+        }
+        if (canvas2DRef.current && (canvas2DRef.current.width !== w || canvas2DRef.current.height !== h)) {
+          canvas2DRef.current.width = w;
+          canvas2DRef.current.height = h;
+        }
+      }
+    };
+
+    updateCanvasSize();
+    const ro = new ResizeObserver(() => {
+      updateCanvasSize();
+    });
+    ro.observe(el);
+
+    return () => ro.disconnect();
+  }, [viewportMode, isFullscreen, viewportSize]);
+
+  // Handle document body overflow lock when in Fullscreen mode
+  useEffect(() => {
+    if (isFullscreen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isFullscreen]);
 
   return (
     <div
       ref={containerRef}
       className={`flex flex-col gap-4 text-white transition-all ${
-        isFullscreen ? 'fixed inset-0 z-50 bg-zinc-950 p-6 overflow-y-auto' : ''
+        isFullscreen
+          ? 'fixed inset-0 z-50 bg-zinc-950 p-4 sm:p-6 pb-32 sm:pb-40 overflow-y-auto overscroll-y-contain touch-pan-y'
+          : ''
       }`}
+      style={isFullscreen ? { WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' } : undefined}
     >
       {/* Top Telemetry Metric Ribbons */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -1088,134 +1268,177 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
 
       {/* Main Viewport & Simulation Stage */}
       <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-2xl relative overflow-hidden flex flex-col gap-4">
-        {/* Viewport Control Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-800">
-          {/* Left: Mode Selection (3D Studio / 2D MoTeC HUD / Dyno Curves) */}
-          <div className="flex items-center gap-1 p-1 bg-zinc-950 border border-zinc-800 rounded-xl shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                if (is3DSupported !== false) setViewportMode('3d');
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
-                viewportMode === '3d'
-                  ? 'bg-rose-600 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-              }`}
-            >
-              <Rotate3d className="w-3.5 h-3.5 shrink-0" />
-              <span>3D WebGL</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setViewportMode('2d')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
-                viewportMode === '2d'
-                  ? 'bg-sky-500 text-black shadow-sm font-extrabold'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5 shrink-0" />
-              <span>2D MoTeC</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setViewportMode('dyno')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center ${
-                viewportMode === 'dyno'
-                  ? 'bg-amber-500 text-black shadow-sm font-extrabold'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-              }`}
-            >
-              <TrendingUp className="w-3.5 h-3.5 shrink-0" />
-              <span>Dyno</span>
-            </button>
-          </div>
-
-          {/* Right: Simulation Mode Tabs & Action Icons */}
-          <div className="flex items-center gap-2 flex-wrap ml-auto">
-            <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 p-1 rounded-xl text-xs">
+        {/* Consolidated Viewport Control Toolbar */}
+        <div className="flex flex-col gap-2.5 pb-3 border-b border-zinc-800">
+          {/* Top Bar: Viewport Switcher, Test Modes, and Action Cluster */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
+            {/* Left: Viewport Mode Tabs */}
+            <div className="flex items-center gap-1 p-1 bg-zinc-950 border border-zinc-800 rounded-xl overflow-x-auto">
               <button
                 type="button"
                 onClick={() => {
-                  setSimMode('drag');
-                  handleResetSim();
+                  if (is3DSupported !== false) setViewportMode('3d');
                 }}
-                className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
-                  simMode === 'drag' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-zinc-400 hover:text-zinc-200'
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center min-h-[38px] min-w-[95px] flex-1 sm:flex-initial ${
+                  viewportMode === '3d'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                 }`}
               >
-                1/4 Drag
+                <Rotate3d className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">3D WebGL</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => {
-                  setSimMode('skidpad');
-                  handleResetSim();
-                }}
-                className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
-                  simMode === 'skidpad' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'text-zinc-400 hover:text-zinc-200'
+                onClick={() => setViewportMode('2d')}
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center min-h-[38px] min-w-[95px] flex-1 sm:flex-initial ${
+                  viewportMode === '2d'
+                    ? 'bg-sky-500 text-black shadow-md font-extrabold'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                 }`}
               >
-                Skidpad
+                <Activity className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">2D MoTeC</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => {
-                  setSimMode('manual');
-                  handleResetSim();
-                }}
-                className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
-                  simMode === 'manual' ? 'bg-emerald-500 text-black font-extrabold' : 'text-zinc-400 hover:text-zinc-200'
+                onClick={() => setViewportMode('dyno')}
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer text-center min-h-[38px] min-w-[85px] flex-1 sm:flex-initial ${
+                  viewportMode === 'dyno'
+                    ? 'bg-amber-500 text-black shadow-md font-extrabold'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                 }`}
               >
-                🎮 Drive
+                <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">Dyno</span>
               </button>
             </div>
 
-            {/* Sim Action Controls */}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={toggleAudio}
-                title={audioEnabled ? 'Mute Engine Audio' : 'Enable Engine & Tire Sound FX'}
-                className={`p-1.5 sm:p-2 rounded-xl border transition cursor-pointer ${
-                  audioEnabled
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
-                    : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
-                }`}
-              >
-                {audioEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-              </button>
+            {/* Right: Simulation Modes & Action Controls */}
+            <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap">
+              {/* Simulation Mode Selector */}
+              <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 p-1 rounded-xl text-xs flex-1 sm:flex-initial">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimMode('drag');
+                    handleResetSim();
+                  }}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer text-xs min-h-[34px] flex-1 sm:flex-initial text-center ${
+                    simMode === 'drag' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  1/4 Drag
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimMode('skidpad');
+                    handleResetSim();
+                  }}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer text-xs min-h-[34px] flex-1 sm:flex-initial text-center ${
+                    simMode === 'skidpad' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  Skidpad
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimMode('manual');
+                    handleResetSim();
+                    setTimeout(() => {
+                      pedalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }, 120);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer text-xs min-h-[34px] flex-1 sm:flex-initial text-center ${
+                    simMode === 'manual' ? 'bg-emerald-500 text-black font-extrabold shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  🎮 Drive
+                </button>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => setSimRunning((prev) => !prev)}
-                title={simRunning ? 'Pause Simulation' : 'Resume Simulation'}
-                className="p-1.5 sm:p-2 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl transition cursor-pointer"
-              >
-                {simRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
-              </button>
+              {/* Action Buttons Cluster */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={toggleAudio}
+                  title={audioEnabled ? 'Mute Engine Audio' : 'Enable Engine & Tire Sound FX'}
+                  className={`w-9 h-9 rounded-xl border transition flex items-center justify-center cursor-pointer active:scale-95 ${
+                    audioEnabled
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                      : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white hover:bg-zinc-850'
+                  }`}
+                >
+                  {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
 
-              <button
-                type="button"
-                onClick={handleResetSim}
-                title="Reset Run Telemetry"
-                className="p-1.5 sm:p-2 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl transition cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setSimRunning((prev) => !prev)}
+                  title={simRunning ? 'Pause Simulation' : 'Resume Simulation'}
+                  className="w-9 h-9 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl transition flex items-center justify-center cursor-pointer active:scale-95"
+                >
+                  {simRunning ? <Pause className="w-4 h-4 text-amber-400" /> : <Play className="w-4 h-4 text-emerald-400" />}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setIsFullscreen((prev) => !prev)}
-                title={isFullscreen ? 'Exit Fullscreen' : 'Expand Viewport Fullscreen'}
-                className="p-1.5 sm:p-2 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl transition cursor-pointer"
-              >
-                {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-              </button>
+                <button
+                  type="button"
+                  onClick={handleResetSim}
+                  title="Reset Run Telemetry"
+                  className="w-9 h-9 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl transition flex items-center justify-center cursor-pointer active:scale-95"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+
+                {/* Viewport Screen Size Preset Selector */}
+                {!isFullscreen && (
+                  <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl p-0.5 text-[10px] font-mono h-9">
+                    <button
+                      type="button"
+                      onClick={() => setViewportSize('standard')}
+                      title="Standard Viewport Height (460px)"
+                      className={`px-2 py-1 rounded-lg transition cursor-pointer ${
+                        viewportSize === 'standard' ? 'bg-zinc-800 text-white font-bold' : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Std
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewportSize('expanded')}
+                      title="Expanded Viewport Height (Default 560px-600px)"
+                      className={`px-2 py-1 rounded-lg transition cursor-pointer ${
+                        viewportSize === 'expanded' ? 'bg-rose-600 text-white font-bold shadow-sm' : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Large
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewportSize('tall')}
+                      title="Theater / Tall Viewport Height (680px-720px)"
+                      className={`px-2 py-1 rounded-lg transition cursor-pointer ${
+                        viewportSize === 'tall' ? 'bg-zinc-800 text-white font-bold' : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Tall
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsFullscreen((prev) => !prev)}
+                  title={isFullscreen ? 'Exit Fullscreen' : 'Expand Viewport Fullscreen'}
+                  className="w-9 h-9 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl transition flex items-center justify-center cursor-pointer active:scale-95"
+                >
+                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1230,16 +1453,16 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
           </div>
         )}
 
-        {/* 3D Camera Angles Bar (Only in 3D Mode) */}
+        {/* 3D Camera Angles & Turntable Bar (Only in 3D Mode) */}
         {viewportMode === '3d' && is3DSupported && (
-          <div className="flex flex-wrap items-center justify-between gap-2.5 bg-zinc-950/60 p-2 rounded-xl border border-zinc-800/80 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 bg-zinc-950/70 p-2.5 rounded-xl border border-zinc-800/80 text-xs">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-zinc-400 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider mr-1">Camera:</span>
               <div className="flex items-center gap-1 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setCameraView('orbit')}
-                  className={`px-2.5 py-1 rounded-lg font-mono font-bold transition cursor-pointer text-xs ${
+                  className={`px-3 py-1.5 rounded-lg font-mono font-bold transition cursor-pointer text-xs min-h-[32px] ${
                     cameraView === 'orbit' ? 'bg-rose-600 text-white shadow-sm' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
                   }`}
                 >
@@ -1248,7 +1471,7 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
                 <button
                   type="button"
                   onClick={() => setCameraView('chase')}
-                  className={`px-2.5 py-1 rounded-lg font-mono font-bold transition cursor-pointer text-xs ${
+                  className={`px-3 py-1.5 rounded-lg font-mono font-bold transition cursor-pointer text-xs min-h-[32px] ${
                     cameraView === 'chase' ? 'bg-rose-600 text-white shadow-sm' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
                   }`}
                 >
@@ -1257,7 +1480,7 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
                 <button
                   type="button"
                   onClick={() => setCameraView('aerial')}
-                  className={`px-2.5 py-1 rounded-lg font-mono font-bold transition cursor-pointer text-xs ${
+                  className={`px-3 py-1.5 rounded-lg font-mono font-bold transition cursor-pointer text-xs min-h-[32px] ${
                     cameraView === 'aerial' ? 'bg-rose-600 text-white shadow-sm' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
                   }`}
                 >
@@ -1266,7 +1489,7 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
                 <button
                   type="button"
                   onClick={() => setCameraView('suspension')}
-                  className={`px-2.5 py-1 rounded-lg font-mono font-bold transition cursor-pointer text-xs ${
+                  className={`px-3 py-1.5 rounded-lg font-mono font-bold transition cursor-pointer text-xs min-h-[32px] ${
                     cameraView === 'suspension' ? 'bg-rose-600 text-white shadow-sm' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
                   }`}
                 >
@@ -1275,26 +1498,66 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-3 ml-auto">
-              <label className="flex items-center gap-1.5 text-zinc-300 text-xs cursor-pointer select-none bg-zinc-900 px-2.5 py-1 rounded-lg border border-zinc-800">
+            <div className="flex items-center gap-2 sm:gap-2.5 ml-auto flex-wrap">
+              {/* Zoom In & Out Controls */}
+              <div className="flex items-center gap-0.5 bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-[10px] font-mono min-h-[32px]">
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  title="Zoom Out (or scroll down / pinch in)"
+                  className="px-2 py-1.5 rounded hover:bg-zinc-800 active:bg-rose-600 text-zinc-300 hover:text-white transition cursor-pointer flex items-center gap-1 font-bold text-xs"
+                >
+                  <ZoomOut className="w-3.5 h-3.5 text-zinc-400" />
+                  <span className="hidden md:inline">Zoom Out</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetZoom}
+                  title="Reset Zoom to 100%"
+                  className="px-2 py-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer text-[10px] font-mono min-w-[34px] text-center"
+                >
+                  {Math.round(zoomLevel * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  title="Zoom In (or scroll up / pinch out)"
+                  className="px-2 py-1.5 rounded hover:bg-zinc-800 active:bg-rose-600 text-zinc-300 hover:text-white transition cursor-pointer flex items-center gap-1 font-bold text-xs"
+                >
+                  <ZoomIn className="w-3.5 h-3.5 text-zinc-400" />
+                  <span className="hidden md:inline">Zoom In</span>
+                </button>
+              </div>
+
+              {/* Turntable Auto-Rotate Toggle */}
+              <label className="flex items-center gap-1.5 text-zinc-300 text-xs cursor-pointer select-none bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-800 min-h-[32px]">
                 <input
                   type="checkbox"
                   checked={autoRotate}
-                  onChange={(e) => setAutoRotate(e.target.checked)}
+                  onChange={(e) => {
+                    setAutoRotate(e.target.checked);
+                    autoRotateRef.current = e.target.checked;
+                  }}
                   className="rounded border-zinc-700 accent-rose-500 cursor-pointer w-3.5 h-3.5"
                 />
-                <span className="text-[11px]">Turntable</span>
+                <span className="text-[11px] font-medium">Turntable</span>
               </label>
 
-              {/* Speed Multiplier */}
-              <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-[10px] font-mono">
+              {/* Speed Multiplier (0.5x, 1x, 2x) */}
+              <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-[10px] font-mono min-h-[32px]">
                 {[0.5, 1, 2].map((s) => (
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setSimSpeedMultiplier(s)}
-                    className={`px-2 py-0.5 rounded cursor-pointer transition ${
-                      simSpeedMultiplier === s ? 'bg-rose-600 text-white font-bold' : 'text-zinc-400 hover:text-white'
+                    onClick={() => {
+                      setSimSpeedMultiplier(s);
+                      simSpeedMultiplierRef.current = s;
+                    }}
+                    title={`Set simulation speed to ${s}x`}
+                    className={`px-2.5 py-1 rounded cursor-pointer transition ${
+                      simSpeedMultiplier === s
+                        ? 'bg-rose-600 text-white font-black shadow-sm'
+                        : 'text-zinc-400 hover:text-white'
                     }`}
                   >
                     {s}x
@@ -1306,19 +1569,26 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
         )}
 
         {/* Viewport Canvas Container */}
-        <div className="relative w-full h-[320px] sm:h-[380px] bg-zinc-950 rounded-2xl border border-zinc-800/80 overflow-hidden flex items-center justify-center select-none">
+        <div
+          ref={viewportContainerRef}
+          className={`relative w-full ${viewportHeightClass} bg-zinc-950 rounded-2xl border border-zinc-800/80 overflow-hidden flex items-center justify-center select-none transition-all duration-200`}
+        >
           {/* 1. 3D Canvas */}
           {viewportMode === '3d' && is3DSupported && (
             <canvas
               ref={canvas3DRef}
-              width={760}
-              height={380}
+              width={960}
+              height={580}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
               onWheel={handleWheel}
-              className="w-full h-full cursor-grab active:cursor-grabbing touch-none select-none"
+              className="w-full h-full cursor-grab active:cursor-grabbing touch-pan-y select-none"
             />
           )}
 
@@ -1326,9 +1596,9 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
           {viewportMode === '2d' && (
             <canvas
               ref={canvas2DRef}
-              width={760}
-              height={380}
-              className="w-full h-full select-none"
+              width={960}
+              height={480}
+              className="w-full h-full select-none touch-pan-y"
             />
           )}
 
@@ -1399,15 +1669,54 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
 
           {/* Floating Top-Left Model & Staging Banner */}
           <div className="absolute top-3 left-3 flex flex-col gap-1 pointer-events-none z-10">
-            <span className="text-[11px] font-mono font-black px-2.5 py-1 rounded-xl bg-black/75 border border-zinc-700 text-white backdrop-blur-md flex items-center gap-1.5 shadow-lg">
+            <span className="text-[11px] font-mono font-black px-2.5 py-1 rounded-xl bg-black/75 border border-zinc-700 text-white backdrop-blur-md flex items-center gap-1.5 shadow-lg w-fit">
               <Car className="w-3.5 h-3.5 text-rose-400" />
               <span>{vehicleModelName}</span>
             </span>
 
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-black/70 border border-zinc-800 text-zinc-300 backdrop-blur-md">
-              Mode: <strong className="text-amber-300 uppercase">{simMode}</strong> | Dist: <strong className="text-white">{distanceFt} ft</strong>
-            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-black/70 border border-zinc-800 text-zinc-300 backdrop-blur-md">
+                Mode: <strong className="text-amber-300 uppercase">{simMode}</strong> | Dist: <strong className="text-white">{distanceFt} ft</strong>
+              </span>
+              {simSpeedMultiplier !== 1 && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-rose-950/80 border border-rose-500/50 text-rose-300 font-bold backdrop-blur-md shadow-sm">
+                  ⚡ {simSpeedMultiplier}x Sim Speed
+                </span>
+              )}
+            </div>
           </div>
+
+          {/* Floating Canvas Quick Zoom Controls (Top-Right HUD) */}
+          {viewportMode === '3d' && (
+            <div className="absolute top-3 right-3 flex items-center gap-1 z-20 pointer-events-auto">
+              <div className="flex items-center bg-black/80 backdrop-blur-md border border-zinc-800 rounded-xl p-0.5 shadow-xl">
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  title="Zoom Out (or scroll down / pinch in)"
+                  className="w-7 h-7 rounded-lg hover:bg-zinc-800 active:bg-rose-600 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer transition"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetZoom}
+                  title="Reset Zoom to 100%"
+                  className="px-1.5 h-7 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer transition text-[10px] font-mono font-bold min-w-[34px]"
+                >
+                  {Math.round(zoomLevel * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  title="Zoom In (or scroll up / pinch out)"
+                  className="w-7 h-7 rounded-lg hover:bg-zinc-800 active:bg-rose-600 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer transition"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Floating Live Digital Cockpit Cluster (Bottom-Right HUD) */}
           <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1.5 pointer-events-none z-10">
@@ -1455,51 +1764,69 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
             </div>
           </div>
 
-          {/* Interactive Keyboard Tip in Manual Mode */}
+          {/* Interactive Keyboard Tip or Scroll to Pedals Button in Manual Mode */}
           {simMode === 'manual' && (
-            <div className="absolute bottom-3 left-3 bg-black/85 backdrop-blur-md border border-zinc-800 px-3 py-2 rounded-xl text-[11px] font-mono text-zinc-300 pointer-events-none flex items-center gap-2">
-              <span className="text-emerald-400 font-bold">⌨️ Controls:</span>
-              <span>[W] Gas | [S] Brake | [A/D] Steer | [Space] E-Brake</span>
+            <div className="absolute bottom-3 left-3 flex items-center gap-2 z-20 pointer-events-auto">
+              <button
+                type="button"
+                onClick={() => pedalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                title="Scroll down to reach driving pedals"
+                className="bg-emerald-950/90 hover:bg-emerald-900 active:bg-emerald-600 border border-emerald-500/50 text-emerald-200 text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-1.5 transition cursor-pointer backdrop-blur-md"
+              >
+                <span>🎮 Drive Controls</span>
+                <ChevronDown className="w-3.5 h-3.5 text-emerald-400 animate-bounce" />
+              </button>
+
+              <div className="bg-black/85 backdrop-blur-md border border-zinc-800 px-2.5 py-1.5 rounded-xl text-[10px] font-mono text-zinc-300 pointer-events-none hidden md:flex items-center gap-1.5 max-w-[200px] truncate shadow-lg">
+                <span className="text-emerald-400 font-bold">⌨️</span>
+                <span className="truncate">[W/S] Drive | [A/D] Steer</span>
+              </div>
             </div>
           )}
         </div>
 
         {/* 4-Corner Live Wheel Telemetry & Manual On-Screen Control Pedals */}
         {simMode === 'manual' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+          <div
+            ref={pedalsRef}
+            id="driving-pedals-controls"
+            className="flex flex-col sm:flex-row items-stretch gap-2.5 pt-2 scroll-mt-6"
+          >
             {/* On-Screen Touch Driving Controls (Mobile / Mouse friendly) */}
-            <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0 p-2.5 bg-zinc-900/90 border border-zinc-800 rounded-xl flex items-center justify-between gap-2 overflow-hidden shadow-lg">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
+                  aria-label="Steer Left"
                   onMouseDown={() => (keysPressed.current['KeyA'] = true)}
                   onMouseUp={() => (keysPressed.current['KeyA'] = false)}
                   onTouchStart={() => (keysPressed.current['KeyA'] = true)}
                   onTouchEnd={() => (keysPressed.current['KeyA'] = false)}
-                  className="w-12 h-12 rounded-xl bg-zinc-800 hover:bg-zinc-700 active:bg-rose-600 font-black text-lg transition flex items-center justify-center cursor-pointer select-none text-white"
+                  className="w-10 h-10 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:bg-rose-600 font-black text-sm transition flex items-center justify-center cursor-pointer select-none text-white border border-zinc-700 shrink-0"
                 >
                   ◀
                 </button>
                 <button
                   type="button"
+                  aria-label="Steer Right"
                   onMouseDown={() => (keysPressed.current['KeyD'] = true)}
                   onMouseUp={() => (keysPressed.current['KeyD'] = false)}
                   onTouchStart={() => (keysPressed.current['KeyD'] = true)}
                   onTouchEnd={() => (keysPressed.current['KeyD'] = false)}
-                  className="w-12 h-12 rounded-xl bg-zinc-800 hover:bg-zinc-700 active:bg-rose-600 font-black text-lg transition flex items-center justify-center cursor-pointer select-none text-white"
+                  className="w-10 h-10 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:bg-rose-600 font-black text-sm transition flex items-center justify-center cursor-pointer select-none text-white border border-zinc-700 shrink-0"
                 >
                   ▶
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onMouseDown={() => (keysPressed.current['KeyS'] = true)}
                   onMouseUp={() => (keysPressed.current['KeyS'] = false)}
                   onTouchStart={() => (keysPressed.current['KeyS'] = true)}
                   onTouchEnd={() => (keysPressed.current['KeyS'] = false)}
-                  className="px-4 h-12 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 font-black text-xs transition flex items-center justify-center cursor-pointer select-none active:bg-rose-600"
+                  className="px-3 h-10 rounded-lg bg-rose-950/80 border border-rose-500/40 text-rose-300 font-black text-xs transition flex items-center justify-center cursor-pointer select-none active:bg-rose-600 shrink-0"
                 >
                   BRAKE
                 </button>
@@ -1509,7 +1836,7 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
                   onMouseUp={() => (keysPressed.current['KeyW'] = false)}
                   onTouchStart={() => (keysPressed.current['KeyW'] = true)}
                   onTouchEnd={() => (keysPressed.current['KeyW'] = false)}
-                  className="px-5 h-12 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-black text-xs transition flex items-center justify-center cursor-pointer select-none active:bg-emerald-600"
+                  className="px-3.5 h-10 rounded-lg bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-black text-xs transition flex items-center justify-center cursor-pointer select-none active:bg-emerald-600 shrink-0"
                 >
                   GAS
                 </button>
@@ -1517,18 +1844,24 @@ export const TunerVisualizer: React.FC<TunerVisualizerProps> = ({
             </div>
 
             {/* Live G-Force & G-Meter Gauges */}
-            <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl flex items-center justify-around gap-3 text-xs font-mono">
-              <div className="text-center">
-                <div className="text-zinc-400 text-[10px] uppercase font-bold">Lateral G</div>
-                <div className="text-lg font-black text-rose-400 mt-0.5">{latG} G</div>
+            <div className="flex-1 min-w-0 p-2.5 bg-zinc-900/90 border border-zinc-800 rounded-xl grid grid-cols-3 gap-1 text-xs font-mono items-center overflow-hidden shadow-lg">
+              <div className="text-center min-w-0 px-1">
+                <div className="text-zinc-400 text-[9px] uppercase font-bold truncate">Lateral G</div>
+                <div className="text-sm sm:text-base font-black text-rose-400 mt-0.5 truncate">
+                  {typeof latG === 'number' ? latG.toFixed(2) : '0.00'} G
+                </div>
               </div>
-              <div className="text-center border-x border-zinc-800 px-4">
-                <div className="text-zinc-400 text-[10px] uppercase font-bold">Longitudinal G</div>
-                <div className="text-lg font-black text-amber-400 mt-0.5">{lonG} G</div>
+              <div className="text-center border-x border-zinc-800 min-w-0 px-1">
+                <div className="text-zinc-400 text-[9px] uppercase font-bold truncate">Longitudinal G</div>
+                <div className="text-sm sm:text-base font-black text-amber-400 mt-0.5 truncate">
+                  {typeof lonG === 'number' ? lonG.toFixed(2) : '0.00'} G
+                </div>
               </div>
-              <div className="text-center">
-                <div className="text-zinc-400 text-[10px] uppercase font-bold">Steer Angle</div>
-                <div className="text-lg font-black text-sky-400 mt-0.5">{steerAngle}°</div>
+              <div className="text-center min-w-0 px-1">
+                <div className="text-zinc-400 text-[9px] uppercase font-bold truncate">Steer Angle</div>
+                <div className="text-sm sm:text-base font-black text-sky-400 mt-0.5 truncate">
+                  {typeof steerAngle === 'number' ? steerAngle.toFixed(1) : '0.0'}°
+                </div>
               </div>
             </div>
           </div>

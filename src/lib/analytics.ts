@@ -4,6 +4,7 @@
  */
 
 import { ENV } from './envConfig';
+import { getCookiePreferences } from './cookieConsent';
 
 declare global {
   interface Window {
@@ -22,17 +23,27 @@ export const GA_MEASUREMENT_ID = (
 let isGaInitialized = false;
 
 /**
- * Initializes Google Analytics 4 dynamically if not already loaded.
+ * Initializes Google Analytics 4 dynamically with Google Consent Mode v2.
  */
 export function initGoogleAnalytics(measurementId: string = GA_MEASUREMENT_ID) {
   if (typeof window === 'undefined' || !measurementId) return;
   if (isGaInitialized) return;
+
+  const prefs = getCookiePreferences();
 
   // Initialize dataLayer and gtag function
   window.dataLayer = window.dataLayer || [];
   window.gtag = window.gtag || function () {
     window.dataLayer.push(arguments);
   };
+
+  // Set initial consent state before config
+  window.gtag('consent', 'default', {
+    analytics_storage: prefs.hasChosen && prefs.analytics ? 'granted' : 'denied',
+    ad_storage: prefs.hasChosen && prefs.marketing ? 'granted' : 'denied',
+    ad_user_data: prefs.hasChosen && prefs.marketing ? 'granted' : 'denied',
+    ad_personalization: prefs.hasChosen && prefs.marketing ? 'granted' : 'denied'
+  });
 
   window.gtag('js', new Date());
   window.gtag('config', measurementId, {
@@ -59,6 +70,10 @@ export function initGoogleAnalytics(measurementId: string = GA_MEASUREMENT_ID) {
 export function trackPageView(path: string, title?: string) {
   if (typeof window === 'undefined') return;
 
+  const prefs = getCookiePreferences();
+  // If user made a choice and refused analytics, skip tracking
+  if (prefs.hasChosen && !prefs.analytics) return;
+
   if (!isGaInitialized) {
     initGoogleAnalytics();
   }
@@ -83,6 +98,10 @@ export function trackEvent(
   value?: number
 ) {
   if (typeof window === 'undefined') return;
+
+  const prefs = getCookiePreferences();
+  // If user made a choice and refused analytics, skip tracking
+  if (prefs.hasChosen && !prefs.analytics) return;
 
   if (!isGaInitialized) {
     initGoogleAnalytics();

@@ -23,6 +23,7 @@ function sortMapLocations(locs: ExtendedMapLocation[]): ExtendedMapLocation[] {
 export const mapBundleEngine = new BundledStoreEngine<ExtendedMapLocation>({
   bundleCollection: 'map_catalog_bundles',
   bundleDocId: 'master_map_bundle',
+  apiCollection: 'mapLocations',
   storageKey: 'gtavi_cached_map_locations',
   updateEventName: MAP_LOCATIONS_UPDATED_EVENT,
   defaultItems: MAP_LOCATIONS_DATA,

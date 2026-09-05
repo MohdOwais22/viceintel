@@ -56,10 +56,8 @@ import {
   Upload,
   LogIn,
   Database,
-  Siren,
   CreditCard,
   BookOpen,
-  Building2,
   Wrench,
   KeyRound,
   Wand2
@@ -108,10 +106,6 @@ import {
 import { ClaimButtonModal } from '../servers/ClaimButtonModal';
 import { PaymentSuccessModal } from '../servers/PaymentSuccessModal';
 import { MarketingWorkspace } from '../marketing/MarketingWorkspace';
-import { CadMdtTerminal } from '../cad/CadMdtTerminal';
-import { IdentityCardGenerator } from '../identity/IdentityCardGenerator';
-import { RulesAndEventGenerator } from '../generator/RulesAndEventGenerator';
-import { DynastyEconomyDirectory } from '../economy/DynastyEconomyDirectory';
 import { FeaturesOnDemandTab } from './FeaturesOnDemandTab';
 import { ViceCityProvisioningModal } from '../provisioning/ViceCityProvisioningModal';
 import { ServerOwnerNotificationCenter } from '../servers/ServerOwnerNotificationCenter';
@@ -180,7 +174,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
 
   // Dashboard Sub-navigation Tabs
   const [activeSection, setActiveSection] = useState<
-    'applications' | 'notifications' | 'settings' | 'bot_gateway' | 'quick_invites' | 'branding' | 'analytics' | 'billing' | 'ownership_transfer' | 'growth' | 'cad_mdt' | 'identity' | 'rules_events' | 'economy' | 'features_on_demand'
+    'applications' | 'notifications' | 'settings' | 'bot_gateway' | 'quick_invites' | 'branding' | 'analytics' | 'billing' | 'ownership_transfer' | 'growth' | 'features_on_demand'
   >('applications');
 
   // Server Owner Dedicated Notifications State
@@ -831,14 +825,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
 
   // Security & Authorization Checks
   const isL4Admin = Boolean(
-    currentUser && (
-      currentUser.isAdmin ||
-      (currentUser.email && [
-        'admin@vicecity.app',
-        'lucia.vice@outlook.com',
-        'l4_admin@vicecity.app'
-      ].includes(currentUser.email.toLowerCase()))
-    )
+    currentUser && currentUser.isAdmin
   );
 
   // Local Storage Claim Check (strictly scoped to this specific server)
@@ -2187,26 +2174,6 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveSection('cad_mdt')}
-          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
-            activeSection === 'cad_mdt' ? 'bg-sky-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
-          }`}
-        >
-          <Siren className="w-3.5 h-3.5 text-sky-400" />
-          <span>CAD/MDT</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSection('identity')}
-          className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
-            activeSection === 'identity' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Badges</span>
-        </button>
-
-        <button
           onClick={() => setActiveSection('billing')}
           className={`px-3 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
             activeSection === 'billing' ? 'bg-amber-600 text-white shadow-md' : 'text-zinc-400 hover:text-white bg-zinc-950'
@@ -2223,7 +2190,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
           }`}
         >
           <Wand2 className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Features On Demand</span>
+          <span>Dev Quotes</span>
         </button>
       </div>
 
@@ -2390,70 +2357,6 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
               </button>
             </div>
 
-            {/* GROUP 4: ROLEPLAY UTILITIES */}
-            <div className="space-y-1 pt-2 border-t border-zinc-800/80">
-              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
-                Roleplay Utilities
-              </div>
-
-              <button
-                onClick={() => setActiveSection('cad_mdt')}
-                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
-                  activeSection === 'cad_mdt'
-                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg shadow-sky-600/30'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Siren className="w-4 h-4 text-sky-400 shrink-0" />
-                  <span>CAD / MDT Dispatch</span>
-                </div>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30">NEW</span>
-              </button>
-
-              <button
-                onClick={() => setActiveSection('identity')}
-                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
-                  activeSection === 'identity'
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Identity & Badges</span>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setActiveSection('rules_events')}
-                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
-                  activeSection === 'rules_events'
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <FileText className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>Rules & Events</span>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setActiveSection('economy')}
-                className={`w-full px-3 py-2.5 rounded-2xl text-xs font-bold transition flex items-center justify-between cursor-pointer ${
-                  activeSection === 'economy'
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/70'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Building2 className="w-4 h-4 text-yellow-400 shrink-0" />
-                  <span>Dynasty Economy</span>
-                </div>
-              </button>
-            </div>
-
             {/* GROUP 5: ADMIN & BILLING */}
             <div className="space-y-1 pt-2 border-t border-zinc-800/80">
               <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 font-mono">
@@ -2495,9 +2398,9 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
               >
                 <div className="flex items-center gap-2.5">
                   <Wand2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>Features On Demand</span>
+                  <span>Custom Dev Quotes</span>
                 </div>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">SAAS</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">QUOTES</span>
               </button>
 
               <button
@@ -2753,7 +2656,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
                     >
                       <div className="flex items-start gap-3.5">
                         <img
-                          src={resolveApplicantAvatar(app.discordAvatar, app.discordTag || app.applicantUsername)}
+                          src={resolveApplicantAvatar((app as any).applicantAvatarUrl || (app as any).userAvatar || (app as any).avatarUrl || (app as any).avatar || app.discordAvatar, app.discordTag || app.applicantUsername)}
                           alt={app.discordTag}
                           className="w-11 h-11 rounded-xl object-cover border border-zinc-800 shrink-0"
                         />
@@ -5227,42 +5130,6 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
       ))}
 
       {/* =========================================================================
-          SECTION 11: POLICE & EMS CAD/MDT TERMINAL
-          ========================================================================= */}
-      {activeSection === 'cad_mdt' && (
-        <div className="space-y-6">
-          <CadMdtTerminal />
-        </div>
-      )}
-
-      {/* =========================================================================
-          SECTION 12: IDENTITY & DRIVER LICENSE GENERATOR
-          ========================================================================= */}
-      {activeSection === 'identity' && (
-        <div className="space-y-6">
-          <IdentityCardGenerator />
-        </div>
-      )}
-
-      {/* =========================================================================
-          SECTION 13: RULES & EVENT GENERATOR
-          ========================================================================= */}
-      {activeSection === 'rules_events' && (
-        <div className="space-y-6">
-          <RulesAndEventGenerator />
-        </div>
-      )}
-
-      {/* =========================================================================
-          SECTION 14: DYNASTY 8 ECONOMY DIRECTORY
-          ========================================================================= */}
-      {activeSection === 'economy' && (
-        <div className="space-y-6">
-          <DynastyEconomyDirectory />
-        </div>
-      )}
-
-      {/* =========================================================================
           SECTION 15: FEATURES ON DEMAND ENGINE
           ========================================================================= */}
       {activeSection === 'features_on_demand' && (
@@ -5285,7 +5152,7 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
             <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
               <div className="flex items-center gap-3">
                 <img
-                  src={resolveApplicantAvatar(selectedApp.discordAvatar, selectedApp.discordTag || selectedApp.applicantUsername)}
+                  src={resolveApplicantAvatar((selectedApp as any).applicantAvatarUrl || (selectedApp as any).userAvatar || (selectedApp as any).avatarUrl || (selectedApp as any).avatar || selectedApp.discordAvatar, selectedApp.discordTag || selectedApp.applicantUsername)}
                   alt={selectedApp.discordTag}
                   className="w-12 h-12 rounded-xl object-cover border border-zinc-800"
                 />

@@ -24,6 +24,7 @@ function sortWeapons(wpnList: Weapon[]): Weapon[] {
 export const weaponBundleEngine = new BundledStoreEngine<Weapon>({
   bundleCollection: 'weapon_catalog_bundles',
   bundleDocId: 'master_weapon_bundle',
+  apiCollection: 'weapons',
   storageKey: 'gtavi_cached_weapons',
   updateEventName: WEAPONS_UPDATED_EVENT,
   defaultItems: WEAPONS_DATA,

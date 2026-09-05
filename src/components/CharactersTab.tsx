@@ -56,7 +56,7 @@ export const CharactersTab: React.FC<CharactersTabProps> = ({ searchQuery, isLoa
   }, [currentPage]);
 
   useEffect(() => {
-    // Load characters from store (localforage / Firestore / defaults)
+    // Load characters from store (MongoDB / Firestore / defaults)
     const loadCharacters = async () => {
       try {
         const stored = await getStoredCharacters();

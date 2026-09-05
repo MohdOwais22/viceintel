@@ -59,8 +59,7 @@ import {
   Wand2
 } from 'lucide-react';
 import { ENV } from '../lib/envConfig';
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, query, limit, getDocs } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import { deleteRtdbChannel, deleteRtdbMessage, subscribeRtdbMessages } from '../lib/firebase/rtdbChatService';
 import { UserProfile, RpServer, CommunityBuild, UserRole } from '../types';
 import { RP_SERVERS_DATA } from '../data/rpServers';
@@ -138,69 +137,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-const INITIAL_USERS: UserProfile[] = [
-  {
-    id: 'u1',
-    username: 'ViceRacer99',
-    email: 'viceracer99@gmail.com',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80',
-    role: 'VIP Member',
-    isVip: true,
-    vipExpires: '2026-09-03',
-    vcBalance: 1250,
-    dailyStreak: 14,
-    moderationNote: 'Active VIP supporter, clean record.',
-    joinedDate: '2026-01-12',
-    publishedBuildsCount: 4,
-    status: 'Active'
-  },
-  {
-    id: 'u2',
-    username: 'HeistLeader_Lucia',
-    email: 'lucia.vice@outlook.com',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&q=80',
-    role: 'Admin',
-    isAdmin: true,
-    isVip: true,
-    vipExpires: 'Lifetime',
-    vcBalance: 99999,
-    dailyStreak: 30,
-    moderationNote: 'System Administrator (Level 4 Superuser)',
-    joinedDate: '2025-11-01',
-    publishedBuildsCount: 12,
-    status: 'Active'
-  },
-  {
-    id: 'u3',
-    username: 'SpamBot_404',
-    email: 'ad_bot@tempmail.org',
-    avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=80&q=80',
-    role: 'User',
-    isVip: false,
-    vcBalance: 0,
-    dailyStreak: 0,
-    moderationNote: 'Flagged for automated spam in community channels.',
-    joinedDate: '2026-07-25',
-    publishedBuildsCount: 0,
-    status: 'Suspended'
-  },
-  {
-    id: 'u4',
-    username: 'ViceCityStaff_Marco',
-    email: 'marco.staff@vicecity.app',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&q=80',
-    role: 'Staff',
-    isStaff: true,
-    isVip: true,
-    vipExpires: 'Staff Account',
-    vcBalance: 5000,
-    dailyStreak: 22,
-    moderationNote: 'Official Staff Moderator (Level 3 Moderator)',
-    joinedDate: '2026-02-10',
-    publishedBuildsCount: 8,
-    status: 'Active'
-  }
-];
+const INITIAL_USERS: UserProfile[] = [];
 
 interface PendingApproval {
   id: string;
@@ -210,6 +147,7 @@ interface PendingApproval {
   submittedAt: string;
   detail: string;
   channelId?: string;
+  channel?: string;
   requestedAtMs?: number;
   messageId?: string;
   author?: string;
@@ -378,7 +316,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
   const handleDeleteSingleRoom = async (roomId: string) => {
     try {
-      await deleteDoc(doc(db, 'squad_rooms', roomId));
+      await fetch('/api/admin/cms/squad_rooms/' + roomId, { method: 'DELETE' });
       logStaffActivity({
         actionType: 'SQUAD_ROOM_DELETE',
         actionCategory: 'System Operations',
@@ -386,10 +324,10 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         targetName: `Squad Room #${roomId}`,
         targetType: 'squad_room',
         severity: 'HIGH',
-        details: `Staff manually purged squad voice/radar room #${roomId} from Firestore.`
+        details: `Staff manually purged squad voice/radar room #${roomId} from database.`
       }).catch(() => {});
 
-      setSquadActionNotice(`✅ Purged squad room ${roomId} from Firestore.`);
+      setSquadActionNotice(`✅ Purged squad room ${roomId} from database.`);
       fetchSquadRoomsData();
     } catch (err: any) {
       setSquadActionNotice(`❌ Failed to delete room: ${err?.message || err}`);
@@ -572,243 +510,72 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
 
   const actorEmail = auth.currentUser?.email;
-  // Determine active viewer role for hierarchy logic
-  const actorRole: UserRole = isAdminUser(undefined, actorEmail) ? 'Admin' : 'Staff';
-  const isActorL4Admin = Boolean(
-    isAdminUser(actorRole, actorEmail) ||
-    actorEmail === 'admin@vicecity.app' ||
-    actorEmail === 'lucia.vice@outlook.com' ||
-    actorEmail === 'l4_admin@vicecity.app' ||
-    Boolean(auth.currentUser?.displayName?.toUpperCase()?.includes('L4'))
-  );
+  const currentActorUser = users.find(u => u.uid === auth.currentUser?.uid || u.id === auth.currentUser?.uid || (actorEmail && u.email?.toLowerCase() === actorEmail.toLowerCase()));
+  const isActorL4Admin = isAdminUser(currentActorUser, actorEmail);
+  const actorRole: UserRole = isActorL4Admin ? 'Admin' : (isStaffUser(currentActorUser, actorEmail) ? 'Staff' : 'User');
 
   // Real-Time Bounded Firebase Synchronization for High Scalability
   useEffect(() => {
-    let unsubUsers: () => void = () => {};
-    let unsubPending: () => void = () => {};
+    // Initial load from MongoDB (fully populates users & pending approvals)
+    fetchAdminData().catch(() => {});
 
+    // Subscribe to Realtime Database chat messages for Admin Live Chat Manager (0 Firestore cost)
+    let unsubChatMsgs: () => void = () => {};
     try {
-      // 1. Subscribe to Firestore userProfiles collection with a limit of 10 docs for performance
-      const usersQuery = query(collection(db, 'userProfiles'), limit(10));
-      unsubUsers = onSnapshot(
-        usersQuery,
-        (snapshot) => {
-          setIsFirebaseConnected(true);
-          if (!snapshot.empty) {
-            const fsUsers: UserProfile[] = snapshot.docs.map((docSnap) => {
-              const data = docSnap.data();
-              const rawRole = data.role as UserRole;
-              const isVip = data.isVip === true || rawRole === 'VIP Member' || rawRole === 'Staff' || rawRole === 'Admin';
-              const role: UserRole = rawRole || (isVip ? 'VIP Member' : 'User');
-              const vcBal = typeof data.vcBalance === 'number' ? data.vcBalance : (typeof data.credits === 'number' ? data.credits : 0);
-              const streak = typeof data.dailyStreak === 'number' ? data.dailyStreak : (typeof data.rewardStreak === 'number' ? data.rewardStreak : (typeof data.streak === 'number' ? data.streak : 0));
-
-              // Automated VIP Expiration Sync Logic
-              let expectedVipExpires = data.vipExpires;
-              if (role === 'Admin') {
-                expectedVipExpires = 'Lifetime';
-              } else if (role === 'Staff') {
-                expectedVipExpires = 'Staff Account';
-              } else if (role === 'VIP Member') {
-                const oneMonthLater = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                if (!expectedVipExpires || expectedVipExpires === 'Expired' || expectedVipExpires === 'Staff Account' || expectedVipExpires === 'Lifetime') {
-                  expectedVipExpires = oneMonthLater;
-                }
-              } else {
-                expectedVipExpires = 'Expired';
-              }
-
-              const expectedIsVip = role === 'VIP Member' || role === 'Staff' || role === 'Admin';
-              const expectedIsAdmin = role === 'Admin';
-              const expectedIsStaff = role === 'Staff' || role === 'Admin';
-
-              return {
-                id: docSnap.id,
-                username: data.username || 'ViceCityPlayer',
-                email: data.email || 'user@vicecity.app',
-                avatar: data.avatar || DEFAULT_GTA6_AVATAR,
-                role: role,
-                isAdmin: expectedIsAdmin,
-                isStaff: expectedIsStaff,
-                isVip: expectedIsVip,
-                vipExpires: expectedVipExpires,
-                vcBalance: vcBal,
-                dailyStreak: streak,
-                moderationNote: data.moderationNote || '',
-                joinedDate: data.createdAt ? new Date(data.createdAt).toISOString().split('T')[0] : '2026-07-28',
-                publishedBuildsCount: data.publishedBuildsCount || 0,
-                status: data.status || 'Active',
-                rawFirestoreData: data
-              };
-            });
-
-            // Merge Firestore live user documents with existing user list & defaults
-            setUsers((prev) => {
-              const mergedMap = new Map<string, UserProfile>();
-              INITIAL_USERS.forEach((u) => mergedMap.set(u.id, u));
-              prev.forEach((u) => mergedMap.set(u.id, u));
-              fsUsers.forEach((u) => mergedMap.set(u.id, u));
-              return Array.from(mergedMap.values());
-            });
-          }
-        },
-        (error) => {
-          console.warn('Firestore userProfiles snapshot warning:', error);
-          setIsFirebaseConnected(false);
+      unsubChatMsgs = subscribeRtdbMessages('global', (rtdbMsgs) => {
+        if (rtdbMsgs && rtdbMsgs.length > 0) {
+          setLiveChatMessages(rtdbMsgs as any);
         }
-      );
-
-      // 2. Subscribe to Firestore pendingApprovals collection
-      const pendingQuery = query(collection(db, 'pendingApprovals'), limit(10));
-      unsubPending = onSnapshot(
-        pendingQuery,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-            const nowMs = Date.now();
-            const fsPending: PendingApproval[] = snapshot.docs
-              .map((docSnap) => {
-                const data = docSnap.data();
-                const reqMs = data.requestedAtMs || (data.createdAt ? new Date(data.createdAt).getTime() : nowMs);
-                return {
-                  id: docSnap.id,
-                  type: data.type || 'RP Server',
-                  title: data.title || 'Untitled Submission',
-                  submittedBy: data.submittedBy || 'Anonymous Player',
-                  submittedAt: data.submittedAt || 'Just now',
-                  detail: data.detail || 'Details under review',
-                  channelId: data.channelId,
-                  requestedAtMs: reqMs,
-                  messageId: data.messageId,
-                  author: data.author,
-                  content: data.content,
-                  reason: data.reason,
-                  details: data.details,
-                  reporter: data.reporter,
-                  screenshotUrl: data.screenshotUrl,
-                  severity: data.severity,
-                  category: data.category,
-                  reportRefNumber: data.reportRefNumber,
-                  reportId: data.reportId
-                };
-              })
-              .filter((item) => {
-                // Auto expire channel deletion requests older than 24h
-                if (item.type === 'channel_deletion_request' && item.requestedAtMs) {
-                  if (nowMs - item.requestedAtMs > TWENTY_FOUR_HOURS_MS) {
-                    deleteDoc(doc(db, 'pendingApprovals', item.id)).catch(() => {});
-                    return false;
-                  }
-                }
-                return true;
-              });
-
-            setPendingApprovals((prev) => {
-              const mergedMap = new Map<string, PendingApproval>();
-              INITIAL_PENDING.forEach((p) => mergedMap.set(p.id, p));
-              fsPending.forEach((p) => mergedMap.set(p.id, p));
-              return Array.from(mergedMap.values());
-            });
-          }
-        },
-        (error) => {
-          console.warn('Firestore pendingApprovals snapshot warning:', error);
-        }
-      );
-
-      // 3. Subscribe to Realtime Database chat messages for Admin Live Chat Manager (0 Firestore cost)
-      let unsubChatMsgs: () => void = () => {};
-      try {
-        unsubChatMsgs = subscribeRtdbMessages('global', (rtdbMsgs) => {
-          if (rtdbMsgs && rtdbMsgs.length > 0) {
-            setLiveChatMessages(rtdbMsgs as any);
-          }
-        });
-      } catch (e) {
-        console.warn('RTDB Chat subscription error:', e);
-      }
-
-      // Initial REST fallback for chat messages
-      fetch('/api/chat')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && Array.isArray(data.data)) {
-            setLiveChatMessages(prev => {
-              const map = new Map();
-              data.data.forEach((m: any) => map.set(m.id, m));
-              prev.forEach((m: any) => map.set(m.id, m));
-              return Array.from(map.values());
-            });
-          }
-        })
-        .catch(() => {});
-    } catch (err) {
-      console.warn('Firebase connection error in Admin panel:', err);
+      });
+    } catch (e) {
+      console.warn('RTDB Chat subscription error:', e);
     }
 
+    // Initial REST fallback for chat messages
+    fetch('/api/chat')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setLiveChatMessages(prev => {
+            const map = new Map();
+            data.data.forEach((m: any) => map.set(m.id, m));
+            prev.forEach((m: any) => map.set(m.id, m));
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch(() => {});
+
     return () => {
-      unsubUsers();
-      unsubPending();
+      unsubChatMsgs();
     };
   }, []);
 
-  // Subscribe to CMS Collections
+  // Fetch and Load CMS Collections from MongoDB / REST API (0 Firestore reads)
   useEffect(() => {
-    let unsubBlogs = () => {};
-    let unsubVehicles = () => {};
-    let unsubWeapons = () => {};
-    let unsubMaps = () => {};
-    let unsubRp = () => {};
-    let unsubChat = () => {};
+    const fetchCmsCollections = async () => {
+      try {
+        const [blogsRes, vehiclesRes, weaponsRes, mapsRes, rpServersRes, chatRes] = await Promise.all([
+          fetch('/api/admin/cms/blogPosts').then(r => r.json()),
+          fetch('/api/admin/cms/vehicles').then(r => r.json()),
+          fetch('/api/admin/cms/weapons').then(r => r.json()),
+          fetch('/api/admin/cms/mapLocations').then(r => r.json()),
+          fetch('/api/admin/cms/rpServers').then(r => r.json()),
+          fetch('/api/admin/cms/chatChannels').then(r => r.json())
+        ]);
 
-    try {
-      unsubBlogs = onSnapshot(query(collection(db, 'blogPosts'), limit(10)), (snap) => {
-        const list: any[] = [];
-        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        setPublishedBlogs(list);
-      }, (e) => console.warn('Blogs sub error:', e));
-
-      unsubVehicles = onSnapshot(query(collection(db, 'vehicles'), limit(10)), (snap) => {
-        const list: any[] = [];
-        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        setPublishedVehicles(list);
-      }, (e) => console.warn('Vehicles sub error:', e));
-
-      unsubWeapons = onSnapshot(query(collection(db, 'weapons'), limit(10)), (snap) => {
-        const list: any[] = [];
-        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        setPublishedWeapons(list);
-      }, (e) => console.warn('Weapons sub error:', e));
-
-      unsubMaps = onSnapshot(query(collection(db, 'mapLocations'), limit(10)), (snap) => {
-        const list: any[] = [];
-        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        setPublishedMapLocations(list);
-      }, (e) => console.warn('Map locations sub error:', e));
-
-      unsubRp = onSnapshot(query(collection(db, 'rpServers'), limit(10)), (snap) => {
-        const list: any[] = [];
-        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        setPublishedRpServers(list);
-      }, (e) => console.warn('RP servers sub error:', e));
-
-      unsubChat = onSnapshot(query(collection(db, 'chatChannels'), limit(10)), (snap) => {
-        const list: any[] = [];
-        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        setPublishedChatChannels(list);
-      }, (e) => console.warn('Chat channels sub error:', e));
-    } catch (err) {
-      console.warn('CMS Subscriptions warning:', err);
-    }
-
-    return () => {
-      unsubBlogs();
-      unsubVehicles();
-      unsubWeapons();
-      unsubMaps();
-      unsubRp();
-      unsubChat();
+        if (blogsRes.success && Array.isArray(blogsRes.data)) setPublishedBlogs(blogsRes.data);
+        if (vehiclesRes.success && Array.isArray(vehiclesRes.data)) setPublishedVehicles(vehiclesRes.data);
+        if (weaponsRes.success && Array.isArray(weaponsRes.data)) setPublishedWeapons(weaponsRes.data);
+        if (mapsRes.success && Array.isArray(mapsRes.data)) setPublishedMapLocations(mapsRes.data);
+        if (rpServersRes.success && Array.isArray(rpServersRes.data)) setPublishedRpServers(rpServersRes.data);
+        if (chatRes.success && Array.isArray(chatRes.data)) setPublishedChatChannels(chatRes.data);
+      } catch (err) {
+        console.warn('Error loading CMS Collections:', err);
+      }
     };
+
+    fetchCmsCollections();
   }, []);
 
   // CMS Start/Cancel Edit Handlers
@@ -954,7 +721,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     };
 
     try {
-      await setDoc(doc(db, 'blogPosts', id), newDoc, { merge: true });
+      await fetch('/api/admin/cms/blogPosts/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDoc)
+      });
       logStaffActivity({
         actionType: editingBlogId ? 'CMS_CONTENT_UPDATE' : 'CMS_CONTENT_CREATE',
         actionCategory: 'Content CMS',
@@ -1002,7 +773,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
     try {
       await saveOrUpdateVehicle(newDoc as any);
-      await setDoc(doc(db, 'vehicles', id), newDoc, { merge: true });
+      await fetch('/api/admin/cms/vehicles/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDoc)
+      });
       logStaffActivity({
         actionType: editingVehId ? 'CMS_CONTENT_UPDATE' : 'CMS_CONTENT_CREATE',
         actionCategory: 'Content CMS',
@@ -1047,7 +822,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     };
 
     try {
-      await setDoc(doc(db, 'weapons', id), newDoc, { merge: true });
+      await fetch('/api/admin/cms/weapons/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDoc)
+      });
       logStaffActivity({
         actionType: editingWpnId ? 'CMS_CONTENT_UPDATE' : 'CMS_CONTENT_CREATE',
         actionCategory: 'Content CMS',
@@ -1085,6 +864,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
     try {
       await saveOrUpdateMapLocation(newDoc as any);
+      await fetch('/api/admin/cms/mapLocations/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDoc)
+      });
       logStaffActivity({
         actionType: editingMapId ? 'CMS_CONTENT_UPDATE' : 'CMS_CONTENT_CREATE',
         actionCategory: 'Content CMS',
@@ -1124,7 +908,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     };
 
     try {
-      await setDoc(doc(db, 'rpServers', id), newDoc, { merge: true });
+      await fetch('/api/admin/cms/rpServers/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDoc)
+      });
       logStaffActivity({
         actionType: editingRpId ? 'CMS_CONTENT_UPDATE' : 'CMS_CONTENT_CREATE',
         actionCategory: 'Content CMS',
@@ -1157,7 +945,11 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     };
 
     try {
-      await setDoc(doc(db, 'chatChannels', cleanId), newDoc, { merge: true });
+      await fetch('/api/admin/cms/chatChannels/' + cleanId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDoc)
+      });
       logStaffActivity({
         actionType: editingChatId ? 'CMS_CONTENT_UPDATE' : 'CMS_CONTENT_CREATE',
         actionCategory: 'Community Chat',
@@ -1197,9 +989,8 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         await deleteWeapon(id);
       } else if (colName === 'characters') {
         await deleteCharacter(id);
-      } else {
-        await deleteDoc(doc(db, colName, id));
       }
+      await fetch(`/api/admin/cms/${colName}/${id}`, { method: 'DELETE' });
       logStaffActivity({
         actionType: 'CMS_CONTENT_DELETE',
         actionCategory: 'Content CMS',
@@ -1245,7 +1036,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     setUserToDelete(null);
     if (editingUserDoc?.id === id) setEditingUserDoc(null);
     try {
-      await deleteDoc(doc(db, 'userProfiles', id));
+      await fetch('/api/admin/cms/userProfiles/' + id, { method: 'DELETE' });
       logStaffActivity({
         actionType: 'USER_DOC_DELETE',
         actionCategory: 'User Management',
@@ -1256,7 +1047,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         details: `Staff permanently deleted user profile document for @${username} (${id}).`
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore deletion error for user profile:', e);
+      console.warn('API deletion error for user profile:', e);
     }
 
     setUsers(prev => prev.filter(u => u.id !== id));
@@ -1268,76 +1059,17 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const fetchAdminData = async () => {
     setIsRefreshing(true);
     try {
-      // Direct Firestore fetch limited to 100 docs
-      const snap = await getDocs(query(collection(db, 'userProfiles'), limit(100)));
-      if (!snap.empty) {
-        const fsUsers: UserProfile[] = snap.docs.map((docSnap) => {
-          const data = docSnap.data();
-          const rawRole = data.role as UserRole;
-          const isVip = data.isVip === true || rawRole === 'VIP Member' || rawRole === 'Staff' || rawRole === 'Admin';
-          const role: UserRole = rawRole || (isVip ? 'VIP Member' : 'User');
-          const vcBal = typeof data.vcBalance === 'number' ? data.vcBalance : (typeof data.credits === 'number' ? data.credits : 0);
-          const streak = typeof data.dailyStreak === 'number' ? data.dailyStreak : (typeof data.rewardStreak === 'number' ? data.rewardStreak : (typeof data.streak === 'number' ? data.streak : 0));
-
-          let expectedVipExpires = data.vipExpires;
-          if (role === 'Admin') {
-            expectedVipExpires = 'Lifetime';
-          } else if (role === 'Staff') {
-            expectedVipExpires = 'Staff Account';
-          } else if (role === 'VIP Member') {
-            const oneMonthLater = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-            if (!expectedVipExpires || expectedVipExpires === 'Expired' || expectedVipExpires === 'Staff Account' || expectedVipExpires === 'Lifetime') {
-              expectedVipExpires = oneMonthLater;
-            }
-          } else {
-            expectedVipExpires = 'Expired';
-          }
-
-          return {
-            id: docSnap.id,
-            username: data.username || 'ViceCityPlayer',
-            email: data.email || 'user@vicecity.app',
-            avatar: data.avatar || DEFAULT_GTA6_AVATAR,
-            role: role,
-            isAdmin: role === 'Admin',
-            isStaff: role === 'Staff' || role === 'Admin',
-            isVip: role === 'VIP Member' || role === 'Staff' || role === 'Admin',
-            vipExpires: expectedVipExpires,
-            vcBalance: vcBal,
-            dailyStreak: streak,
-            moderationNote: data.moderationNote || '',
-            joinedDate: data.createdAt ? new Date(data.createdAt).toISOString().split('T')[0] : '2026-07-28',
-            publishedBuildsCount: data.publishedBuildsCount || 0,
-            status: data.status || 'Active',
-            rawFirestoreData: data
-          };
-        });
-
-        setUsers((prev) => {
-          const map = new Map<string, UserProfile>();
-          INITIAL_USERS.forEach((u) => map.set(u.id, u));
-          prev.forEach((u) => map.set(u.id, u));
-          fsUsers.forEach((u) => map.set(u.id, u));
-          return Array.from(map.values());
-        });
-      }
-
-      // Supplementary API check
+      // Supplementary/Primary API check from high-performance MongoDB
       const [uRes, pRes] = await Promise.allSettled([
         fetch('/api/admin/users').then(res => res.json()),
         fetch('/api/admin/pending').then(res => res.json())
       ]);
 
       if (uRes.status === 'fulfilled' && uRes.value?.success && Array.isArray(uRes.value.data)) {
-        setUsers(prev => {
-          const map = new Map<string, UserProfile>();
-          prev.forEach(u => map.set(u.id, u));
-          uRes.value.data.forEach((u: UserProfile) => map.set(u.id, u));
-          return Array.from(map.values());
-        });
+        setUsers(uRes.value.data);
       }
       if (pRes.status === 'fulfilled' && pRes.value?.success && Array.isArray(pRes.value.data)) {
-        setPendingApprovals(pRes.value.data);
+        setPendingApprovals(pRes.value.data.filter((p: any) => p && p.id && p.id !== 'p1'));
       }
     } catch (err) {
       console.warn('Admin Data Sync Notice:', err);
@@ -1378,19 +1110,21 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     }
 
     try {
-      await setDoc(
-        doc(db, 'userProfiles', userId),
-        {
-          uid: userId,
-          role: newRole,
-          isVip,
-          isAdmin,
-          isStaff,
-          vipExpires: newVipExpires,
-          updatedAt: new Date().toISOString()
-        },
-        { merge: true }
-      );
+      const payload = {
+        uid: userId,
+        role: newRole,
+        isVip,
+        isAdmin,
+        isStaff,
+        vipExpires: newVipExpires,
+        updatedAt: new Date().toISOString()
+      };
+
+      await fetch(`/api/admin/cms/userProfiles/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
       logStaffActivity({
         actionType: 'USER_ROLE_CHANGE',
@@ -1406,7 +1140,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         ]
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore write warning for role change:', e);
+      console.warn('API write warning for role change:', e);
     }
 
     setUsers(prev =>
@@ -1451,19 +1185,21 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     }
 
     try {
-      await setDoc(
-        doc(db, 'userProfiles', userId),
-        {
-          uid: userId,
-          isVip: newIsVip,
-          role: newRole,
-          vipExpires: newVipExpires,
-          isAdmin: newRole === 'Admin',
-          isStaff: newRole === 'Staff' || newRole === 'Admin',
-          updatedAt: new Date().toISOString()
-        },
-        { merge: true }
-      );
+      const payload = {
+        uid: userId,
+        isVip: newIsVip,
+        role: newRole,
+        vipExpires: newVipExpires,
+        isAdmin: newRole === 'Admin',
+        isStaff: newRole === 'Staff' || newRole === 'Admin',
+        updatedAt: new Date().toISOString()
+      };
+
+      await fetch(`/api/admin/cms/userProfiles/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
       logStaffActivity({
         actionType: 'USER_ROLE_CHANGE',
@@ -1479,7 +1215,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         ]
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore write warning for isVip toggle:', e);
+      console.warn('API write warning for isVip toggle:', e);
     }
 
     setUsers(prev =>
@@ -1512,15 +1248,17 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     const newStatus = targetUser.status === 'Active' ? 'Suspended' : 'Active';
 
     try {
-      await setDoc(
-        doc(db, 'userProfiles', userId),
-        {
-          uid: userId,
-          status: newStatus,
-          updatedAt: new Date().toISOString()
-        },
-        { merge: true }
-      );
+      const payload = {
+        uid: userId,
+        status: newStatus,
+        updatedAt: new Date().toISOString()
+      };
+
+      await fetch(`/api/admin/cms/userProfiles/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
       logStaffActivity({
         actionType: newStatus === 'Suspended' ? 'USER_BAN_SUSPEND' : 'USER_UNBAN',
@@ -1535,7 +1273,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         ]
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore write warning for status toggle:', e);
+      console.warn('API write warning for status toggle:', e);
     }
 
     setUsers(prev =>
@@ -1550,7 +1288,8 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const handleApprovePending = async (id: string) => {
     const pendingItem = pendingApprovals.find(p => p.id === id);
     try {
-      await deleteDoc(doc(db, 'pendingApprovals', id));
+      await fetch(`/api/admin/pending/${id}/approve`, { method: 'POST' });
+      await fetch(`/api/admin/cms/pendingApprovals/${id}`, { method: 'DELETE' });
       logStaffActivity({
         actionType: 'MODERATION_APPROVAL',
         actionCategory: 'Moderation Queue',
@@ -1562,7 +1301,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         changes: [{ field: 'status', oldValue: 'Pending Review', newValue: 'Approved', fieldLabel: 'Moderation Status' }]
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore deletion warning for pending item:', e);
+      console.warn('API deletion warning for pending item:', e);
     }
 
     setPendingApprovals(prev => prev.filter(p => p.id !== id));
@@ -1574,7 +1313,8 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const handleRejectPending = async (id: string) => {
     const pendingItem = pendingApprovals.find(p => p.id === id);
     try {
-      await deleteDoc(doc(db, 'pendingApprovals', id));
+      await fetch(`/api/admin/pending/${id}/reject`, { method: 'POST' });
+      await fetch(`/api/admin/cms/pendingApprovals/${id}`, { method: 'DELETE' });
       logStaffActivity({
         actionType: 'MODERATION_REJECTION',
         actionCategory: 'Moderation Queue',
@@ -1586,7 +1326,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         changes: [{ field: 'status', oldValue: 'Pending Review', newValue: 'Rejected', fieldLabel: 'Moderation Status' }]
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore rejection warning for pending item:', e);
+      console.warn('API rejection warning for pending item:', e);
     }
 
     setPendingApprovals(prev => prev.filter(p => p.id !== id));
@@ -1598,22 +1338,23 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const handleDeleteReportedMessage = async (reportId: string, messageId?: string) => {
     const deletedByName = auth.currentUser?.displayName || (isAdminUser(undefined, actorEmail) ? 'Admin' : 'Staff Moderator');
     const deletedText = 'This message was deleted by moderator';
+    const reportItem = pendingApprovals.find(p => p.id === reportId);
+    const channelId = (reportItem as any)?.channelId || reportItem?.channel || (reportItem as any)?.targetId || (reportItem as any)?.hubId;
 
     if (messageId) {
-      // 1. Update chatMessage in Firestore
+      // 1. Redact message in Realtime Database (RTDB)
       try {
-        const msgRef = doc(db, 'chatMessages', messageId);
-        await updateDoc(msgRef, {
-          isDeleted: true,
-          text: deletedText,
-          deletedBy: deletedByName,
-          attachment: null
-        });
-      } catch (e) {
-        console.warn('Firestore chat update error:', e);
+        const chanId = channelId || 'general';
+        await deleteRtdbMessage(chanId, messageId, deletedByName);
+        if (chanId !== 'general') {
+          await deleteRtdbMessage('general', messageId, deletedByName);
+        }
+        console.log('Successfully redacted reported message in RTDB channels:', chanId);
+      } catch (err) {
+        console.warn('RTDB delete error in admin reported delete:', err);
       }
 
-      // 2. Call REST API endpoint
+      // 2. Call REST API endpoint as backend sync
       try {
         await fetch(`/api/chat/${messageId}`, {
           method: 'DELETE',
@@ -1628,9 +1369,30 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       setLiveChatMessages(prev => prev.map(m => m.id === messageId ? { ...m, isDeleted: true, text: deletedText, deletedBy: deletedByName } : m));
     }
 
+    // If this report was filed against a hub/channel or requested channel deletion
+    if (channelId && (reportItem?.type?.includes('channel') || reportItem?.type?.includes('hub') || !messageId)) {
+      try {
+        await Promise.allSettled([
+          fetch(`/api/admin/cms/customChannels/${channelId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isDeleted: true, deleted: true, status: 'Deleted' })
+          }),
+          fetch(`/api/admin/cms/customChannels/${channelId}`, { method: 'DELETE' }),
+          fetch(`/api/db/customChannels/${channelId}`, { method: 'DELETE' })
+        ]);
+        deleteRtdbChannel(channelId).catch(e => console.warn('RTDB channel delete notice:', e));
+      } catch (e) {
+        console.warn('Hub delete in report resolve error:', e);
+      }
+    }
+
     // 4. Remove report from pendingApprovals
     try {
-      await deleteDoc(doc(db, 'pendingApprovals', reportId));
+      await Promise.allSettled([
+        fetch(`/api/admin/cms/pendingApprovals/${reportId}`, { method: 'DELETE' }),
+        fetch(`/api/admin/pending/${reportId}/reject`, { method: 'POST' })
+      ]);
       logStaffActivity({
         actionType: 'REPORT_RESOLVE',
         actionCategory: 'Moderation Queue',
@@ -1641,18 +1403,21 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         details: `Staff deleted reported chat message (ID: ${messageId || 'N/A'}) and resolved moderation ticket #${reportId}.`
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore report deletion error:', e);
+      console.warn('API report deletion error:', e);
     }
 
     setPendingApprovals(prev => prev.filter(p => p.id !== reportId));
-    setActionNotice('🗑️ Reported chat message deleted from live chat & report resolved!');
+    setActionNotice('🗑️ Reported item / hub deleted & report resolved!');
     setTimeout(() => setActionNotice(null), 4000);
   };
 
   // Dismiss report without deleting message
   const handleDismissReport = async (reportId: string) => {
     try {
-      await deleteDoc(doc(db, 'pendingApprovals', reportId));
+      await Promise.allSettled([
+        fetch(`/api/admin/cms/pendingApprovals/${reportId}`, { method: 'DELETE' }),
+        fetch(`/api/admin/pending/${reportId}/reject`, { method: 'POST' })
+      ]);
       logStaffActivity({
         actionType: 'REPORT_DISMISS',
         actionCategory: 'Moderation Queue',
@@ -1663,7 +1428,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         details: `Staff dismissed moderation report #${reportId} without deleting message.`
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore report dismissal error:', e);
+      console.warn('API report dismissal error:', e);
     }
     setPendingApprovals(prev => prev.filter(p => p.id !== reportId));
     setActionNotice('Report dismissed without deleting message.');
@@ -1672,28 +1437,41 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
   // Handle Staff Approval of VIP Custom Channel Deletion
   const handleApproveChannelDeletion = async (approvalId: string, channelId?: string) => {
-    if (channelId) {
+    const reportItem = pendingApprovals.find(p => p.id === approvalId);
+    const targetChannelId = channelId || (reportItem as any)?.channelId || reportItem?.channel || (reportItem as any)?.targetId || (reportItem as any)?.hubId;
+
+    if (targetChannelId) {
       try {
-        await setDoc(doc(db, 'customChannels', channelId), { isDeleted: true, deleted: true, status: 'Deleted' }, { merge: true });
-        await deleteDoc(doc(db, 'customChannels', channelId));
+        await Promise.allSettled([
+          fetch(`/api/admin/cms/customChannels/${targetChannelId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isDeleted: true, deleted: true, status: 'Deleted' })
+          }),
+          fetch(`/api/admin/cms/customChannels/${targetChannelId}`, { method: 'DELETE' }),
+          fetch(`/api/db/customChannels/${targetChannelId}`, { method: 'DELETE' })
+        ]);
       } catch (e) {
-        console.warn('Firestore channel delete error:', e);
+        console.warn('API channel delete error:', e);
       }
-      deleteRtdbChannel(channelId).catch(e => console.warn('RTDB channel delete notice:', e));
+      deleteRtdbChannel(targetChannelId).catch(e => console.warn('RTDB channel delete notice:', e));
     }
     try {
-      await deleteDoc(doc(db, 'pendingApprovals', approvalId));
+      await Promise.allSettled([
+        fetch(`/api/admin/cms/pendingApprovals/${approvalId}`, { method: 'DELETE' }),
+        fetch(`/api/admin/pending/${approvalId}/reject`, { method: 'POST' })
+      ]);
       logStaffActivity({
         actionType: 'CHANNEL_DELETE_APPROVE',
         actionCategory: 'Community Chat',
-        targetId: channelId || approvalId,
-        targetName: `Channel ${channelId || approvalId}`,
+        targetId: targetChannelId || approvalId,
+        targetName: `Channel ${targetChannelId || approvalId}`,
         targetType: 'channel',
         severity: 'HIGH',
-        details: `Staff approved permanent deletion of VIP Custom Channel (${channelId || approvalId}).`
+        details: `Staff approved permanent deletion of VIP Custom Channel (${targetChannelId || approvalId}).`
       }).catch(() => {});
     } catch (e) {
-      console.warn('Firestore pending approval delete error:', e);
+      console.warn('API pending approval delete error:', e);
     }
     setPendingApprovals(prev => prev.filter(p => p.id !== approvalId));
     setActionNotice('🗑️ Custom VIP Channel permanently deleted by Staff!');
@@ -1704,18 +1482,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const handleDeleteChatMessageDirect = async (messageId: string) => {
     const deletedByName = auth.currentUser?.displayName || (isAdminUser(undefined, actorEmail) ? 'Admin' : 'Staff Moderator');
     const deletedText = 'This message was deleted by moderator';
-
-    try {
-      const msgRef = doc(db, 'chatMessages', messageId);
-      await updateDoc(msgRef, {
-        isDeleted: true,
-        text: deletedText,
-        deletedBy: deletedByName,
-        attachment: null
-      });
-    } catch (e) {
-      console.warn('Firestore chat update error:', e);
-    }
 
     // Delete across all channels in RTDB
     deleteRtdbMessage('general', messageId, deletedByName).catch(() => {});
@@ -1809,14 +1575,21 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         }
       }
 
+      const derivedUserLevel = editRole === 'Admin' ? 'L4' : editRole === 'Staff' ? 'L3' : 'Member';
+      const effectiveUserLevel = parsedRawJson.userLevel || derivedUserLevel;
+      const isL4 = effectiveUserLevel === 'L4';
+      const isL3 = effectiveUserLevel === 'L3';
+
       const updatedPayload: Record<string, any> = {
         ...parsedRawJson,
         uid: editingUserDoc.id,
         username: editUsername,
         email: editEmail,
         role: editRole,
-        isAdmin: editIsAdmin,
-        isStaff: editIsStaff,
+        userLevel: effectiveUserLevel,
+        clearanceLevel: isL4 ? 4 : isL3 ? 3 : (editIsVip ? 2 : 1),
+        isAdmin: isL4,
+        isStaff: isL4 || isL3,
         isVip: editIsVip,
         status: editStatus,
         vcBalance: Number(editVcBalance) || 0,
@@ -1829,7 +1602,12 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         updatedAt: new Date().toISOString()
       };
 
-      await setDoc(doc(db, 'userProfiles', editingUserDoc.id), updatedPayload, { merge: true });
+      // 1. Save directly into MongoDB via backend API
+      await fetch(`/api/admin/cms/userProfiles/${editingUserDoc.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedPayload)
+      });
 
       const fieldChanges: { field: string; oldValue: any; newValue: any; fieldLabel?: string }[] = [];
       if (editingUserDoc.username !== editUsername) fieldChanges.push({ field: 'username', oldValue: editingUserDoc.username, newValue: editUsername, fieldLabel: 'GamerTag' });
@@ -1856,8 +1634,10 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         username: editUsername,
         email: editEmail,
         role: editRole,
-        isAdmin: editIsAdmin,
-        isStaff: editIsStaff,
+        userLevel: effectiveUserLevel,
+        clearanceLevel: isL4 ? 'L4' : isL3 ? 'L3' : (editIsVip ? 'L2 VIP' : 'L1 Citizen'),
+        isAdmin: isL4,
+        isStaff: isL4 || isL3,
         isVip: editIsVip,
         status: editStatus,
         vcBalance: Number(editVcBalance) || 0,
@@ -1869,7 +1649,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         rawFirestoreData: updatedPayload
       } : u));
 
-      setActionNotice(`Updated all Firestore fields for @${editUsername} (${editingUserDoc.id})!`);
+      setActionNotice(`Saved user record for @${editUsername} (${editingUserDoc.id}) to database!`);
       setTimeout(() => setActionNotice(null), 4000);
       setEditingUserDoc(null);
     } catch (err: any) {
@@ -2541,7 +2321,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                   </tr>
                 ) : (
                   paginatedUsers.map((u) => {
-                    const isTargetVip = u.role === 'VIP Member';
+                    const isTargetAdminAccount = isTargetAdmin(u) || u.role === 'Admin' || u.isAdmin === true;
                     const banCheck = canBanTarget(actorRole, actorEmail, u.role, u);
 
                     return (
@@ -2567,21 +2347,21 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
                         {/* Role Level Badge & VIP Expiration */}
                         <td className="p-3.5">
-                          {u.role === 'Admin' ? (
+                          {u.role === 'Admin' || u.isAdmin === true ? (
                             <div className="space-y-1">
                               <span className="px-2.5 py-1 rounded text-[10px] font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1 w-fit">
                                 <ShieldCheck className="w-3 h-3 text-rose-400" /> Admin
                               </span>
                               <span className="text-[10px] text-zinc-400 font-mono block">Expires: {formatVipExpiry(u.vipExpires || 'Lifetime')}</span>
                             </div>
-                          ) : u.role === 'Staff' ? (
+                          ) : u.role === 'Staff' || u.isStaff === true ? (
                             <div className="space-y-1">
                               <span className="px-2.5 py-1 rounded text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 w-fit">
                                 <ShieldAlert className="w-3 h-3 text-indigo-400" /> Staff
                               </span>
                               <span className="text-[10px] text-zinc-400 font-mono block">Expires: {formatVipExpiry(u.vipExpires || 'Staff Account')}</span>
                             </div>
-                          ) : u.role === 'VIP Member' ? (
+                          ) : u.role === 'VIP Member' || u.isVip ? (
                             <div className="space-y-1">
                               <span className="px-2.5 py-1 rounded text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 w-fit">
                                 <Crown className="w-3 h-3 text-amber-400" /> VIP Member
@@ -2632,7 +2412,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                             disabled={!canEditUserFields(actorRole, actorEmail, u) || !canAssignRole(actorRole, actorEmail, u.role, undefined, u)}
                             onChange={(e) => handleAssignRole(u.id, e.target.value as UserRole)}
                             className="bg-zinc-950 border border-zinc-800 text-zinc-200 text-[11px] rounded-lg px-2 py-1 focus:outline-none focus:border-amber-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                            title={!canEditUserFields(actorRole, actorEmail, u) ? 'Only Admins can modify Admin accounts' : 'Select new hierarchy role'}
+                            title={isTargetAdminAccount ? 'Admin accounts are protected from role demotion' : 'Select new hierarchy role'}
                           >
                             <option value="User">User</option>
                             <option value="VIP Member">VIP Member</option>
@@ -2650,13 +2430,13 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                             <button
                               type="button"
                               onClick={() => handleOpenUserEditModal(u)}
-                              disabled={!canEditUserFields(actorRole, actorEmail, u)}
+                              disabled={isTargetAdminAccount && !isActorL4Admin}
                               className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition flex items-center gap-1 ${
-                                !canEditUserFields(actorRole, actorEmail, u)
+                                isTargetAdminAccount && !isActorL4Admin
                                   ? 'bg-zinc-800/80 text-zinc-500 border border-zinc-700 cursor-not-allowed'
                                   : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-pointer'
                               }`}
-                              title={!canEditUserFields(actorRole, actorEmail, u) ? 'Only Admins can edit fields for Admin accounts' : "Edit all fields in user's Firestore document"}
+                              title={isTargetAdminAccount && !isActorL4Admin ? 'Only Admins can edit fields for Admin accounts' : "Edit all fields in user's profile document"}
                             >
                               <Edit3 className="w-3 h-3 text-amber-400" />
                               <span>Edit All Fields</span>
@@ -2666,30 +2446,30 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                             <button
                               type="button"
                               onClick={() => handleToggleStatus(u.id)}
-                              disabled={!canEditUserFields(actorRole, actorEmail, u) || (!banCheck.allowed && u.status === 'Active')}
+                              disabled={isTargetAdminAccount || !banCheck.allowed}
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition inline-flex items-center gap-1 ${
-                                !canEditUserFields(actorRole, actorEmail, u) || (!banCheck.allowed && u.status === 'Active')
+                                isTargetAdminAccount || !banCheck.allowed
                                   ? 'bg-zinc-800/80 text-zinc-500 border-zinc-700 cursor-not-allowed'
                                   : u.status === 'Active'
                                   ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20 cursor-pointer'
                                   : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 cursor-pointer'
                               }`}
                               title={
-                                !canEditUserFields(actorRole, actorEmail, u)
-                                  ? 'Only Admins can modify status for Admin accounts'
-                                  : !banCheck.allowed && u.status === 'Active'
+                                isTargetAdminAccount
+                                  ? 'Admin accounts are protected and cannot be suspended'
+                                  : !banCheck.allowed
                                   ? banCheck.reason
                                   : u.status === 'Active'
                                   ? 'Suspend player account'
                                   : 'Lift account suspension'
                               }
                             >
-                              {!banCheck.allowed && u.status === 'Active' && <Lock className="w-3 h-3 text-amber-500" />}
+                              {isTargetAdminAccount && <Lock className="w-3 h-3 text-amber-500" />}
                               <span>
-                                {u.status === 'Active'
-                                  ? isTargetVip && !banCheck.allowed
-                                    ? 'Protected'
-                                    : 'Suspend'
+                                {isTargetAdminAccount
+                                  ? 'Protected'
+                                  : u.status === 'Active'
+                                  ? 'Suspend'
                                   : 'Unban'}
                               </span>
                             </button>
@@ -2698,13 +2478,13 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                             <button
                               type="button"
                               onClick={() => handleDeleteUserDoc(u.id, u.username)}
-                              disabled={!canEditUserFields(actorRole, actorEmail, u)}
+                              disabled={isTargetAdminAccount}
                               className={`p-1.5 rounded-lg text-[10px] font-bold border transition inline-flex items-center gap-1 ${
-                                !canEditUserFields(actorRole, actorEmail, u)
+                                isTargetAdminAccount
                                   ? 'bg-zinc-800/80 text-zinc-600 border-zinc-800 cursor-not-allowed'
                                   : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/50 cursor-pointer'
                               }`}
-                              title={!canEditUserFields(actorRole, actorEmail, u) ? 'Cannot delete Admin accounts' : 'Permanently delete user profile document'}
+                              title={isTargetAdminAccount ? 'Admin accounts are protected and cannot be deleted' : 'Permanently delete user profile document'}
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -2937,7 +2717,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                         ) : isChannelDelete ? (
                           <>
                             <button
-                              onClick={() => handleApproveChannelDeletion(item.id, (item as any).channelId)}
+                              onClick={() => handleApproveChannelDeletion(item.id, (item as any).channelId || item.channel || (item as any).targetId || (item as any).hubId)}
                               className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer"
                               title="Staff Authority: Permanently delete custom channel from system"
                             >

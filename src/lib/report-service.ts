@@ -180,27 +180,45 @@ export async function submitIssueReport(data: Omit<IssueReport, 'id' | 'createdA
   }
 
   // 4. Also push to pendingApprovals collection so administrators see it instantly in their main moderation queue
+  const approvalId = `pending_${reportDocId}`;
+  const pendingPayload = {
+    id: approvalId,
+    type: 'issue_report',
+    title: `[${data.severity.toUpperCase()}] ${data.title}`,
+    submittedBy: data.reporterName,
+    reporterUid: data.reporterUid || 'anonymous',
+    submittedAt: 'Just now',
+    detail: data.description,
+    category: data.category,
+    severity: data.severity,
+    screenshotUrl: data.screenshotUrl || null,
+    activeTab: data.activeTab,
+    reportRefNumber: refNumber,
+    reportId: reportDocId,
+    status: 'pending',
+    requestedAtMs: now.getTime(),
+    createdAt: now.toISOString()
+  };
+
   try {
-    const approvalRef = doc(db, 'pendingApprovals', `pending_${reportDocId}`);
+    const approvalRef = doc(db, 'pendingApprovals', approvalId);
     await setDoc(approvalRef, {
-      id: `pending_${reportDocId}`,
-      type: 'issue_report',
-      title: `[${data.severity.toUpperCase()}] ${data.title}`,
-      submittedBy: data.reporterName,
-      reporterUid: data.reporterUid || 'anonymous',
-      submittedAt: 'Just now',
-      detail: data.description,
-      category: data.category,
-      severity: data.severity,
-      screenshotUrl: data.screenshotUrl || null,
-      activeTab: data.activeTab,
-      reportRefNumber: refNumber,
-      reportId: reportDocId,
-      status: 'pending',
-      requestedAtMs: now.getTime()
+      ...pendingPayload,
+      serverTimestamp: serverTimestamp()
     });
   } catch (err) {
     console.warn('PendingApprovals push notice:', err);
+  }
+
+  // 5. Post to Express REST API for MongoDB synchronization in Admin HQ
+  try {
+    await fetch(`/api/admin/cms/pendingApprovals/${approvalId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pendingPayload)
+    });
+  } catch (err) {
+    console.warn('REST API pendingApprovals push error:', err);
   }
 
   return newReport;

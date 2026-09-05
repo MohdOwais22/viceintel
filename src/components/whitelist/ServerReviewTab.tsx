@@ -83,14 +83,7 @@ export const ServerReviewTab: React.FC<ServerReviewTabProps> = ({
 
   // Check if current authenticated user is a Level 4 (L4) Global Administrator
   const isL4Admin = Boolean(
-    currentUser && (
-      currentUser.isAdmin ||
-      (currentUser.email && [
-        'admin@vicecity.app',
-        'lucia.vice@outlook.com',
-        'l4_admin@vicecity.app'
-      ].includes(currentUser.email.toLowerCase()))
-    )
+    currentUser && currentUser.isAdmin
   );
 
   const matchedRpServer = RP_SERVERS_DATA.find(
@@ -187,14 +180,7 @@ export const ServerReviewTab: React.FC<ServerReviewTabProps> = ({
 
         // Check authorization after fetching config
         const userIsL4 = Boolean(
-          currentUser && (
-            currentUser.isAdmin ||
-            (currentUser.email && [
-              'admin@vicecity.app',
-              'lucia.vice@outlook.com',
-              'l4_admin@vicecity.app'
-            ].includes(currentUser.email.toLowerCase()))
-          )
+          currentUser && currentUser.isAdmin
         );
         const userIsOwner = Boolean(
           currentUser && formConfig && (
@@ -696,7 +682,7 @@ export const ServerReviewTab: React.FC<ServerReviewTabProps> = ({
                 >
                   <div className="flex items-center gap-3.5">
                     <img
-                      src={resolveApplicantAvatar(app.discordAvatar, app.discordTag || app.applicantUsername)}
+                      src={resolveApplicantAvatar((app as any).applicantAvatarUrl || (app as any).userAvatar || (app as any).avatarUrl || (app as any).avatar || app.discordAvatar, app.discordTag || app.applicantUsername)}
                       alt={app.discordTag}
                       className="w-11 h-11 rounded-full border border-zinc-700 object-cover shrink-0"
                     />

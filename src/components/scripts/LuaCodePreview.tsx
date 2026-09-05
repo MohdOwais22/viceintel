@@ -170,124 +170,136 @@ Generated: ${new Date().toUTCString()}
 
   return (
     <div className="flex flex-col h-full bg-[#090d13] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
-      {/* Code Viewer Tab Header */}
-      <div className="p-3 border-b border-white/10 bg-black/60 flex flex-wrap items-center justify-between gap-2">
-        {/* File Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+      {/* 2-Tier IDE Header */}
+      <div className="border-b border-white/10 bg-black/60">
+        {/* Tier 1: Scrollable File Tab Bar (VS Code Style) */}
+        <div className="flex items-center border-b border-white/10 bg-zinc-950/90 px-2 pt-2 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
           <button
             onClick={() => setActiveTab('jobs')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-all shrink-0 cursor-pointer rounded-t-lg ${
               activeTab === 'jobs'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
-                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                ? 'bg-[#090d13] text-white border-t-2 border-t-rose-500 border-x border-white/10'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5 border-t-2 border-t-transparent'
             }`}
           >
-            <FileCode className="w-3.5 h-3.5" />
-            jobs.lua
+            <FileCode className="w-3.5 h-3.5 text-rose-400" />
+            <span>jobs.lua</span>
           </button>
 
           <button
             onClick={() => setActiveTab('items')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-all shrink-0 cursor-pointer rounded-t-lg ${
               activeTab === 'items'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
-                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                ? 'bg-[#090d13] text-white border-t-2 border-t-rose-500 border-x border-white/10'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5 border-t-2 border-t-transparent'
             }`}
           >
-            <FileCode className="w-3.5 h-3.5" />
-            items.lua
+            <FileCode className="w-3.5 h-3.5 text-rose-400" />
+            <span>items.lua</span>
           </button>
 
           <button
             onClick={() => setActiveTab('config')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-all shrink-0 cursor-pointer rounded-t-lg ${
               activeTab === 'config'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
-                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                ? 'bg-[#090d13] text-white border-t-2 border-t-rose-500 border-x border-white/10'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5 border-t-2 border-t-transparent'
             }`}
           >
-            <FileCode className="w-3.5 h-3.5" />
-            config.lua
+            <FileCode className="w-3.5 h-3.5 text-cyan-400" />
+            <span>config.lua</span>
           </button>
 
           <button
             onClick={() => setActiveTab('handling')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-all shrink-0 cursor-pointer rounded-t-lg ${
               activeTab === 'handling'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
-                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                ? 'bg-[#090d13] text-white border-t-2 border-t-rose-500 border-x border-white/10'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5 border-t-2 border-t-transparent'
             }`}
           >
-            <Layers className="w-3.5 h-3.5" />
-            handling.meta
+            <Layers className="w-3.5 h-3.5 text-amber-400" />
+            <span>handling.meta</span>
           </button>
 
           <button
             onClick={() => setActiveTab('fxmanifest')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-all shrink-0 cursor-pointer rounded-t-lg ${
               activeTab === 'fxmanifest'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
-                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                ? 'bg-[#090d13] text-white border-t-2 border-t-rose-500 border-x border-white/10'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5 border-t-2 border-t-transparent'
             }`}
           >
-            <FileArchive className="w-3.5 h-3.5" />
-            fxmanifest.lua
+            <FileArchive className="w-3.5 h-3.5 text-emerald-400" />
+            <span>fxmanifest.lua</span>
           </button>
 
           <button
             onClick={() => setActiveTab('sql')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold transition-all shrink-0 cursor-pointer rounded-t-lg ${
               activeTab === 'sql'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
-                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                ? 'bg-[#090d13] text-white border-t-2 border-t-rose-500 border-x border-white/10'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5 border-t-2 border-t-transparent'
             }`}
           >
-            <Database className="w-3.5 h-3.5" />
-            schema.sql
+            <Database className="w-3.5 h-3.5 text-indigo-400" />
+            <span>schema.sql</span>
           </button>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleCopy}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-lg border border-white/10 transition-colors"
-            title="Copy current file code"
-          >
-            {hasCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{hasCopied ? 'Copied!' : 'Copy Lua'}</span>
-          </button>
+        {/* Tier 2: Action Toolbar & File Metadata */}
+        <div className="p-2.5 sm:p-3 flex flex-wrap items-center justify-between gap-2 bg-black/40">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono text-xs font-bold text-zinc-300 truncate">
+              {activeCodeData.filename}
+            </span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-zinc-800 text-zinc-400 uppercase border border-white/5">
+              {activeCodeData.language}
+            </span>
+          </div>
 
-          <button
-            onClick={handleDownloadSingle}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-lg border border-white/10 transition-colors"
-            title="Download active file"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download</span>
-          </button>
+          {/* Action Controls with clear touch targets */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-lg border border-white/10 transition-colors cursor-pointer active:scale-95"
+              title="Copy current file code"
+            >
+              {hasCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{hasCopied ? 'Copied' : 'Copy'}</span>
+            </button>
 
-          <button
-            onClick={handleExportZip}
-            disabled={isZipping}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all shadow-lg ${
-              isProUser
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30'
-                : 'bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white shadow-rose-600/30'
-            }`}
-          >
-            {isProUser ? (
-              <>
-                <FileArchive className="w-3.5 h-3.5" />
-                <span>{isZipping ? 'Bundling...' : 'Export ZIP Bundle'}</span>
-              </>
-            ) : (
-              <>
-                <Crown className="w-3.5 h-3.5 text-amber-300" />
-                <span>Export Pro ZIP</span>
-              </>
-            )}
-          </button>
+            <button
+              onClick={handleDownloadSingle}
+              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-lg border border-white/10 transition-colors cursor-pointer active:scale-95"
+              title="Download active file"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">Save</span>
+            </button>
+
+            <button
+              onClick={handleExportZip}
+              disabled={isZipping}
+              className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all shadow-md cursor-pointer active:scale-95 ${
+                isProUser
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30'
+                  : 'bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white shadow-rose-600/30'
+              }`}
+            >
+              {isProUser ? (
+                <>
+                  <FileArchive className="w-3.5 h-3.5" />
+                  <span>{isZipping ? 'Bundling...' : 'Export ZIP'}</span>
+                </>
+              ) : (
+                <>
+                  <Crown className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Export ZIP</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 

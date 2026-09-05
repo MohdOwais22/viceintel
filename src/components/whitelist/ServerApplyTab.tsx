@@ -279,7 +279,7 @@ export const ServerApplyTab: React.FC<ServerApplyTabProps> = ({
           applicantUsername,
           discordId: userProfile.discordId,
           discordTag: userProfile.discordUsername || 'Citizen#0000',
-          discordAvatar: resolveApplicantAvatar(userProfile.avatar || userProfile.discordAvatar, userProfile.discordUsername || applicantUsername),
+          discordAvatar: resolveApplicantAvatar((userProfile as any).avatarUrl || userProfile.avatar || (userProfile as any).photoURL || (currentUser as any)?.photoURL || userProfile.discordAvatar, userProfile.discordUsername || applicantUsername),
           answers,
           inviteCode: inviteCode || undefined
         },
@@ -335,7 +335,7 @@ export const ServerApplyTab: React.FC<ServerApplyTabProps> = ({
         applicantUsername,
         discordId: userProfile.discordId,
         discordTag: userProfile.discordUsername || 'Citizen#0000',
-        discordAvatar: resolveApplicantAvatar(userProfile.avatar || userProfile.discordAvatar, userProfile.discordUsername || applicantUsername),
+        discordAvatar: resolveApplicantAvatar((userProfile as any).avatarUrl || userProfile.avatar || (userProfile as any).photoURL || (currentUser as any)?.photoURL || userProfile.discordAvatar, userProfile.discordUsername || applicantUsername),
         answers,
         aiAudit: submissionAiAudit,
         status: submissionStatus,

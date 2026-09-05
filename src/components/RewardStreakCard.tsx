@@ -16,9 +16,7 @@ import {
   RotateCcw,
   Gift
 } from 'lucide-react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { claimDailyReward, claim30DayVipPass } from '../lib/rewardUtils';
+import { claimDailyReward, claim30DayVipPass, checkUserRewardStatus } from '../lib/rewardUtils';
 import { usePricingConfig } from '../lib/vipConfig';
 
 export interface RewardStreakCardProps {
@@ -74,32 +72,31 @@ export const RewardStreakCard: React.FC<RewardStreakCardProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Real-time Firestore Sync
+  // Real-time MongoDB Status Sync
   useEffect(() => {
     if (!userId) return;
 
-    const userDocRef = doc(db, 'users', userId);
-    const unsubscribe = onSnapshot(
-      userDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.level === 'L1' || data.level === 'L2') setLevel(data.level);
+    let isMounted = true;
+    const fetchStatus = async () => {
+      try {
+        const data = await checkUserRewardStatus(userId);
+        if (isMounted && data) {
           if (typeof data.vcBalance === 'number') setVcBalance(data.vcBalance);
-          if (typeof data.streakCount === 'number') setStreakCount(data.streakCount);
-          if (data.lastClaimedTimestamp) setLastClaimedTimestamp(data.lastClaimedTimestamp);
-          if (typeof data.isVipUnlockReady === 'boolean') setIsVipUnlockReady(data.isVipUnlockReady);
-          if (data.vipUnlockTriggeredAt) setVipUnlockTriggeredAt(data.vipUnlockTriggeredAt);
-          if (typeof data.isVipMember === 'boolean') setIsVipMember(data.isVipMember);
-          if (data.vipExpiresAt) setVipExpiresAt(data.vipExpiresAt);
+          if (typeof data.dailyStreak === 'number') setStreakCount(data.dailyStreak);
+          if (data.lastLogin) setLastClaimedTimestamp(data.lastLogin);
+          if (typeof data.isVip === 'boolean') setIsVipMember(data.isVip);
         }
-      },
-      (err) => {
-        console.warn('Firestore subscription fallback:', err);
+      } catch (err) {
+        console.warn('MongoDB status sync notice:', err);
       }
-    );
+    };
 
-    return () => unsubscribe();
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [userId]);
 
   // Calculations

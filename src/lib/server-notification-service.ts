@@ -74,98 +74,15 @@ export function saveServerNotificationSettings(serverSlug: string, settings: Ser
 }
 
 /**
- * Generate default seed notifications for a server when first claimed
+ * Generate initial server notifications - Returns empty array (no dummy notifications).
  */
 export function generateInitialServerNotifications(serverSlug: string, serverName: string = 'Vice City Life RP'): ServerOwnerNotification[] {
-  const now = Date.now();
-  const norm = normalizeServerSlug(serverSlug);
-
-  return [
-    {
-      id: `seed_notif_${norm}_1`,
-      serverId: norm,
-      serverSlug: norm,
-      serverName: serverName,
-      type: 'NEW_APPLICATION',
-      title: 'New Whitelist Application Submitted',
-      message: 'Lucia Cartier submitted an application for "Nightclub Entrepreneur & VIP Lounge Host".',
-      severity: 'info',
-      category: 'applications',
-      timestamp: new Date(now - 8 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      createdAt: now - 8 * 60 * 1000,
-      read: false,
-      priority: 'high',
-      actionSection: 'applications',
-      actionLabel: 'Review Application',
-      metadata: {
-        applicantName: 'Lucia Cartier',
-        applicantDiscordTag: 'LuciaCartier_RP#3114',
-        applicantRoleplayPath: 'Nightclub Entrepreneur & VIP Lounge Host',
-        statusDecision: 'pending'
-      }
-    },
-    {
-      id: `seed_notif_${norm}_2`,
-      serverId: norm,
-      serverSlug: norm,
-      serverName: serverName,
-      type: 'DISCORD_WEBHOOK_ALERT',
-      title: 'Discord Webhook Gateway Verified',
-      message: 'Automated staff dispatch webhook successfully connected and active in #applications-queue.',
-      severity: 'success',
-      category: 'system',
-      timestamp: new Date(now - 45 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      createdAt: now - 45 * 60 * 1000,
-      read: false,
-      priority: 'normal',
-      actionSection: 'bot_gateway',
-      actionLabel: 'Configure Bot Gateway',
-      metadata: {
-        webhookStatus: 'ok'
-      }
-    },
-    {
-      id: `seed_notif_${norm}_3`,
-      serverId: norm,
-      serverSlug: norm,
-      serverName: serverName,
-      type: 'DIRECTORY_SPOTLIGHT',
-      title: 'FiveM Directory Spotlight Live',
-      message: 'Your server is featured on the Ocean Drive Top Spotlight position with 1-click Direct Connect.',
-      severity: 'success',
-      category: 'billing',
-      timestamp: new Date(now - 3 * 3600 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      createdAt: now - 3 * 3600 * 1000,
-      read: true,
-      priority: 'normal',
-      actionSection: 'billing',
-      actionLabel: 'Manage Placement',
-      metadata: {
-        spotlightDate: new Date().toISOString().split('T')[0]
-      }
-    },
-    {
-      id: `seed_notif_${norm}_4`,
-      serverId: norm,
-      serverSlug: norm,
-      serverName: serverName,
-      type: 'SERVER_SECURITY_ALERT',
-      title: 'Anti-Abuse Rate Limit Sentinel Active',
-      message: 'Zero duplicate applications detected in the last 24 hours. Rate limit guard operational.',
-      severity: 'info',
-      category: 'security',
-      timestamp: new Date(now - 8 * 3600 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      createdAt: now - 8 * 3600 * 1000,
-      read: true,
-      priority: 'normal',
-      actionSection: 'settings',
-      actionLabel: 'Security Rules'
-    }
-  ];
+  // Return empty array - no dummy notifications
+  return [];
 }
 
 /**
- * Read local cache for server notifications
+ * Read local cache for server notifications (filters out legacy seed notifications)
  */
 function getCachedServerNotifications(serverSlug: string): ServerOwnerNotification[] {
   const norm = normalizeServerSlug(serverSlug || 'default');
@@ -173,7 +90,10 @@ function getCachedServerNotifications(serverSlug: string): ServerOwnerNotificati
     const raw = localStorage.getItem(`${CACHE_STORAGE_PREFIX}${norm}`);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        // Filter out any legacy dummy/seed notifications
+        return parsed.filter((n: ServerOwnerNotification) => n && n.id && !n.id.startsWith('seed_notif_'));
+      }
     }
   } catch (e) {
     console.warn('[ServerNotifService] Cache read error:', e);
@@ -205,12 +125,8 @@ export function subscribeToServerNotifications(
 ): Unsubscribe {
   const normSlug = normalizeServerSlug(serverSlug || 'default');
   
-  // 1. Immediately provide cached data or initial seed data
-  let localData = getCachedServerNotifications(normSlug);
-  if (localData.length === 0) {
-    localData = generateInitialServerNotifications(normSlug, serverName);
-    setCachedServerNotifications(normSlug, localData);
-  }
+  // 1. Immediately provide cached data
+  const localData = getCachedServerNotifications(normSlug).filter(n => !n.id.startsWith('seed_notif_'));
   onUpdate(localData);
 
   // 2. Set up Firestore listener if quota not exhausted
@@ -230,30 +146,29 @@ export function subscribeToServerNotifications(
       q,
       (snapshot) => {
         if (snapshot.empty) {
-          // If no remote records yet, use local state
-          const cached = getCachedServerNotifications(normSlug);
-          if (cached.length > 0) {
-            onUpdate(cached);
-          } else {
-            const seed = generateInitialServerNotifications(normSlug, serverName);
-            onUpdate(seed);
-            setCachedServerNotifications(normSlug, seed);
-          }
+          const cached = getCachedServerNotifications(normSlug).filter(n => !n.id.startsWith('seed_notif_'));
+          onUpdate(cached);
           return;
         }
 
         const remoteList: ServerOwnerNotification[] = [];
         snapshot.forEach((d) => {
-          remoteList.push({ id: d.id, ...d.data() } as ServerOwnerNotification);
+          if (!d.id.startsWith('seed_notif_')) {
+            remoteList.push({ id: d.id, ...d.data() } as ServerOwnerNotification);
+          }
         });
 
         // Merge remote records with any local-only records and deduplicate by id
         const mergedMap = new Map<string, ServerOwnerNotification>();
-        localData.forEach(item => mergedMap.set(item.id, item));
-        remoteList.forEach(item => mergedMap.set(item.id, item));
+        localData.forEach(item => {
+          if (!item.id.startsWith('seed_notif_')) mergedMap.set(item.id, item);
+        });
+        remoteList.forEach(item => {
+          if (!item.id.startsWith('seed_notif_')) mergedMap.set(item.id, item);
+        });
 
         const finalSorted = Array.from(mergedMap.values())
-          .filter(n => !n.archived)
+          .filter(n => !n.archived && !n.id.startsWith('seed_notif_'))
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
         setCachedServerNotifications(normSlug, finalSorted);
@@ -261,8 +176,8 @@ export function subscribeToServerNotifications(
       },
       (err) => {
         console.warn('[ServerNotifService] Firestore listener notice (fallback to local cache):', err);
-        const cached = getCachedServerNotifications(normSlug);
-        onUpdate(cached.length > 0 ? cached : generateInitialServerNotifications(normSlug, serverName));
+        const cached = getCachedServerNotifications(normSlug).filter(n => !n.id.startsWith('seed_notif_'));
+        onUpdate(cached);
       }
     );
 

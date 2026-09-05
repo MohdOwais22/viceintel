@@ -145,6 +145,13 @@ export async function fetchWebhooksFromFirestore(): Promise<GlobalBotWebhookConf
       if (savedAnnouncements) cachedFirestoreWebhooks.announcementsWebhook = savedAnnouncements.trim();
       if (savedNews) cachedFirestoreWebhooks.newsWebhook = savedNews.trim();
     } catch (_) {}
+  } else if (typeof process !== 'undefined' && process.env) {
+    if (process.env.DISCORD_ANNOUNCEMENTS_WEBHOOK && !cachedFirestoreWebhooks.announcementsWebhook) {
+      cachedFirestoreWebhooks.announcementsWebhook = process.env.DISCORD_ANNOUNCEMENTS_WEBHOOK.trim();
+    }
+    if (process.env.DISCORD_NEWS_WEBHOOK && !cachedFirestoreWebhooks.newsWebhook) {
+      cachedFirestoreWebhooks.newsWebhook = process.env.DISCORD_NEWS_WEBHOOK.trim();
+    }
   }
 
   isFirestoreWebhooksLoaded = true;

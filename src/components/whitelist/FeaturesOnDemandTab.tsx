@@ -64,13 +64,12 @@ interface FeaturesOnDemandTabProps {
 }
 
 const CATEGORIES = [
-  { id: 'custom_script', label: 'Custom QBCore/ESX Lua Script', icon: Code2, desc: 'Gang territory, custom heist, or job script' },
-  { id: 'discord_bot', label: 'Discord Bot Module', icon: Bot, desc: 'Custom slash commands, auto-roles, or webhook logs' },
-  { id: 'cad_mdt_extension', label: 'Police/EMS CAD/MDT Feature', icon: Terminal, desc: 'Custom dispatch alerts, warrants, or medical records' },
-  { id: 'vehicle_physics', label: 'Vehicle Physics & Handling Preset', icon: Cpu, desc: 'handling.meta tuning, drift balance, or top speed curves' },
-  { id: 'ui_theme', label: 'Custom HUD / UI Theme', icon: Layers, desc: 'Custom server logo overlay, speedometer, or NUI menus' },
-  { id: 'economy_plugin', label: 'Dynasty Economy & Wage Plugin', icon: DollarSign, desc: 'Custom inflation curve, salary matrix, or business tax script' },
-  { id: 'custom_integration', label: 'Custom API / Webhook Integration', icon: Zap, desc: 'Tebex store sync, live stream alert, or website widget' },
+  { id: 'custom_script', label: 'Custom QBCore/ESX Lua Script', icon: Code2, desc: 'Gang territory, custom heist, or job mechanics' },
+  { id: 'discord_bot', label: 'Discord Bot & Automation Module', icon: Bot, desc: 'Custom slash commands, auto-roles, or webhook logs' },
+  { id: 'ui_theme', label: 'Custom HUD / NUI Web Interface', icon: Layers, desc: 'Custom server logo overlay, speedometer, or NUI menus' },
+  { id: 'vehicle_physics', label: 'Vehicle Physics & Handling Tuning', icon: Cpu, desc: 'handling.meta tuning, drift balance, or top speed curves' },
+  { id: 'custom_integration', label: 'Custom API & Webhook Service', icon: Zap, desc: 'Tebex store sync, live server status, or website widget' },
+  { id: 'database_migration', label: 'Database & SQL Optimization', icon: Terminal, desc: 'Player data migration, SQL index tuning, or table cleanup' },
 ];
 
 export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
@@ -91,7 +90,7 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<OnDemandFeatureRequest['category']>('custom_script');
   const [urgency, setUrgency] = useState<OnDemandFeatureRequest['urgency']>('standard');
-  const [budgetEstimate, setBudgetEstimate] = useState('Included in SaaS ($0)');
+  const [budgetEstimate, setBudgetEstimate] = useState('$75 - $175 (Custom Feature Module)');
   const [specs, setSpecs] = useState('');
 
   // 1. Subscribe to Firestore Feature Requests
@@ -280,17 +279,17 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
           <div className="space-y-2 max-w-2xl">
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5">
-                <Wand2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> Features On Demand Engine
+                <Wand2 className="w-3.5 h-3.5 text-cyan-400" /> Bespoke Engineering Desk
               </span>
-              <span className="px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[11px] font-extrabold uppercase tracking-wider">
-                B2B SaaS Priority Pipeline
+              <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+                <DollarSign className="w-3 h-3 text-emerald-400" /> Paid Commission Quotes
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Custom Feature & Script Request Studio
+              Bespoke Development & Feature Commission Desk
             </h2>
             <p className="text-sm text-zinc-300 leading-relaxed font-sans">
-              Need custom QBCore/ESX Lua scripts, specialized Police CAD alerts, custom vehicle handling physics, or Discord bot integrations for <strong>{serverName}</strong>? Submit feature specs directly to our developer team and track delivery in real time.
+              Need custom QBCore/ESX Lua scripts, custom vehicle handling physics, NUI interfaces, or Discord bot integrations for <strong>{serverName}</strong>? Submit technical specifications to our developer desk. We evaluate your scope, provide a formal binding quote, and deliver tested code.
             </p>
           </div>
 
@@ -299,7 +298,7 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
             className="px-5 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-cyan-600 to-indigo-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/30 hover:shadow-indigo-600/50 transition flex items-center gap-2 shrink-0 cursor-pointer border border-indigo-400/40 transform hover:-translate-y-0.5"
           >
             <Plus className="w-4 h-4 text-cyan-200" />
-            <span>Submit Feature Request</span>
+            <span>Request Development Quote</span>
           </button>
         </div>
       </div>
@@ -376,9 +375,9 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
             <Wand2 className="w-8 h-8" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-lg font-black text-white">No Feature Requests Logged Yet</h3>
+            <h3 className="text-lg font-black text-white">No Development Quotes Requested Yet</h3>
             <p className="text-sm text-zinc-400 max-w-md mx-auto">
-              Need a custom Lua script, CAD feature, or bot automation for {serverName}? Click below to submit your specifications.
+              Need a custom Lua script, bot automation, or NUI interface for {serverName}? Click below to submit your technical specifications for an estimate quote.
             </p>
           </div>
           <button
@@ -386,7 +385,7 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
             className="px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-lg shadow-indigo-600/30 transition inline-flex items-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Create First Feature Request</span>
+            <span>Request First Development Quote</span>
           </button>
         </div>
       ) : (
@@ -410,12 +409,17 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
                       </span>
                       {req.urgency === 'vip_fast_track' && (
                         <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/30 flex items-center gap-1">
-                          <Zap className="w-3 h-3 text-rose-400" /> VIP Fast-Track (3-5 Days)
+                          <Zap className="w-3 h-3 text-rose-400" /> VIP Rush (3-5 Days) • +75% Express Fee
                         </span>
                       )}
                       {req.urgency === 'high' && (
                         <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30">
-                          High Priority (5-7 Days)
+                          High Priority (5-7 Days) • Express
+                        </span>
+                      )}
+                      {req.urgency === 'standard' && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-zinc-800 text-zinc-300 text-xs font-bold border border-zinc-700">
+                          Standard Pipeline (10-14 Days)
                         </span>
                       )}
                     </div>
@@ -517,8 +521,8 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
                   <Wand2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-white">Submit Custom Feature Specs</h3>
-                  <p className="text-xs text-zinc-400">On-demand application for {serverName}</p>
+                  <h3 className="text-xl font-black text-white">Request Custom Development Quote</h3>
+                  <p className="text-xs text-zinc-400">Bespoke technical commissioning for {serverName}</p>
                 </div>
               </div>
               <button
@@ -529,10 +533,21 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
               </button>
             </div>
 
+            {/* Paid Commission Policy Callout */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-bold text-amber-200">Paid Development & Scope Estimate Policy</div>
+                <p className="text-[11px] text-amber-300/90 leading-relaxed font-normal">
+                  All custom development projects require technical scope evaluation. Once submitted, our developers review your specs and provide a binding quote and milestone timeline before any coding begins. Urgent fast-track requests require an express developer rush fee.
+                </p>
+              </div>
+            </div>
+
             <form onSubmit={handleSubmitRequest} className="space-y-5">
               {/* Feature Title */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-300">Feature Application Title</label>
+                <label className="text-xs font-bold text-zinc-300">Commission / Script Project Title</label>
                 <input
                   type="text"
                   required
@@ -580,23 +595,24 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
                     onChange={(e) => setUrgency(e.target.value as any)}
                     className="w-full px-4 py-3 rounded-2xl bg-zinc-950 border border-zinc-800 text-white text-sm focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="standard">Standard Pipeline (10-14 Business Days)</option>
-                    <option value="high">High Priority (5-7 Business Days)</option>
-                    <option value="vip_fast_track">VIP Fast-Track (3-5 Business Days)</option>
+                    <option value="standard">Standard Pipeline (10-14 Business Days) — Standard Rate</option>
+                    <option value="high">High Priority (5-7 Business Days) — +35% Express Fee</option>
+                    <option value="vip_fast_track">VIP Rush Pipeline (3-5 Business Days) — +75% Priority Rush Fee</option>
                   </select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-zinc-300">Budget Range / SaaS Plan</label>
+                  <label className="text-xs font-bold text-zinc-300">Budget Range / Target Investment</label>
                   <select
                     value={budgetEstimate}
                     onChange={(e) => setBudgetEstimate(e.target.value)}
                     className="w-full px-4 py-3 rounded-2xl bg-zinc-950 border border-zinc-800 text-white text-sm focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="Included in SaaS ($0)">Included in SaaS Subscription ($0)</option>
-                    <option value="$10 - $25 Custom Plugin">$10 - $25 Minor Custom Plugin</option>
-                    <option value="$35 - $75 Advanced Script">$35 - $75 Advanced Multi-Module Script</option>
-                    <option value="$100+ Enterprise Suite">$100+ Enterprise Bespoke System</option>
+                    <option value="$35 - $75 (Minor Fix / Script Adjustment)">$35 - $75 (Minor Fix / Script Adjustment)</option>
+                    <option value="$75 - $175 (Custom Feature Module)">$75 - $175 (Custom Feature Module)</option>
+                    <option value="$175 - $350 (Advanced Multi-Module Script)">$175 - $350 (Advanced Multi-Module Script / Bot)</option>
+                    <option value="$350 - $750+ (Bespoke Enterprise System)">$350 - $750+ (Bespoke Enterprise System)</option>
+                    <option value="Custom Scope (Request Binding Staff Quote)">Custom Scope (Request Binding Staff Quote)</option>
                   </select>
                 </div>
               </div>
@@ -631,12 +647,12 @@ export const FeaturesOnDemandTab: React.FC<FeaturesOnDemandTabProps> = ({
                   {submitting ? (
                     <>
                       <Clock className="w-4 h-4 animate-spin" />
-                      <span>Submitting to Queue...</span>
+                      <span>Submitting Scope for Quote...</span>
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      <span>Submit Feature Request</span>
+                      <span>Submit Scope for Binding Quote</span>
                     </>
                   )}
                 </button>

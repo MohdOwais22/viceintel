@@ -1,6 +1,5 @@
 import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import localforage from 'localforage';
 import { withItemVersioning } from '../imageCacheBuster';
 import { safeFirestoreWrite, markFirestoreQuotaExhausted, isResourceExhaustedError } from './firestoreCircuitBreaker';
 
@@ -23,16 +22,8 @@ export interface BundledChunk<T> {
   items: T[];
 }
 
-/**
- * Maximum safe document payload size in bytes (Firestore limit is 1,048,576 bytes).
- * We use 600KB to provide a comfortable safety buffer for metadata and overhead.
- */
 const MAX_DOCUMENT_CHUNK_BYTES = 600 * 1024;
 
-/**
- * Deep sanitization helper that removes all `undefined` fields recursively.
- * Prevents Firestore "Unsupported field value: undefined" runtime errors.
- */
 export function cleanFirestorePayload<T>(obj: T): T {
   if (obj === null || obj === undefined) return null as unknown as T;
   if (Array.isArray(obj)) {
@@ -52,21 +43,6 @@ export function cleanFirestorePayload<T>(obj: T): T {
   return obj;
 }
 
-/**
- * Creates an IndexedDB storage instance for a specific store name
- */
-export function createBundleLocalStore(storeName: string) {
-  return localforage.createInstance({
-    name: 'gtavi_central_db',
-    storeName,
-    description: `IndexedDB Local Cache for ${storeName}`
-  });
-}
-
-/**
- * Deep deduplication helper ensuring items are unique by ID and optionally slug.
- * If multiple items have identical IDs or slugs, preserves the most complete / highest version entry.
- */
 export function deduplicateBundleItems<T extends { id: string }>(items: T[]): T[] {
   if (!Array.isArray(items)) return [];
   const seenIds = new Set<string>();
@@ -91,21 +67,14 @@ export function deduplicateBundleItems<T extends { id: string }>(items: T[]): T[
   return result;
 }
 
-/**
- * Generic Bundled Firestore Store Engine
- * Implements the 2,000x Read/Write Firestore Optimization (Thanh Le Pattern).
- * Packs multiple items into single bucket/bundle documents in Firestore.
- * Subscribes to 1 document instead of N separate collection documents,
- * reducing billable read operations from N to 1 (up to 99.5%-99.9% cost reduction).
- */
 export class BundledStoreEngine<T extends { id: string }> {
   private bundleCollection: string;
   private bundleDocId: string;
+  private apiCollection?: string;
   private storageKey: string;
   private updateEventName: string;
   private defaultItems: T[];
   private sortFn: (items: T[]) => T[];
-  private localStore: LocalForage;
   
   private inMemoryCache: T[] | null = null;
   private isSyncInitialized = false;
@@ -115,6 +84,7 @@ export class BundledStoreEngine<T extends { id: string }> {
   constructor(options: {
     bundleCollection: string;
     bundleDocId: string;
+    apiCollection?: string;
     storageKey: string;
     updateEventName: string;
     defaultItems: T[];
@@ -122,6 +92,7 @@ export class BundledStoreEngine<T extends { id: string }> {
   }) {
     this.bundleCollection = options.bundleCollection;
     this.bundleDocId = options.bundleDocId;
+    this.apiCollection = options.apiCollection;
     this.storageKey = options.storageKey;
     this.updateEventName = options.updateEventName;
     this.defaultItems = deduplicateBundleItems(options.defaultItems);
@@ -129,12 +100,8 @@ export class BundledStoreEngine<T extends { id: string }> {
       const deduped = deduplicateBundleItems(items);
       return options.sortFn ? options.sortFn(deduped) : deduped;
     };
-    this.localStore = createBundleLocalStore(`gtavi_${options.bundleDocId}_store`);
   }
 
-  /**
-   * Parses items from a snapshot, handling both single-doc bundle and multi-chunk bundles.
-   */
   private async parseDocSnapItems(docSnap: any): Promise<T[]> {
     if (!docSnap.exists()) return [];
     const data = docSnap.data() as BundledCatalog<T>;
@@ -144,7 +111,6 @@ export class BundledStoreEngine<T extends { id: string }> {
       this.currentVersion = Math.max(this.currentVersion, data.version);
     }
 
-    // If chunked into multiple documents
     if (data.isChunked && typeof data.chunkCount === 'number' && data.chunkCount > 0) {
       try {
         const chunkPromises = Array.from({ length: data.chunkCount }, async (_, i) => {
@@ -159,7 +125,7 @@ export class BundledStoreEngine<T extends { id: string }> {
               }
             }
           } catch (e) {
-            console.warn(`[BundledEngine] Failed loading chunk ${i} for ${this.bundleDocId}:`, e);
+            console.warn(`[StoreEngine] Failed loading chunk ${i} for ${this.bundleDocId}:`, e);
           }
           return [] as T[];
         });
@@ -170,11 +136,10 @@ export class BundledStoreEngine<T extends { id: string }> {
           return merged;
         }
       } catch (err) {
-        console.warn(`[BundledEngine] Error resolving chunk documents for ${this.bundleDocId}:`, err);
+        console.warn(`[StoreEngine] Error resolving chunk documents for ${this.bundleDocId}:`, err);
       }
     }
 
-    // Fallback or standard single-doc bundle
     if (Array.isArray(data.items)) {
       return data.items;
     }
@@ -182,144 +147,102 @@ export class BundledStoreEngine<T extends { id: string }> {
     return [];
   }
 
-  /**
-   * Merges loaded items with any default items that may have been newly added to code.
-   */
-  public mergeWithDefaults(loadedItems: T[]): T[] {
-    if (!Array.isArray(loadedItems) || loadedItems.length === 0) {
-      return this.defaultItems;
+  public smartMergeItems(remoteItems: T[], localItems: T[]): T[] {
+    // If DB returned remote items, DB is the absolute single source of truth!
+    if (Array.isArray(remoteItems)) {
+      return deduplicateBundleItems(remoteItems);
     }
-    const loadedIds = new Set(loadedItems.map((i) => i.id));
-    const missingDefaults = this.defaultItems.filter((d) => !loadedIds.has(d.id));
-    if (missingDefaults.length === 0) {
+
+    return deduplicateBundleItems(this.defaultItems);
+  }
+
+  public mergeWithDefaults(loadedItems: T[]): T[] {
+    if (Array.isArray(loadedItems)) {
       return loadedItems;
     }
-    return [...loadedItems, ...missingDefaults];
+    return this.defaultItems;
   }
 
-  /**
-   * Initializes real-time listener on the SINGLE bundled document.
-   * Reads 1 document instead of N collection documents!
-   */
-  public initializeSync(): void {
-    if (this.isSyncInitialized || !db || typeof window === 'undefined') return;
+  public async initializeSync(): Promise<void> {
+    if (this.isSyncInitialized || typeof window === 'undefined') return;
     this.isSyncInitialized = true;
 
-    try {
-      const docRef = doc(db, this.bundleCollection, this.bundleDocId);
-      this.unsubscribeListener = onSnapshot(docRef, async (docSnap) => {
-        if (!docSnap.exists()) {
-          // If remote bundle doesn't exist yet, populate in-memory and local store with defaults without firing network writes
-          this.inMemoryCache = this.defaultItems;
-          await this.localStore.setItem(this.storageKey, this.defaultItems);
-          window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: this.defaultItems }));
-          return;
+    if (this.apiCollection) {
+      try {
+        const res = await fetch(`/api/admin/cms/${this.apiCollection}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) {
+            const merged = this.smartMergeItems(json.data, []);
+            const sorted = this.sortFn(merged);
+            this.inMemoryCache = sorted;
+            window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
+          }
         }
-
-        const items = await this.parseDocSnapItems(docSnap);
-        const merged = this.mergeWithDefaults(items);
-        if (merged && merged.length > 0) {
-          const sorted = this.sortFn(merged);
-          this.inMemoryCache = sorted;
-
-          // Save to local offline caches
-          await this.localStore.setItem(this.storageKey, sorted);
-          try {
-            localStorage.setItem(this.storageKey, JSON.stringify(sorted));
-          } catch (e) {}
-
-          // Notify UI listeners
-          window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
-        }
-      }, (err) => {
-        if (isResourceExhaustedError(err)) {
-          markFirestoreQuotaExhausted(err);
-        } else {
-          console.warn(`[BundledEngine] Real-time sync error for ${this.bundleCollection}:`, err);
-        }
-      });
-    } catch (err) {
-      console.warn(`[BundledEngine] Could not establish Firestore listener for ${this.bundleCollection}:`, err);
+      } catch (err) {
+        console.warn(`[StoreEngine] Direct MongoDB API fetch error for ${this.apiCollection}:`, err);
+      }
     }
   }
 
-  /**
-   * Reads stored items from memory, IndexedDB, localStorage, or defaults.
-   */
+  private persistLocal(items: T[]): void {
+    // IndexedDB & LocalStorage persistence disabled per user directive
+  }
+
+  private readLocal(): T[] | null {
+    // IndexedDB & LocalStorage read disabled per user directive
+    return null;
+  }
+
   public async getItems(): Promise<T[]> {
-    this.initializeSync();
+    await this.initializeSync();
 
-    if (this.inMemoryCache && this.inMemoryCache.length > 0) {
-      const merged = this.mergeWithDefaults(this.inMemoryCache);
-      this.inMemoryCache = this.sortFn(merged);
+    if (this.inMemoryCache !== null) {
       return this.inMemoryCache;
-    }
-
-    try {
-      const cached = await this.localStore.getItem<T[]>(this.storageKey);
-      if (cached && Array.isArray(cached) && cached.length > 0) {
-        const merged = this.mergeWithDefaults(cached);
-        const sorted = this.sortFn(merged);
-        this.inMemoryCache = sorted;
-        return sorted;
-      }
-    } catch (err) {
-      console.warn(`[BundledEngine] Error reading localforage for ${this.storageKey}:`, err);
-    }
-
-    if (typeof window !== 'undefined') {
-      try {
-        const rawLocal = localStorage.getItem(this.storageKey);
-        if (rawLocal) {
-          const parsed = JSON.parse(rawLocal);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const merged = this.mergeWithDefaults(parsed);
-            const sorted = this.sortFn(merged);
-            this.inMemoryCache = sorted;
-            await this.localStore.setItem(this.storageKey, sorted);
-            return sorted;
-          }
-        }
-      } catch (e) {}
     }
 
     return this.defaultItems;
   }
 
-  /**
-   * Forcefully fetches the master bundle directly from Firestore (bypassing caches),
-   * updates the local store, and returns the sorted items.
-   */
   public async forceFetchFromServer(): Promise<T[]> {
-    this.initializeSync();
-    if (!db) return this.getItems();
-    try {
-      const docRef = doc(db, this.bundleCollection, this.bundleDocId);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const items = await this.parseDocSnapItems(docSnap);
-        const merged = this.mergeWithDefaults(items);
-        if (merged && merged.length > 0) {
-          const sorted = this.sortFn(merged);
-          this.inMemoryCache = sorted;
-          await this.localStore.setItem(this.storageKey, sorted);
-          try {
-            localStorage.setItem(this.storageKey, JSON.stringify(sorted));
-          } catch (e) {}
-          window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
-          return sorted;
+    if (this.apiCollection && typeof window !== 'undefined') {
+      try {
+        const res = await fetch(`/api/admin/cms/${this.apiCollection}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) {
+            const merged = this.smartMergeItems(json.data, []);
+            const sorted = this.sortFn(merged);
+            this.inMemoryCache = sorted;
+            window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
+            return sorted;
+          }
         }
+      } catch (err) {
+        console.warn(`[StoreEngine] Direct MongoDB API fetch failed for ${this.apiCollection}:`, err);
       }
-    } catch (err) {
-      console.warn(`[BundledEngine] Direct Firestore fetch failed for ${this.bundleCollection}:`, err);
     }
     return this.getItems();
   }
 
-  /**
-   * Saves or updates a single item inside the master bundle (1 write total).
-   * Automatically applies item versioning, image versioning, and cache-busting tokens.
-   */
+  private async syncItemToApi(item: T, method: 'POST' | 'DELETE' = 'POST'): Promise<void> {
+    if (!this.apiCollection || typeof window === 'undefined') return;
+    try {
+      const url = `/api/admin/cms/${this.apiCollection}/${item.id}`;
+      if (method === 'DELETE') {
+        await fetch(url, { method: 'DELETE' });
+      } else {
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item)
+        });
+      }
+    } catch (e) {
+      console.warn(`[StoreEngine] API sync failed for ${this.apiCollection}/${item.id}:`, e);
+    }
+  }
+
   public async saveOrUpdateItem(item: T): Promise<T[]> {
     const current = await this.getItems();
     const existing = current.find(i => i.id === item.id);
@@ -338,85 +261,38 @@ export class BundledStoreEngine<T extends { id: string }> {
 
     const sorted = this.sortFn(updatedList);
     this.inMemoryCache = sorted;
+    window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
 
-    // Update local caches immediately
-    await this.localStore.setItem(this.storageKey, sorted);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(this.storageKey, JSON.stringify(sorted));
-      } catch (e) {}
-      window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
-    }
-
-    // Write 1 single document to Firestore with incremented bundle version
-    try {
-      await this.writeBundleToFirestore(sorted);
-    } catch (err) {
-      console.warn(`[BundledEngine] Firestore write error for ${this.bundleCollection}:`, err);
-    }
+    await this.syncItemToApi(cleanedItem, 'POST');
 
     return sorted;
   }
 
-  /**
-   * Deletes an item from the master bundle (1 write total).
-   */
   public async deleteItem(itemId: string): Promise<T[]> {
     const current = await this.getItems();
     const updatedList = current.filter(i => i.id !== itemId);
     const sorted = this.sortFn(updatedList);
 
     this.inMemoryCache = sorted;
+    window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
 
-    await this.localStore.setItem(this.storageKey, sorted);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(this.storageKey, JSON.stringify(sorted));
-      } catch (e) {}
-      window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
-    }
-
-    try {
-      await this.writeBundleToFirestore(sorted);
-    } catch (err) {
-      console.warn(`[BundledEngine] Firestore delete error for ${this.bundleCollection}:`, err);
-    }
+    await this.syncItemToApi({ id: itemId } as T, 'DELETE');
 
     return sorted;
   }
 
-  /**
-   * Resets the entire bundle to default items (1 write total).
-   */
   public async resetToDefault(): Promise<T[]> {
-    const now = Date.now();
-    const versionedDefaults = this.defaultItems.map((item, idx) =>
+    const versionedDefaults = this.defaultItems.map((item) =>
       withItemVersioning(item as any, null, true)
     ) as T[];
 
     const sorted = this.sortFn(versionedDefaults);
     this.inMemoryCache = sorted;
-
-    await this.localStore.setItem(this.storageKey, sorted);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(this.storageKey, JSON.stringify(sorted));
-      } catch (e) {}
-      window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
-    }
-
-    try {
-      await this.writeBundleToFirestore(sorted);
-    } catch (err) {
-      console.warn(`[BundledEngine] Firestore reset error for ${this.bundleCollection}:`, err);
-    }
+    window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
 
     return sorted;
   }
 
-  /**
-   * Replaces the full bundle items array in 1 single Firestore document write.
-   */
   public async saveFullList(items: T[]): Promise<T[]> {
     const current = await this.getItems();
     const versionedList = items.map(item => {
@@ -426,112 +302,20 @@ export class BundledStoreEngine<T extends { id: string }> {
 
     const sorted = this.sortFn(versionedList);
     this.inMemoryCache = sorted;
+    window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
 
-    await this.localStore.setItem(this.storageKey, sorted);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(this.storageKey, JSON.stringify(sorted));
-      } catch (e) {}
-      window.dispatchEvent(new CustomEvent(this.updateEventName, { detail: sorted }));
-    }
-
-    try {
-      await this.writeBundleToFirestore(sorted);
-    } catch (err) {
-      console.warn(`[BundledEngine] Firestore saveFullList error for ${this.bundleCollection}:`, err);
+    for (const item of sorted) {
+      this.syncItemToApi(item, 'POST').catch(() => {});
     }
 
     return sorted;
   }
 
-  /**
-   * Writes the bundle documents to Firestore with auto-chunking protection.
-   * If total payload exceeds MAX_DOCUMENT_CHUNK_BYTES (600KB), automatically splits
-   * across chunk documents to never exceed Firestore's 1MB hard limit.
-   */
   private async writeBundleToFirestore(items: T[]): Promise<void> {
-    if (!db) return;
-    await safeFirestoreWrite(async () => {
-      this.currentVersion = (this.currentVersion || 0) + 1;
-      const now = Date.now();
-      const docRef = doc(db, this.bundleCollection, this.bundleDocId);
-      const serializedItems = JSON.stringify(items);
-
-      // If entire list safely fits within standard single document limit (~600KB)
-      if (serializedItems.length < MAX_DOCUMENT_CHUNK_BYTES) {
-        const rawPayload: BundledCatalog<T> = {
-          id: this.bundleDocId,
-          updatedAt: now,
-          version: this.currentVersion,
-          cacheBusterToken: String(now),
-          itemCount: items.length,
-          isChunked: false,
-          chunkCount: 1,
-          items
-        };
-        const cleaned = cleanFirestorePayload(rawPayload);
-        await setDoc(docRef, cleaned);
-        console.log(`[BundledEngine] Saved single bundle (v${this.currentVersion}) to Firestore for ${this.bundleCollection} (${items.length} items, ${Math.round(serializedItems.length / 1024)} KB)`);
-        return;
-      }
-
-      // Automatically chunk items when payload is large
-      const chunks: T[][] = [];
-      let currentChunk: T[] = [];
-      let currentChunkBytes = 0;
-
-      for (const item of items) {
-        const itemBytes = JSON.stringify(item).length;
-        if (currentChunk.length > 0 && currentChunkBytes + itemBytes > MAX_DOCUMENT_CHUNK_BYTES) {
-          chunks.push(currentChunk);
-          currentChunk = [item];
-          currentChunkBytes = itemBytes;
-        } else {
-          currentChunk.push(item);
-          currentChunkBytes += itemBytes;
-        }
-      }
-      if (currentChunk.length > 0) {
-        chunks.push(currentChunk);
-      }
-
-      // Write each chunk in parallel
-      const chunkPromises = chunks.map(async (chunkItems, index) => {
-        if (!db) return;
-        const chunkDocRef = doc(db, this.bundleCollection, `${this.bundleDocId}_chunk_${index}`);
-        const chunkPayload: BundledChunk<T> = {
-          id: `${this.bundleDocId}_chunk_${index}`,
-          chunkIndex: index,
-          parentDocId: this.bundleDocId,
-          updatedAt: now,
-          items: chunkItems
-        };
-        const cleanedChunk = cleanFirestorePayload(chunkPayload);
-        await setDoc(chunkDocRef, cleanedChunk);
-      });
-
-      await Promise.all(chunkPromises);
-
-      // Write master manifest document
-      const manifestPayload: BundledCatalog<T> = {
-        id: this.bundleDocId,
-        updatedAt: now,
-        version: this.currentVersion,
-        cacheBusterToken: String(now),
-        itemCount: items.length,
-        isChunked: true,
-        chunkCount: chunks.length
-      };
-      const cleanedManifest = cleanFirestorePayload(manifestPayload);
-      await setDoc(docRef, cleanedManifest);
-
-      console.log(`[BundledEngine] Saved chunked bundle (v${this.currentVersion}) to Firestore for ${this.bundleCollection} (${items.length} items across ${chunks.length} chunks, total ~${Math.round(serializedItems.length / 1024)} KB)`);
-    });
+    // Firestore write disabled per user directive
+    return;
   }
 
-  /**
-   * Destroys listener on cleanup if needed.
-   */
   public destroy(): void {
     if (this.unsubscribeListener) {
       this.unsubscribeListener();

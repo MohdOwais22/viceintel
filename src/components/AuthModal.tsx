@@ -45,8 +45,7 @@ import {
   sendPasswordResetEmail,
   User as FirebaseUser
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, getDocs, collection, query, where } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import { GTA6_AVATARS, DEFAULT_GTA6_AVATAR, getSafePhotoURL } from '../data/avatars';
 import { checkGamerTagUniqueness, validateGamerTagSyntax, generateUniqueGamerTag } from '../lib/gamertagUtils';
 import { EmailVerificationStep } from './EmailVerificationStep';
@@ -207,11 +206,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       } else if (['VICE20', 'VIP20', 'COMMUNITY20', 'VCC15'].includes(cleanCode)) {
         percent = 20;
       } else {
-        const couponRef = doc(db, 'discount_coupons', cleanCode);
-        const snap = await getDoc(couponRef);
-        if (snap.exists() && snap.data().active !== false) {
-          percent = Number(snap.data().discountValue) || 20;
-          codeName = snap.data().code || cleanCode;
+        const couponRes = await fetch(`/api/admin/cms/discount_coupons/${encodeURIComponent(cleanCode)}`);
+        if (couponRes.ok) {
+          const couponData = await couponRes.json();
+          if (couponData && couponData.active !== false) {
+            percent = Number(couponData.discountValue) || 20;
+            codeName = couponData.code || cleanCode;
+          } else {
+            setCouponError('Invalid or expired coupon code.');
+            setIsValidatingCoupon(false);
+            return;
+          }
         } else {
           setCouponError('Invalid or expired coupon code.');
           setIsValidatingCoupon(false);
@@ -332,7 +337,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     checking: boolean;
     available: boolean | null;
     message?: string;
-    level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE';
+    level?: 'L1_BLOOM' | 'L2_TRIE' | 'L3_FIRESTORE' | 'L3_MONGODB';
     latencyMs?: number;
   }>({ checking: false, available: null });
 
@@ -416,15 +421,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
 
       try {
-        const userSnap = await getDoc(doc(db, 'userProfiles', currentUser.uid));
-        if (userSnap.exists() && Array.isArray(userSnap.data()?.changeHistory)) {
-          const fsHistory = userSnap.data().changeHistory;
-          if (fsHistory.length > history.length) {
-            history = fsHistory;
+        const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+        if (apiRes.ok) {
+          const payload = await apiRes.json();
+          if (payload.success && payload.data && Array.isArray(payload.data.changeHistory)) {
+            const mongoHistory = payload.data.changeHistory;
+            if (mongoHistory.length > history.length) {
+              history = mongoHistory;
+            }
           }
         }
       } catch (e) {
-        console.warn('Could not read user profile doc:', e);
+        console.warn('Could not read user profile history from MongoDB:', e);
       }
 
       const recentChanges = history.filter(h => now - h.timestamp < ONE_YEAR_MS);
@@ -446,8 +454,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         localStorage.setItem(`gtavi_tag_history_${currentUser.uid}`, JSON.stringify(history));
       }
 
-      // Helper function to sync user profile document to Firestore
-      const syncUserProfileToFirestore = async (
+      // Helper function to sync user profile document to MongoDB
+      const syncUserProfileToMongoDB = async (
         uid: string,
         data: {
           username?: string;
@@ -460,25 +468,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }
       ) => {
         try {
-          const userDocRef = doc(db, 'userProfiles', uid);
-          const existingSnap = await getDoc(userDocRef);
           const nowStr = new Date().toISOString();
+          let existingData: any = {};
+          
+          try {
+            const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(uid)}`);
+            if (apiRes.ok) {
+              const payload = await apiRes.json();
+              if (payload.success && payload.data) {
+                existingData = payload.data;
+              }
+            }
+          } catch (e) {
+            console.warn('Profile lookup failed, assuming new profile registration:', e);
+          }
 
-          if (!existingSnap.exists()) {
-            await setDoc(userDocRef, {
-              uid,
-              username: data.username || 'ViceCityPlayer_2026',
-              usernameLower: (data.username || 'ViceCityPlayer_2026').toLowerCase(),
-              email: data.email || '',
-              avatar: data.avatar || DEFAULT_GTA6_AVATAR,
-              role: data.role || (data.isVip ? 'VIP Member' : 'User'),
-              isVip: data.isVip ?? false,
-              status: data.status || 'Active',
-              createdAt: nowStr,
-              updatedAt: nowStr
-            });
+          const updates: Record<string, any> = {
+            uid,
+            updatedAt: nowStr
+          };
+
+          if (!existingData.uid) {
+            updates.username = data.username || 'ViceCityPlayer_2026';
+            updates.usernameLower = (data.username || 'ViceCityPlayer_2026').toLowerCase();
+            updates.email = data.email || '';
+            updates.avatar = data.avatar || DEFAULT_GTA6_AVATAR;
+            updates.role = data.role || (data.isVip ? 'VIP Member' : 'User');
+            updates.isVip = data.isVip ?? false;
+            updates.status = data.status || 'Active';
+            updates.createdAt = nowStr;
+            updates.vcBalance = 500;
           } else {
-            const updates: Record<string, any> = { updatedAt: nowStr };
             if (data.username) {
               updates.username = data.username;
               updates.usernameLower = data.username.toLowerCase();
@@ -489,24 +509,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             if (data.isVip !== undefined) updates.isVip = data.isVip;
             if (data.vipExpires !== undefined) updates.vipExpires = data.vipExpires;
             if (data.status) updates.status = data.status;
-
-            await setDoc(userDocRef, updates, { merge: true });
           }
+
+          await fetch('/api/user/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+          });
         } catch (err) {
-          console.warn('Failed to sync user profile to Firestore:', err);
+          console.warn('Failed to sync user profile to MongoDB:', err);
         }
       };
 
-      // 3. Sync to Firestore userProfiles collection
+      // 3. Sync to MongoDB userProfiles collection
       try {
-        await syncUserProfileToFirestore(currentUser.uid, {
+        await syncUserProfileToMongoDB(currentUser.uid, {
           username: trimmedTag,
           email: currentUser.email,
           avatar: selectedAvatar,
           isVip: isVipActive
         });
       } catch (err) {
-        console.warn('Could not sync profile doc to Firestore:', err);
+        console.warn('Could not sync profile doc to MongoDB:', err);
       }
 
       // 4. Update Auth Profile
@@ -559,16 +583,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (auth.currentUser) {
         await auth.currentUser.reload();
         if (auth.currentUser.emailVerified) {
-          // Update Firestore user profile
+          // Update MongoDB user profile
           try {
-            const userDocRef = doc(db, 'userProfiles', auth.currentUser.uid);
-            await setDoc(userDocRef, {
-              emailVerified: true,
-              verifiedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
+            await fetch('/api/user/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                uid: auth.currentUser.uid,
+                emailVerified: true,
+                verifiedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              })
+            });
           } catch (e) {
-            console.warn('Firestore profile update warning:', e);
+            console.warn('MongoDB profile update warning:', e);
           }
 
           setCodeSentNotice('🎉 Email successfully verified! Welcome to Vice City Central.');
@@ -622,17 +650,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const rawName = result.user.displayName || result.user.email?.split('@')[0] || 'ViceCityPlayer';
         const cleanName = rawName.replace(/\s+/g, '_');
 
-        // Ensure userProfile exists and has guaranteed unique GamerTag and valid avatar
+        // Ensure userProfile exists in MongoDB and has guaranteed unique GamerTag and valid avatar
         try {
-          const userDocRef = doc(db, 'userProfiles', result.user.uid);
-          const snap = await getDoc(userDocRef);
+          const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(result.user.uid)}`);
+          let existingProfile: any = null;
+          if (apiRes.ok) {
+            const payload = await apiRes.json();
+            if (payload.success && payload.data) {
+              existingProfile = payload.data;
+            }
+          }
           const googlePhoto = result.user.photoURL || null;
-          if (!snap.exists()) {
+
+          if (!existingProfile || existingProfile.source === 'MongoDB-Initialized') {
             // Find guaranteed unique GamerTag for new Google accounts
             const uniqueTag = await generateUniqueGamerTag(cleanName, result.user.uid);
             setGamerTag(uniqueTag);
 
-            await setDoc(userDocRef, {
+            const payload = {
               uid: result.user.uid,
               username: uniqueTag,
               usernameLower: uniqueTag.toLowerCase(),
@@ -642,12 +677,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               role: 'User',
               isAdmin: false,
               isStaff: false,
-              clearanceLevel: 'Member',
+              clearanceLevel: 1,
               userLevel: 'Member',
               isVip: false,
               status: 'Active',
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
+            };
+
+            await fetch('/api/user/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
             });
 
             if (result.user.displayName !== uniqueTag) {
@@ -656,17 +697,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               }).catch(() => {});
             }
           } else {
-            setGamerTag(snap.data()?.username || cleanName);
-            // If exists, make sure googlePhotoURL is recorded in Firestore
-            if (googlePhoto && !snap.data()?.googlePhotoURL) {
-              await setDoc(userDocRef, {
-                googlePhotoURL: googlePhoto,
-                updatedAt: new Date().toISOString()
-              }, { merge: true });
+            setGamerTag(existingProfile.username || cleanName);
+            // If exists, make sure googlePhotoURL is recorded in MongoDB
+            if (googlePhoto && !existingProfile.googlePhotoURL) {
+              await fetch('/api/user/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  uid: result.user.uid,
+                  googlePhotoURL: googlePhoto
+                })
+              });
             }
           }
-        } catch (fsErr) {
-          console.warn('Firestore sync during Google sign-in note:', fsErr);
+        } catch (apiErr) {
+          console.warn('MongoDB sync during Google sign-in note:', apiErr);
         }
       }
       onClose();

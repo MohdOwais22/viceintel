@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Bell, 
   CheckCheck, 
@@ -98,24 +99,22 @@ export const ServerOwnerNotificationDropdown: React.FC<ServerOwnerNotificationDr
         )}
       </button>
 
-      {isOpen && (
+      {isOpen && typeof document !== 'undefined' && createPortal(
         <>
-          {/* Backdrop overlay to prevent visual clashing with underlying dashboard components */}
+          {/* Backdrop overlay to blur full screen including header */}
           <div 
-            className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm transition-opacity" 
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.75)' }}
+            className="fixed inset-0 z-[99990] bg-black/80 backdrop-blur-md transition-opacity" 
             onClick={() => setIsOpen(false)} 
             aria-hidden="true"
           />
 
           <div 
-            className="absolute right-0 top-full mt-2.5 w-[calc(100vw-2.5rem)] max-w-sm sm:w-96 bg-zinc-950 border-2 border-cyan-500/40 rounded-2xl shadow-2xl shadow-black z-50 overflow-hidden ring-1 ring-cyan-500/20"
-            style={{ backgroundColor: '#090d16', maxHeight: 'calc(100vh - 120px)', opacity: 1 }}
+            className="fixed top-20 right-4 sm:right-8 z-[99999] w-[calc(100vw-2.5rem)] max-w-sm sm:w-96 bg-[#090d16] border-2 border-cyan-500/60 rounded-2xl shadow-2xl shadow-black overflow-hidden ring-1 ring-cyan-500/30 animate-in fade-in zoom-in-95 duration-150"
+            style={{ maxHeight: 'calc(100vh - 120px)' }}
           >
             {/* Dropdown Header */}
             <div 
-              className="p-3.5 sm:p-4 border-b border-zinc-800 flex items-center justify-between"
-              style={{ backgroundColor: '#111726' }}
+              className="p-3.5 sm:p-4 border-b border-zinc-800 flex items-center justify-between bg-[#111726]"
             >
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black uppercase tracking-wider text-white">Server Alerts</span>
@@ -224,7 +223,8 @@ export const ServerOwnerNotificationDropdown: React.FC<ServerOwnerNotificationDr
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

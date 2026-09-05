@@ -249,7 +249,7 @@ export const SITE_TREE_DATA: TreeNode = {
           access: 'Public',
           description: 'Top-tier RP servers with live player density and 1-click F8 console connect strings.',
           endpoints: ['POST /api/rp-servers', 'POST /api/rp-servers/ping'],
-          dbCollections: ['rpServers', 'pendingApprovals'],
+          dbCollections: ['servers', 'pendingApprovals'],
           components: ['RpServerDirectory', 'ServerCard', 'SubmitServerModal']
         },
         {

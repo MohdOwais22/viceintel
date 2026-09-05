@@ -391,14 +391,6 @@ export const WeaponCatalogAdminCms: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowResetConfirm(true)}
-              className="px-3 py-2.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold border border-zinc-700 flex items-center justify-center gap-1.5 transition"
-              title="Reset weapon catalog to Rockstar defaults"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
-              <span>Reset Defaults</span>
-            </button>
-            <button
               onClick={handleOpenAdd}
               className="px-4 py-2.5 rounded-2xl bg-red-500 hover:bg-red-400 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-red-500/20 transition cursor-pointer"
             >
@@ -966,40 +958,6 @@ export const WeaponCatalogAdminCms: React.FC = () => {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Confirm Delete</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CONFIRM RESET TO DEFAULT MODAL */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-          <div className="bg-zinc-900 border border-red-900/60 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
-            <div className="w-12 h-12 rounded-2xl bg-red-950 border border-red-800 flex items-center justify-center text-red-400">
-              <RotateCcw className="w-6 h-6" />
-            </div>
-
-            <div>
-              <h3 className="text-lg font-black text-white">Reset Weapon Catalog?</h3>
-              <p className="text-xs text-zinc-400 mt-1">
-                This will reset the weapon catalog back to official Rockstar Games firearms datasets and purge custom weapon additions from Cloud Firestore.
-              </p>
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-3">
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold hover:bg-zinc-700 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmResetToDefault}
-                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black shadow-lg shadow-red-600/30 flex items-center gap-1.5 transition"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Confirm Reset</span>
               </button>
             </div>
           </div>

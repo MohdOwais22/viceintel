@@ -295,14 +295,6 @@ export const BusinessCatalogAdminCms: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowResetConfirm(true)}
-            className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Reset to Default</span>
-          </button>
-
-          <button
             onClick={handleOpenAddModal}
             className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition flex items-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-500/20"
           >
@@ -717,36 +709,6 @@ export const BusinessCatalogAdminCms: React.FC = () => {
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>Update Photo</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Reset Confirmation Modal */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center gap-3 text-amber-400">
-              <AlertCircle className="w-6 h-6 shrink-0" />
-              <h3 className="text-base font-black text-white">Reset Property Catalog?</h3>
-            </div>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              This action will reset all commercial property prices, yields, descriptions, and custom uploaded images back to the default initial dataset.
-            </p>
-
-            <div className="flex justify-end gap-3 pt-3">
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleResetToDefault}
-                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition"
-              >
-                Confirm Reset
               </button>
             </div>
           </div>

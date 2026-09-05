@@ -1,4 +1,3 @@
-import localforage from 'localforage';
 import { Vehicle, Weapon, MapLocation, Business, RpServer, BlogPost, Character } from '../types';
 import { VEHICLES_DATA } from '../data/vehicles';
 import { WEAPONS_DATA } from '../data/weapons';
@@ -12,13 +11,6 @@ import { getStoredWeapons, weaponBundleEngine } from './weaponStore';
 import { getStoredMapLocations, mapBundleEngine } from './mapStore';
 import { getStoredCharacters, characterBundleEngine } from './characterStore';
 import { getStoredBusinesses, businessBundleEngine } from './businessStore';
-
-// Configure localforage instance for GTA VI Central
-const storage = localforage.createInstance({
-  name: 'gtavi_central_db',
-  storeName: 'gtavi_offline_cache',
-  description: 'IndexedDB Offline Cache for GTA VI Central Vehicles, Map Tiles, Weapons, and ROI Calculators'
-});
 
 export interface CacheMetadata {
   lastSyncedAt: string | null;
@@ -45,35 +37,47 @@ export const STORAGE_KEYS = {
   METADATA: 'gtavi_cache_metadata'
 };
 
+// Safe localStorage helpers
+function getLocalItem<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setLocalItem(key: string, value: any): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
 /**
- * Preloads and warms critical datasets into localforage IndexedDB without overwriting admin cloud sync.
- * Can be called automatically on app load or manually via the Sync UI.
+ * Preloads and warms critical datasets into local cache.
  */
 export async function preloadAllCriticalData(): Promise<CacheMetadata> {
   try {
-    console.log('[OfflineStorage] Initializing and preloading critical datasets into IndexedDB...');
-
-    // Retrieve active items through the bundle engines (which preserve live Firestore updates)
     const [vehicles, weapons, mapLocations, characters, businesses, rpServers, blogPosts] = await Promise.all([
       getStoredVehicles(),
       getStoredWeapons(),
       getStoredMapLocations(),
       getStoredCharacters(),
-      storage.getItem<Business[]>(STORAGE_KEYS.BUSINESSES).then(b => b && b.length > 0 ? b : BUSINESSES_DATA),
-      storage.getItem<RpServer[]>(STORAGE_KEYS.RP_SERVERS).then(r => r && r.length > 0 ? r : RP_SERVERS_DATA),
-      storage.getItem<BlogPost[]>(STORAGE_KEYS.BLOG_POSTS).then(p => p && p.length > 0 ? p : BLOG_POSTS_DATA)
+      getStoredBusinesses(),
+      getCachedRpServers(),
+      getCachedBlogPosts()
     ]);
 
-    // Save core datasets
-    await storage.setItem(STORAGE_KEYS.VEHICLES, vehicles);
-    await storage.setItem(STORAGE_KEYS.WEAPONS, weapons);
-    await storage.setItem(STORAGE_KEYS.MAP_LOCATIONS, mapLocations);
-    await storage.setItem(STORAGE_KEYS.CHARACTERS, characters);
-    await storage.setItem(STORAGE_KEYS.BUSINESSES, businesses);
-    await storage.setItem(STORAGE_KEYS.RP_SERVERS, rpServers);
-    await storage.setItem(STORAGE_KEYS.BLOG_POSTS, blogPosts);
+    setLocalItem(STORAGE_KEYS.VEHICLES, vehicles);
+    setLocalItem(STORAGE_KEYS.WEAPONS, weapons);
+    setLocalItem(STORAGE_KEYS.MAP_LOCATIONS, mapLocations);
+    setLocalItem(STORAGE_KEYS.CHARACTERS, characters);
+    setLocalItem(STORAGE_KEYS.BUSINESSES, businesses);
+    setLocalItem(STORAGE_KEYS.RP_SERVERS, rpServers);
+    setLocalItem(STORAGE_KEYS.BLOG_POSTS, blogPosts);
 
-    // Calculate approximate size in KB
     const totalJson = JSON.stringify({
       vehicles,
       weapons,
@@ -98,38 +102,31 @@ export async function preloadAllCriticalData(): Promise<CacheMetadata> {
       estimatedSizeKb: sizeKb
     };
 
-    await storage.setItem(STORAGE_KEYS.METADATA, metadata);
-    console.log('[OfflineStorage] Successfully preloaded all datasets to localforage:', metadata);
+    setLocalItem(STORAGE_KEYS.METADATA, metadata);
     return metadata;
   } catch (err) {
-    console.error('[OfflineStorage] Error preloading critical datasets:', err);
+    console.error('[Storage] Error preloading datasets:', err);
     throw err;
   }
 }
 
 /**
- * Forcefully queries the active Firestore master bundles for vehicles, weapons, map locations, and characters.
- * Bypasses local storage and in-memory caches to download staff updates and caches them locally.
+ * Forcefully queries the active catalogs from database and refreshes local cache.
  */
 export async function forceSyncFirestoreToLocal(): Promise<CacheMetadata> {
   try {
-    console.log('[OfflineStorage] Direct Firestore synchronization in progress...');
-    
-    // Fetch directly from live Firestore databases using the Bundle Store Engines
     const liveVehicles = await vehicleBundleEngine.forceFetchFromServer();
     const liveWeapons = await weaponBundleEngine.forceFetchFromServer();
     const liveMapLocations = await mapBundleEngine.forceFetchFromServer();
     const liveCharacters = await characterBundleEngine.forceFetchFromServer();
     const liveBusinesses = await businessBundleEngine.forceFetchFromServer();
 
-    // Also update the offline cache storage entries to match
-    await storage.setItem(STORAGE_KEYS.VEHICLES, liveVehicles);
-    await storage.setItem(STORAGE_KEYS.WEAPONS, liveWeapons);
-    await storage.setItem(STORAGE_KEYS.MAP_LOCATIONS, liveMapLocations);
-    await storage.setItem(STORAGE_KEYS.CHARACTERS, liveCharacters);
-    await storage.setItem(STORAGE_KEYS.BUSINESSES, liveBusinesses);
+    setLocalItem(STORAGE_KEYS.VEHICLES, liveVehicles);
+    setLocalItem(STORAGE_KEYS.WEAPONS, liveWeapons);
+    setLocalItem(STORAGE_KEYS.MAP_LOCATIONS, liveMapLocations);
+    setLocalItem(STORAGE_KEYS.CHARACTERS, liveCharacters);
+    setLocalItem(STORAGE_KEYS.BUSINESSES, liveBusinesses);
 
-    // Re-calculate the current total JSON footprint size for metadata tracking
     const totalJson = JSON.stringify({
       vehicles: liveVehicles,
       weapons: liveWeapons,
@@ -154,142 +151,88 @@ export async function forceSyncFirestoreToLocal(): Promise<CacheMetadata> {
       estimatedSizeKb: sizeKb
     };
 
-    await storage.setItem(STORAGE_KEYS.METADATA, metadata);
-    console.log('[OfflineStorage] Successfully synchronized and cached live Firestore data:', metadata);
+    setLocalItem(STORAGE_KEYS.METADATA, metadata);
     return metadata;
   } catch (err) {
-    console.error('[OfflineStorage] Error synchronizing live Firestore data:', err);
+    console.error('[Storage] Error synchronizing database data:', err);
     throw err;
   }
 }
 
-/**
- * Gets cached vehicles or falls back to static default data with real-time Firestore sync.
- */
 export async function getCachedVehicles(): Promise<Vehicle[]> {
   return getStoredVehicles();
 }
 
-/**
- * Save updated vehicles list to localforage.
- */
 export async function saveCachedVehicles(vehicles: Vehicle[]): Promise<void> {
-  await storage.setItem(STORAGE_KEYS.VEHICLES, vehicles);
+  setLocalItem(STORAGE_KEYS.VEHICLES, vehicles);
 }
 
-/**
- * Gets cached weapons or falls back to static data with real-time Firestore sync.
- */
 export async function getCachedWeapons(): Promise<Weapon[]> {
   return getStoredWeapons();
 }
 
-/**
- * Gets cached map locations or falls back to static map data with 2,000x optimized single-document bundle sync.
- */
 export async function getCachedMapLocations(): Promise<MapLocation[]> {
   return getStoredMapLocations() as Promise<MapLocation[]>;
 }
 
-/**
- * Gets cached characters or falls back to static character data with real-time Firestore sync.
- */
 export async function getCachedCharacters(): Promise<Character[]> {
   return getStoredCharacters();
 }
 
-/**
- * Save updated characters list to localforage.
- */
 export async function saveCachedCharacters(characters: Character[]): Promise<void> {
-  await storage.setItem(STORAGE_KEYS.CHARACTERS, characters);
+  setLocalItem(STORAGE_KEYS.CHARACTERS, characters);
 }
 
-/**
- * Gets cached businesses or falls back to static default data with real-time Firestore sync.
- */
 export async function getCachedBusinesses(): Promise<Business[]> {
   return getStoredBusinesses();
 }
 
-/**
- * Gets cached RP servers or falls back to static data.
- */
 export async function getCachedRpServers(): Promise<RpServer[]> {
-  try {
-    const cached = await storage.getItem<RpServer[]>(STORAGE_KEYS.RP_SERVERS);
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      return cached;
-    }
-  } catch (err) {
-    console.warn('[OfflineStorage] Failed to read RP servers from localforage:', err);
+  const cached = getLocalItem<RpServer[]>(STORAGE_KEYS.RP_SERVERS);
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return cached;
   }
   return RP_SERVERS_DATA;
 }
 
-/**
- * Saves RP servers to IndexedDB offline cache.
- */
 export async function setCachedRpServers(servers: RpServer[]): Promise<void> {
-  try {
-    await storage.setItem(STORAGE_KEYS.RP_SERVERS, servers);
-  } catch (err) {
-    console.warn('[OfflineStorage] Failed to write RP servers to localforage:', err);
-  }
+  setLocalItem(STORAGE_KEYS.RP_SERVERS, servers);
 }
 
-/**
- * Gets cached blog posts or falls back to static data.
- */
 export async function getCachedBlogPosts(): Promise<BlogPost[]> {
-  try {
-    const cached = await storage.getItem<BlogPost[]>(STORAGE_KEYS.BLOG_POSTS);
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      return cached;
-    }
-  } catch (err) {
-    console.warn('[OfflineStorage] Failed to read blog posts from localforage:', err);
+  const cached = getLocalItem<BlogPost[]>(STORAGE_KEYS.BLOG_POSTS);
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return cached;
   }
   return BLOG_POSTS_DATA;
 }
 
-/**
- * Gets current offline cache metadata (stats, size, sync date).
- */
 export async function getCacheMetadata(): Promise<CacheMetadata | null> {
-  try {
-    return await storage.getItem<CacheMetadata>(STORAGE_KEYS.METADATA);
-  } catch (err) {
-    console.warn('[OfflineStorage] Failed to read cache metadata:', err);
-    return null;
-  }
+  return getLocalItem<CacheMetadata>(STORAGE_KEYS.METADATA);
 }
 
-/**
- * Clears all cached data from localforage and Service Worker caches.
- */
 export async function clearAllOfflineCache(): Promise<void> {
-  try {
-    await storage.clear();
-  } catch (storageErr) {
-    console.warn('[OfflineStorage] Error clearing localforage storage:', storageErr);
-  }
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.VEHICLES);
+      localStorage.removeItem(STORAGE_KEYS.WEAPONS);
+      localStorage.removeItem(STORAGE_KEYS.MAP_LOCATIONS);
+      localStorage.removeItem(STORAGE_KEYS.CHARACTERS);
+      localStorage.removeItem(STORAGE_KEYS.BUSINESSES);
+      localStorage.removeItem(STORAGE_KEYS.RP_SERVERS);
+      localStorage.removeItem(STORAGE_KEYS.BLOG_POSTS);
+      localStorage.removeItem(STORAGE_KEYS.METADATA);
+    } catch {}
 
-  try {
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map(k => caches.delete(k).catch(() => {})));
-    }
-  } catch (cacheErr) {
-    console.warn('[OfflineStorage] Error clearing Service Worker caches:', cacheErr);
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k).catch(() => {})));
+      }
+    } catch {}
   }
-
-  console.log('[OfflineStorage] Cleared localforage & Service Worker cache completely.');
 }
 
-/**
- * Helper to register the Service Worker cleanly in the browser environment.
- */
 export function registerServiceWorker(): void {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
 
@@ -298,7 +241,6 @@ export function registerServiceWorker(): void {
       navigator.serviceWorker
         .register('/sw.js')
         .then((registration) => {
-          console.log('[ServiceWorker] Registered with scope:', registration.scope);
           registration.onupdatefound = () => {
             const installingWorker = registration.installing;
             if (installingWorker) {
@@ -306,25 +248,18 @@ export function registerServiceWorker(): void {
                 if (installingWorker.state === 'installed') {
                   if (navigator.serviceWorker.controller) {
                     console.log('[ServiceWorker] New content available; please refresh.');
-                  } else {
-                    console.log('[ServiceWorker] Content cached for offline use.');
                   }
                 }
               };
             }
           };
         })
-        .catch((error) => {
-          console.warn('[ServiceWorker] Registration failed:', error);
-        });
+        .catch(() => {});
     });
   } else {
-    // In development mode, unregister any active service worker and clear caches to prevent stale dev asset serving
     navigator.serviceWorker.getRegistrations().then((registrations) => {
       for (const registration of registrations) {
-        registration.unregister().then((unregistered) => {
-          if (unregistered) console.log('[ServiceWorker] Unregistered dev worker:', registration.scope);
-        });
+        registration.unregister().catch(() => {});
       }
     }).catch(() => {});
 

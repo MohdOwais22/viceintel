@@ -328,6 +328,7 @@ export interface UserProfile {
   email: string;
   avatar: string;
   role: UserRole;
+  userLevel?: string;
   clearanceLevel?: string;
   isAdmin?: boolean;
   isStaff?: boolean;

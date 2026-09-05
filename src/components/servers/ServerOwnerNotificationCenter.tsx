@@ -6,7 +6,6 @@ import {
   CheckCheck, 
   Trash2, 
   Sliders, 
-  Sparkles, 
   ExternalLink, 
   Search, 
   Filter, 
@@ -24,7 +23,6 @@ import {
   Zap, 
   ChevronRight, 
   Send, 
-  RefreshCw,
   Clock,
   Radio,
   Share2,
@@ -42,9 +40,7 @@ import {
   markAllServerNotificationsAsRead, 
   deleteServerNotification, 
   clearAllServerNotifications, 
-  saveServerNotificationSettings, 
-  triggerTestServerNotification, 
-  TEST_SERVER_NOTIFICATION_TEMPLATES 
+  saveServerNotificationSettings 
 } from '../../lib/server-notification-service';
 import { playNotificationChime } from '../../lib/soundUtils';
 
@@ -73,9 +69,6 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
   const [unreadOnly, setUnreadOnly] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
-  const [showTestModal, setShowTestModal] = useState<boolean>(false);
-  const [testingTemplateId, setTestingTemplateId] = useState<string>('');
-  const [isTriggeringTest, setIsTriggeringTest] = useState<boolean>(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
   // Filter calculations
@@ -125,21 +118,6 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
     if (window.confirm('Are you sure you want to clear all notification history for this server?')) {
       await clearAllServerNotifications(serverSlug, notifications.map(n => n.id));
       showNotificationToast('Notification history cleared.');
-    }
-  };
-
-  const handleTriggerTest = async (templateId: string) => {
-    setIsTriggeringTest(true);
-    setTestingTemplateId(templateId);
-    try {
-      await triggerTestServerNotification(serverSlug, serverName, templateId);
-      showNotificationToast('Test notification dispatched successfully!');
-      setShowTestModal(false);
-    } catch (e) {
-      console.error('Test notification failed:', e);
-    } finally {
-      setIsTriggeringTest(false);
-      setTestingTemplateId('');
     }
   };
 
@@ -206,8 +184,8 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
   return (
     <div id="server-owner-notification-center" className="space-y-6">
       {/* Top Banner & Control Bar */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 relative overflow-hidden shadow-xl">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-cyan-500/10 via-indigo-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
+      <div className="bg-zinc-950 border border-zinc-800/90 rounded-2xl p-6 relative overflow-hidden shadow-xl">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-cyan-500/10 via-fuchsia-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 relative z-10">
           <div className="space-y-2">
@@ -240,10 +218,10 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
               id="btn-toggle-notif-sound"
               onClick={handleToggleSound}
               title={settings.soundEnabled ? 'Mute Notification Chimes' : 'Enable Notification Chimes'}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all ${
                 settings.soundEnabled 
-                  ? 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700' 
-                  : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                  ? 'bg-zinc-900 border-zinc-700 text-zinc-200 hover:bg-zinc-800' 
+                  : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300'
               }`}
             >
               {settings.soundEnabled ? (
@@ -260,19 +238,10 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
             </button>
 
             <button
-              id="btn-trigger-test-alert"
-              onClick={() => setShowTestModal(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white flex items-center gap-1.5 shadow-lg shadow-cyan-900/20 transition-all active:scale-95"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Test Sentinel</span>
-            </button>
-
-            <button
               id="btn-mark-all-read"
               onClick={handleMarkAllRead}
               disabled={unreadCount === 0}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1.5 transition-all"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1.5 transition-all"
             >
               <CheckCheck className="w-4 h-4 text-emerald-400" />
               <span>Mark All Read</span>
@@ -281,7 +250,7 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
             <button
               id="btn-open-notif-settings"
               onClick={() => setShowSettingsModal(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 flex items-center gap-1.5 transition-all"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 flex items-center gap-1.5 transition-all"
             >
               <Sliders className="w-4 h-4 text-indigo-400" />
               <span>Preferences</span>
@@ -291,7 +260,7 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
               id="btn-clear-all-notifs"
               onClick={handleClearAll}
               disabled={notifications.length === 0}
-              className="p-2 rounded-xl text-xs font-semibold bg-zinc-800/80 hover:bg-rose-950/40 hover:text-rose-400 border border-zinc-700 text-zinc-400 disabled:opacity-40 disabled:pointer-events-none transition-all"
+              className="p-2.5 rounded-xl text-xs font-semibold bg-zinc-900 hover:bg-rose-950/40 hover:text-rose-400 border border-zinc-700/80 text-zinc-400 disabled:opacity-40 disabled:pointer-events-none transition-all"
               title="Clear All Notifications"
             >
               <Trash2 className="w-4 h-4" />
@@ -310,47 +279,47 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
 
       {/* Metric Quick Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Unread Alerts</span>
-            <Bell className={`w-4 h-4 ${unreadCount > 0 ? 'text-cyan-400' : 'text-zinc-600'}`} />
+        <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-4 flex flex-col justify-between hover:border-cyan-500/30 transition-all shadow-lg">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] sm:text-xs font-bold text-zinc-400 uppercase tracking-wider truncate">Unread Alerts</span>
+            <Bell className={`w-4 h-4 shrink-0 ${unreadCount > 0 ? 'text-cyan-400' : 'text-zinc-600'}`} />
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-white">{unreadCount}</span>
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-xl sm:text-2xl font-black text-white">{unreadCount}</span>
             <span className="text-xs text-zinc-500">of {notifications.length} total</span>
           </div>
         </div>
 
-        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Applications</span>
-            <UserCheck className="w-4 h-4 text-cyan-400" />
+        <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-4 flex flex-col justify-between hover:border-cyan-500/30 transition-all shadow-lg">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] sm:text-xs font-bold text-zinc-400 uppercase tracking-wider truncate">Applications</span>
+            <UserCheck className="w-4 h-4 text-cyan-400 shrink-0" />
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-white">{appNotifCount}</span>
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-xl sm:text-2xl font-black text-white">{appNotifCount}</span>
             <span className="text-xs text-cyan-400/80 font-medium">submissions</span>
           </div>
         </div>
 
-        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Staff & Security</span>
-            <Shield className="w-4 h-4 text-indigo-400" />
+        <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-4 flex flex-col justify-between hover:border-cyan-500/30 transition-all shadow-lg">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] sm:text-xs font-bold text-zinc-400 uppercase tracking-wider truncate">Staff & Security</span>
+            <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-white">{staffNotifCount + securityNotifCount}</span>
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-xl sm:text-2xl font-black text-white">{staffNotifCount + securityNotifCount}</span>
             <span className="text-xs text-indigo-400/80 font-medium">events</span>
           </div>
         </div>
 
-        <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-xl p-4 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Webhook & System</span>
-            <Activity className="w-4 h-4 text-emerald-400" />
+        <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-4 flex flex-col justify-between hover:border-cyan-500/30 transition-all shadow-lg">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] sm:text-xs font-bold text-zinc-400 uppercase tracking-wider truncate">Webhook & System</span>
+            <Activity className="w-4 h-4 text-emerald-400 shrink-0" />
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-400">Operational</span>
-            <span className="text-xs text-zinc-500">100% SLA</span>
+          <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+            <span className="text-base sm:text-xl font-bold text-emerald-400 tracking-tight">Operational</span>
+            <span className="text-[11px] text-zinc-500 font-medium shrink-0">100% SLA</span>
           </div>
         </div>
       </div>
@@ -460,9 +429,9 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
       {/* Notification List Feed */}
       <div className="space-y-3">
         {filteredNotifications.length === 0 ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center space-y-4">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-zinc-800/80 border border-zinc-700/60 flex items-center justify-center text-zinc-500">
-              <Bell className="w-7 h-7" />
+          <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-12 text-center space-y-4">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+              <Bell className="w-7 h-7 text-cyan-400" />
             </div>
             <div className="space-y-1">
               <h3 className="text-lg font-bold text-white">No Notifications Found</h3>
@@ -471,15 +440,6 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                   ? 'No notifications match your active search filters. Try clearing your filters.'
                   : 'Your server notification inbox is completely caught up. Incoming applications and system alerts will appear here in real time.'}
               </p>
-            </div>
-            <div className="pt-2">
-              <button
-                onClick={() => setShowTestModal(true)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white inline-flex items-center gap-2 shadow-md transition-all"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Trigger Test Alert</span>
-              </button>
             </div>
           </div>
         ) : (
@@ -609,95 +569,23 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
         )}
       </div>
 
-      {/* Test Notification Modal */}
-      {showTestModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-xl w-full p-6 space-y-5 shadow-2xl animate-in zoom-in-95">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">Trigger Test Sentinel Alert</h3>
-                  <p className="text-xs text-zinc-400">Dispatch simulated server notifications to test sound and dispatch workflows.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowTestModal(false)}
-                className="p-1.5 text-zinc-500 hover:text-white rounded-lg"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-2.5">
-              {TEST_SERVER_NOTIFICATION_TEMPLATES.map((tmpl) => {
-                const badge = getSeverityBadge(tmpl.severity);
-                const isTesting = isTriggeringTest && testingTemplateId === tmpl.id;
-                return (
-                  <button
-                    key={tmpl.id}
-                    disabled={isTriggeringTest}
-                    onClick={() => handleTriggerTest(tmpl.id)}
-                    className="w-full text-left p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-cyan-500/50 hover:bg-zinc-950/80 transition-all flex items-center justify-between group"
-                  >
-                    <div className="space-y-1 pr-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white group-hover:text-cyan-400 transition-colors">
-                          {tmpl.name}
-                        </span>
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${badge.bg}`}>
-                          {tmpl.severity}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-400 line-clamp-1">{tmpl.message}</p>
-                    </div>
-
-                    <div className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-cyan-400">
-                      {isTesting ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <>
-                          <span>Dispatch</span>
-                          <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                        </>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setShowTestModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Notification Preferences Modal */}
       {showSettingsModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-lg w-full p-6 space-y-6 shadow-2xl animate-in zoom-in-95">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-[99990] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-zinc-950 border-2 border-cyan-500/40 rounded-2xl max-w-lg w-full p-6 space-y-6 shadow-2xl shadow-black ring-1 ring-cyan-500/20 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400">
+                <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
                   <Sliders className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Server Alert Preferences</h3>
+                  <h3 className="text-lg font-black text-white tracking-tight">Server Alert Preferences</h3>
                   <p className="text-xs text-zinc-400">Configure delivery channels, sounds, and event thresholds.</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="p-1.5 text-zinc-500 hover:text-white rounded-lg"
+                className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
               >
                 ✕
               </button>
@@ -705,7 +593,7 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
 
             <div className="space-y-4">
               {/* Sound Notifications */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950 border border-zinc-800">
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
                 <div className="space-y-0.5">
                   <div className="text-xs font-bold text-white flex items-center gap-2">
                     <Volume2 className="w-4 h-4 text-cyan-400" />
@@ -716,7 +604,7 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => playNotificationChime(true)}
-                    className="text-[11px] px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium"
+                    className="text-[11px] px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium border border-zinc-700/60 transition-colors"
                   >
                     Test Chime
                   </button>
@@ -728,7 +616,7 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                       onUpdateSettings(updated);
                       saveServerNotificationSettings(serverSlug, updated);
                     }}
-                    className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-cyan-500 focus:ring-cyan-500/20"
+                    className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-cyan-500 focus:ring-cyan-500/20"
                   />
                 </div>
               </div>
@@ -738,8 +626,8 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                 <label className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Alert Subscriptions</label>
                 
                 <div className="space-y-2">
-                  <label className="flex items-center justify-between p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 cursor-pointer">
-                    <span className="text-xs text-zinc-300">New Whitelist Applications</span>
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700/80 cursor-pointer transition-colors">
+                    <span className="text-xs text-zinc-200 font-medium">New Whitelist Applications</span>
                     <input
                       type="checkbox"
                       checked={settings.notifyNewApplications}
@@ -748,12 +636,12 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                         onUpdateSettings(updated);
                         saveServerNotificationSettings(serverSlug, updated);
                       }}
-                      className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-cyan-500"
+                      className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-cyan-500"
                     />
                   </label>
 
-                  <label className="flex items-center justify-between p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 cursor-pointer">
-                    <span className="text-xs text-zinc-300">Staff Decisions & Status Updates</span>
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700/80 cursor-pointer transition-colors">
+                    <span className="text-xs text-zinc-200 font-medium">Staff Decisions & Status Updates</span>
                     <input
                       type="checkbox"
                       checked={settings.notifyApplicationDecisions}
@@ -762,12 +650,12 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                         onUpdateSettings(updated);
                         saveServerNotificationSettings(serverSlug, updated);
                       }}
-                      className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-cyan-500"
+                      className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-cyan-500"
                     />
                   </label>
 
-                  <label className="flex items-center justify-between p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 cursor-pointer">
-                    <span className="text-xs text-zinc-300">Staff Invites & Role Claims</span>
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700/80 cursor-pointer transition-colors">
+                    <span className="text-xs text-zinc-200 font-medium">Staff Invites & Role Claims</span>
                     <input
                       type="checkbox"
                       checked={settings.notifyStaffActivity}
@@ -776,12 +664,12 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                         onUpdateSettings(updated);
                         saveServerNotificationSettings(serverSlug, updated);
                       }}
-                      className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-cyan-500"
+                      className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-cyan-500"
                     />
                   </label>
 
-                  <label className="flex items-center justify-between p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 cursor-pointer">
-                    <span className="text-xs text-zinc-300">SaaS Billing, Renewals & Spotlight</span>
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700/80 cursor-pointer transition-colors">
+                    <span className="text-xs text-zinc-200 font-medium">SaaS Billing, Renewals & Spotlight</span>
                     <input
                       type="checkbox"
                       checked={settings.notifyBillingAndSpotlight}
@@ -790,12 +678,12 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                         onUpdateSettings(updated);
                         saveServerNotificationSettings(serverSlug, updated);
                       }}
-                      className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-cyan-500"
+                      className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-cyan-500"
                     />
                   </label>
 
-                  <label className="flex items-center justify-between p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 cursor-pointer">
-                    <span className="text-xs text-zinc-300">Security Bursts & Anti-Abuse Sentinel</span>
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700/80 cursor-pointer transition-colors">
+                    <span className="text-xs text-zinc-200 font-medium">Security Bursts & Anti-Abuse Sentinel</span>
                     <input
                       type="checkbox"
                       checked={settings.notifySecurityAlerts}
@@ -804,17 +692,17 @@ export const ServerOwnerNotificationCenter: React.FC<ServerOwnerNotificationCent
                         onUpdateSettings(updated);
                         saveServerNotificationSettings(serverSlug, updated);
                       }}
-                      className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-cyan-500"
+                      className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-cyan-500"
                     />
                   </label>
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-600 via-indigo-600 to-pink-600 hover:from-cyan-500 hover:via-indigo-500 hover:to-pink-500 text-white shadow-lg shadow-cyan-950/50 transition-all cursor-pointer"
               >
                 Save Preferences
               </button>

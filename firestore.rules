@@ -14,36 +14,30 @@ service cloud.firestore {
 
     // Helper function to check if user is Super Admin (L4)
     function isAdmin() {
-      return isSignedIn() && (
-        (request.auth.token != null && 'email' in request.auth.token && (
-          request.auth.token.email == 'admin@vicecity.app' ||
-          request.auth.token.email == 'lucia.vice@outlook.com' ||
-          request.auth.token.email == 'l4_admin@vicecity.app' ||
-          request.auth.token.email == 'MohdOwais762@gmail.com' ||
-          request.auth.token.email == 'mohdowais762@gmail.com'
-        )) ||
-        (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
-         (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'Admin' ||
-          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.isAdmin == true ||
-          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.level == 4))
-      );
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.userLevel == 'L4' ||
+         get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.clearanceLevel == 4 ||
+         get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.clearanceLevel == 'L4');
     }
 
     // Helper function to check if user is Staff Moderator (L3 or L4)
     function isStaff() {
       return isAdmin() || (
-        isSignedIn() && (
-          (request.auth.token != null && 'email' in request.auth.token && request.auth.token.email == 'l3_staff@vicecity.app') ||
-          (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
-           (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'Staff' ||
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.isStaff == true ||
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.level >= 3))
-        )
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.userLevel == 'L3' ||
+         get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.clearanceLevel == 3 ||
+         get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.clearanceLevel == 'L3')
       );
     }
 
     // 1. User Profiles & Accounts
     match /userProfiles/{userId} {
+      allow read, write: if true;
+    }
+
+    match /userprofiles/{userId} {
       allow read, write: if true;
     }
 
@@ -132,7 +126,7 @@ service cloud.firestore {
     match /mapLocations/{id} {
       allow read, write: if true;
     }
-    match /rpServers/{id} {
+    match /servers/{id} {
       allow read, write: if true;
     }
     match /chatChannels/{id} {

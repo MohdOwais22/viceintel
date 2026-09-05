@@ -7,17 +7,13 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where, limit } from 'firebase/firestore';
-import { auth, db } from './lib/firebase';
-import { safeFirestoreWrite } from './lib/firebase/firestoreCircuitBreaker';
+import { auth } from './lib/firebase';
 import { playNotificationChime } from './lib/soundUtils';
 import { DEFAULT_GTA6_AVATAR } from './data/avatars';
 import { ActiveTab, Vehicle, UserNotification } from './types';
 import { VEHICLES_DATA } from './data/vehicles';
 import { getCachedVehicles } from './lib/offlineStorage';
 import { Navbar } from './components/Navbar';
-import { FirestoreQuotaBanner } from './components/FirestoreQuotaBanner';
-import { handleFirestoreError, OperationType } from './lib/firestoreErrorHandler';
 import { MasterPortalHome } from './components/MasterPortalHome';
 import { VehiclesTab } from './components/VehiclesTab';
 import { WeaponsTab } from './components/WeaponsTab';
@@ -66,6 +62,7 @@ import { ForServersPage } from './components/ForServersPage';
 import { ServerOnboardingWizard } from './components/ServerOnboardingWizard';
 import { AdminBusinessDashboard } from './components/AdminBusinessDashboard';
 import { Footer } from './components/Footer';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { registerServiceWorker, preloadAllCriticalData } from './lib/offlineStorage';
 import { syncDiscordConfigFromServer } from './lib/discordOAuthHelper';
 import { getTabFromPath, updatePageSeoMeta, TAB_TO_PATH, PATH_TO_TAB } from './lib/seoRouting';
@@ -78,6 +75,7 @@ import { AdScriptLoader } from './components/ads/AdScriptLoader';
 import { detectSubdomainMode, SubdomainMode } from './lib/subdomainRouter';
 import { SubdomainBanner } from './components/SubdomainBanner';
 import { logStaffActivity } from './lib/staffAuditLogger';
+import { isAdminUser, isStaffUser, isVipUser } from './lib/rbac';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
@@ -255,256 +253,198 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [userProfileRecord, setUserProfileRecord] = useState<any>(null);
 
+  // Helper to apply user permissions instantaneously from profile object
+  const applyUserPermissions = (data: any, userEmail?: string | null) => {
+    if (!data) return;
+    const admin = isAdminUser(data, userEmail);
+    const staff = isStaffUser(data, userEmail);
+    const isVip = isVipUser(data.role, Boolean(data.isVip));
+
+    setIsAdmin(admin);
+    setIsStaff(staff);
+    setIsVipActive(isVip || admin || staff);
+    setUserProfileRecord(data);
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
-        // Ensure user profile document exists in Firestore for Admin panel sync
         try {
-          const userDocRef = doc(db, 'userProfiles', user.uid);
-          const snap = await getDoc(userDocRef);
-          const googlePhoto = user.photoURL || null;
+          let data: any = null;
 
-          const emailLower = (user.email || '').toLowerCase();
-          const isSystemAdminEmail = emailLower === 'admin@vicecity.app' || emailLower === 'l4_admin@vicecity.app';
-
-          if (!snap.exists()) {
-            const rawName = user.displayName || user.email?.split('@')[0] || 'ViceCityPlayer_2026';
-            const defaultName = rawName.replace(/\s+/g, '_');
-            const initRole = isSystemAdminEmail ? 'Admin' : 'User';
-            const initClearance = isSystemAdminEmail ? 'L4' : 'Member';
-            const initVc = isSystemAdminEmail ? 50000 : 0;
-
-            await safeFirestoreWrite(async () => {
-              await setDoc(userDocRef, {
-                uid: user.uid,
-                username: defaultName,
-                usernameLower: defaultName.toLowerCase(),
-                email: user.email || 'user@vicecity.app',
-                avatar: googlePhoto || DEFAULT_GTA6_AVATAR,
-                googlePhotoURL: googlePhoto,
-                role: initRole,
-                isAdmin: isSystemAdminEmail,
-                isStaff: isSystemAdminEmail,
-                clearanceLevel: initClearance,
-                userLevel: initClearance,
-                isVip: isSystemAdminEmail,
-                vcBalance: initVc,
-                status: 'Active',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-              });
-            });
-
-            setIsAdmin(isSystemAdminEmail);
-            setIsStaff(isSystemAdminEmail);
-            setIsVipActive(isSystemAdminEmail);
-
-            if (isSystemAdminEmail) {
-              logStaffActivity({
-                actionType: 'USER_ROLE_CHANGE',
-                actionCategory: 'User Management',
-                targetId: user.uid,
-                targetName: `@${defaultName}`,
-                targetType: 'user',
-                severity: 'CRITICAL',
-                details: `Auto-initialized L4 System Administrative profile for @${defaultName} (${user.email}).`,
-                changes: [
-                  { field: 'role', oldValue: 'None', newValue: 'Admin', fieldLabel: 'Account Role' },
-                  { field: 'clearanceLevel', oldValue: 'None', newValue: 'L4', fieldLabel: 'Clearance Level' }
-                ],
-                actorOverride: {
-                  actorId: user.uid,
-                  actorEmail: user.email || 'admin@vicecity.app',
-                  actorUsername: defaultName,
-                  actorRole: 'Admin',
-                  actorClearance: 'L4'
-                }
-              }).catch(() => {});
-            }
-          } else {
-            const data = snap.data();
-            
-            // Record googlePhotoURL if user signed in with Google
-            if (googlePhoto && !data.googlePhotoURL) {
-              safeFirestoreWrite(async () => {
-                await setDoc(userDocRef, {
-                  googlePhotoURL: googlePhoto,
-                  updatedAt: new Date().toISOString()
-                }, { merge: true });
-              }).catch(() => {});
-            }
-
-            const now = Date.now();
-            
-            // Single VIP check parameter: isVip
-            let isVip = Boolean(data.isVip);
-
-            if (data.vipUntil) {
-              const expiry = typeof data.vipUntil === 'number' ? data.vipUntil : new Date(data.vipUntil).getTime();
-              if (expiry <= now) {
-                isVip = false;
-                if (data.isVip && !isSystemAdminEmail) {
-                  safeFirestoreWrite(async () => {
-                    await setDoc(doc(db, 'userProfiles', user.uid), { isVip: false, updatedAt: new Date().toISOString() }, { merge: true });
-                  }).catch(() => {});
-                }
-              } else {
-                // Check 48h notification window before expiration
-                const msRemaining = expiry - now;
-                const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
-                if (msRemaining > 0 && msRemaining <= FORTY_EIGHT_HOURS_MS) {
-                  const hoursLeft = Math.max(1, Math.ceil(msRemaining / (60 * 60 * 1000)));
-                  const notifId = `vip_expiry_48h_${user.uid}`;
-                  const storageKey = `gtavi_vip_48h_notified_${user.uid}`;
-                  if (!localStorage.getItem(storageKey)) {
-                    safeFirestoreWrite(async () => {
-                      await setDoc(doc(db, 'userNotifications', notifId), {
-                        id: notifId,
-                        targetUserId: user.uid,
-                        title: '⚠️ VIP Membership Expiring Soon',
-                        message: `Your VIP pass is expiring soon (in ${hoursLeft} hours)! Renew your membership to keep 100% ad-free browsing, gold crown badge, and priority perks.`,
-                        type: 'admin_message',
-                        read: false,
-                        createdAt: Date.now(),
-                        timestamp: new Date().toISOString(),
-                        targetTab: 'profile'
-                      }, { merge: true });
-                    }).then(() => {
-                      localStorage.setItem(storageKey, 'true');
-                    }).catch(err => console.warn('VIP expiry notif error:', err));
-                  }
-                }
+          // 1. Fetch from MongoDB API
+          try {
+            const emailParam = user.email ? `&email=${encodeURIComponent(user.email)}` : '';
+            const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(user.uid)}${emailParam}`);
+            if (apiRes.ok) {
+              const payload = await apiRes.json();
+              if (payload.success && payload.data) {
+                data = payload.data;
+                applyUserPermissions(data, user.email);
               }
             }
+          } catch (apiErr) {
+            console.warn('Failed to load profile from MongoDB API:', apiErr);
+          }
 
-            const admin = isSystemAdminEmail ||
-                          data.role === 'Admin' ||
-                          data.isAdmin === true ||
-                          data.clearanceLevel === 'L4' ||
-                          data.userLevel === 'L4' ||
-                          data.userLevel === 'Admin';
+          // 2. Auto-initialize new profile if completely missing
+          if (!data) {
+            const rawName = user.displayName || user.email?.split('@')[0] || 'ViceCityPlayer_2026';
+            const defaultName = rawName.replace(/\s+/g, '_');
+            const initRole = 'User';
+            const initClearance = 'Member';
+            const initVc = 100;
 
-            const staff = admin ||
-                          data.role === 'Staff' ||
-                          data.isStaff === true ||
-                          data.clearanceLevel === 'L3' ||
-                          data.userLevel === 'L3' ||
-                          data.userLevel === 'Staff';
+            data = {
+              uid: user.uid,
+              username: defaultName,
+              usernameLower: defaultName.toLowerCase(),
+              email: user.email || 'user@vicecity.app',
+              avatar: user.photoURL || DEFAULT_GTA6_AVATAR,
+              role: initRole,
+              isAdmin: false,
+              isStaff: false,
+              clearanceLevel: initClearance,
+              userLevel: initClearance,
+              isVip: false,
+              vcBalance: initVc,
+              status: 'Active',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
 
-            setIsVipActive(isVip || admin || staff);
-            setIsAdmin(admin);
-            setIsStaff(staff);
+            applyUserPermissions(data, user.email);
+
+            // Save to MongoDB API asynchronously in background
+            fetch('/api/user/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+            }).catch((saveErr) => {
+              console.warn('Failed to auto-save new profile to MongoDB:', saveErr);
+            });
+          }
+
+          // Apply permissions immediately
+          applyUserPermissions(data, user.email);
+
+          // Non-blocking VIP expiry and notification checks in background
+          const now = Date.now();
+          if (data.vipUntil) {
+            const expiry = typeof data.vipUntil === 'number' ? data.vipUntil : new Date(data.vipUntil).getTime();
+            if (expiry <= now && data.isVip) {
+              fetch('/api/user/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: user.uid, isVip: false })
+              }).catch(() => {});
+            }
           }
         } catch (e) {
-          console.warn('Could not bootstrap user profile in Firestore:', e);
+          console.warn('Could not bootstrap user profile:', e);
         }
       } else {
         setIsVipActive(false);
         setIsAdmin(false);
         setIsStaff(false);
+        setUserProfileRecord(null);
       }
     });
     return () => unsubscribe();
   }, []);
 
-  // Listen to Firestore profile changes for real-time VIP & Admin status updates
-  const hasHandledVipExpiryRef = useRef<Record<string, boolean>>({});
-
+  // Poll MongoDB profile changes for real-time VIP & Admin status updates
   useEffect(() => {
     if (!currentUser) return;
 
-    let unsub: () => void = () => {};
-    try {
-      unsub = onSnapshot(doc(db, 'userProfiles', currentUser.uid), (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setUserProfileRecord(data);
-          const now = Date.now();
-          
-          // Single VIP check parameter: isVip
-          let isVip = Boolean(data.isVip);
+    let isMounted = true;
+    const fetchLatestProfile = async () => {
+      try {
+        const emailParam = currentUser.email ? `&email=${encodeURIComponent(currentUser.email)}` : '';
+        const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}${emailParam}`);
+        if (apiRes.ok && isMounted) {
+          const payload = await apiRes.json();
+          if (payload.success && payload.data) {
+            const data = payload.data;
+            applyUserPermissions(data, currentUser.email);
 
-          if (data.vipUntil) {
-            const expiry = typeof data.vipUntil === 'number' ? data.vipUntil : new Date(data.vipUntil).getTime();
-            if (expiry <= now) {
-              isVip = false;
-              if (data.isVip && !hasHandledVipExpiryRef.current[currentUser.uid]) {
-                hasHandledVipExpiryRef.current[currentUser.uid] = true;
-                setDoc(doc(db, 'userProfiles', currentUser.uid), { isVip: false, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-              }
-            } else {
-              // Check 48h notification window before expiration
-              const msRemaining = expiry - now;
-              const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
-              if (msRemaining > 0 && msRemaining <= FORTY_EIGHT_HOURS_MS) {
-                const hoursLeft = Math.max(1, Math.ceil(msRemaining / (60 * 60 * 1000)));
-                const notifId = `vip_expiry_48h_${currentUser.uid}`;
-                const storageKey = `gtavi_vip_48h_notified_${currentUser.uid}`;
-                if (!localStorage.getItem(storageKey)) {
-                  localStorage.setItem(storageKey, 'true');
-                  setDoc(doc(db, 'userNotifications', notifId), {
-                    id: notifId,
-                    targetUserId: currentUser.uid,
-                    title: '⚠️ VIP Membership Expiring Soon',
-                    message: `Your VIP pass is expiring soon (in ${hoursLeft} hours)! Renew your membership to keep 100% ad-free browsing, gold crown badge, and priority perks.`,
-                    type: 'admin_message',
-                    read: false,
-                    createdAt: Date.now(),
-                    timestamp: new Date().toISOString(),
-                    targetTab: 'profile'
-                  }, { merge: true }).catch(err => console.warn('VIP expiry notif error:', err));
-                }
-              }
-            }
+            const bestStreak = Math.max(
+              data.dailyStreak || 0,
+              data.rewardStreak || 0,
+              data.streakCount || 0
+            );
+
+            setUserProfileRecord(prev => ({
+              ...(prev || {}),
+              ...data,
+              discordId: data.discordId || data.claimedByDiscordId || data.discordAuth?.discordId || prev?.discordId,
+              discordUsername: data.discordUsername || data.claimedByDiscordUsername || data.discordTag || data.discordAuth?.discordUsername || prev?.discordUsername,
+              discordConnected: Boolean(data.discordConnected || data.discordId || data.discordUsername || prev?.discordConnected),
+              dailyStreak: bestStreak,
+              rewardStreak: bestStreak,
+              streakCount: bestStreak,
+              vcBalance: data.vcBalance ?? data.credits ?? prev?.vcBalance ?? 0
+            }));
+
+            // Real-time synchronization of Daily Reward readiness from profile
+            const lastClaimMs = getTimestampFromClaimDate(
+              data.lastClaimDate ? String(data.lastClaimDate) : undefined,
+              typeof data.lastLogin === 'number' ? data.lastLogin : (typeof data.lastClaimedTimestamp === 'number' ? data.lastClaimedTimestamp : undefined)
+            );
+            const cooldownRemaining = getRewardCooldown(lastClaimMs, data.lastClaimDate ? String(data.lastClaimDate) : undefined);
+            const rewardReady = lastClaimMs === 0 || cooldownRemaining === 0;
+            setIsDailyRewardReady(rewardReady);
           }
-
-          const admin = data.role === 'Admin' ||
-                        data.isAdmin === true ||
-                        data.clearanceLevel === 'L4' ||
-                        data.userLevel === 'L4' ||
-                        data.userLevel === 'Admin';
-
-          const staff = admin ||
-                        data.role === 'Staff' ||
-                        data.isStaff === true ||
-                        data.clearanceLevel === 'L3' ||
-                        data.userLevel === 'L3' ||
-                        data.userLevel === 'Staff';
-
-          setIsVipActive(isVip || admin || staff);
-          setIsAdmin(admin);
-          setIsStaff(staff);
-
-          // Real-time synchronization of Daily Reward readiness from profile snapshot
-          const lastClaimMs = getTimestampFromClaimDate(
-            data.lastClaimDate ? String(data.lastClaimDate) : undefined,
-            typeof data.lastLogin === 'number' ? data.lastLogin : (typeof data.lastClaimedTimestamp === 'number' ? data.lastClaimedTimestamp : undefined)
-          );
-          const cooldownRemaining = getRewardCooldown(lastClaimMs, data.lastClaimDate ? String(data.lastClaimDate) : undefined);
-          const rewardReady = lastClaimMs === 0 || cooldownRemaining === 0;
-          setIsDailyRewardReady(rewardReady);
         }
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, `userProfiles/${currentUser.uid}`);
-      });
-    } catch (err) {
-      console.warn('Failed to listen to profile changes:', err);
-    }
+      } catch (err) {
+        console.warn('Failed to poll latest profile from MongoDB:', err);
+      }
+    };
 
-    return () => unsub();
+    fetchLatestProfile();
+    const interval = setInterval(fetchLatestProfile, 15000);
+
+    const handleProfileUpdated = () => {
+      fetchLatestProfile();
+    };
+    window.addEventListener('gtavi_discord_linked', handleProfileUpdated);
+    window.addEventListener('gtavi_profile_updated', handleProfileUpdated);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener('gtavi_discord_linked', handleProfileUpdated);
+      window.removeEventListener('gtavi_profile_updated', handleProfileUpdated);
+    };
   }, [currentUser?.uid]);
 
   const fullCurrentUser = useMemo(() => {
     if (!currentUser) return null;
+    const localDiscordId = typeof window !== 'undefined' ? (localStorage.getItem('gtavi_discord_user_id') || undefined) : undefined;
+    const localDiscordUsername = typeof window !== 'undefined' ? (localStorage.getItem('gtavi_discord_username') || undefined) : undefined;
+
+    const resolvedDiscordId = userProfileRecord?.discordId || userProfileRecord?.claimedByDiscordId || userProfileRecord?.discordAuth?.discordId || userProfileRecord?.ownerDiscordId || localDiscordId || undefined;
+    const resolvedDiscordUsername = userProfileRecord?.discordUsername || userProfileRecord?.claimedByDiscordUsername || userProfileRecord?.discordTag || userProfileRecord?.discordAuth?.discordUsername || localDiscordUsername || undefined;
+    const isConnected = Boolean(userProfileRecord?.discordConnected || resolvedDiscordId || resolvedDiscordUsername);
+
+    const bestStreak = Math.max(
+      userProfileRecord?.dailyStreak || 0,
+      userProfileRecord?.rewardStreak || 0,
+      userProfileRecord?.streakCount || 0
+    );
+
     return {
       uid: currentUser.uid,
       displayName: currentUser.displayName || userProfileRecord?.username || userProfileRecord?.gamerTag || currentUser.email?.split('@')[0],
       email: currentUser.email || undefined,
-      discordUsername: userProfileRecord?.discordUsername || userProfileRecord?.discordTag || undefined,
-      discordId: userProfileRecord?.discordId || userProfileRecord?.ownerDiscordId || undefined,
-      discordConnected: Boolean(userProfileRecord?.discordUsername || userProfileRecord?.discordId),
-      gamerTag: userProfileRecord?.gamerTag || userProfileRecord?.username || undefined
+      discordUsername: resolvedDiscordUsername,
+      discordId: resolvedDiscordId,
+      discordConnected: isConnected,
+      gamerTag: userProfileRecord?.gamerTag || userProfileRecord?.username || undefined,
+      dailyStreak: bestStreak,
+      rewardStreak: bestStreak,
+      vcBalance: userProfileRecord?.vcBalance ?? userProfileRecord?.credits ?? 0
     };
   }, [currentUser, userProfileRecord]);
 
@@ -519,10 +459,15 @@ export default function App() {
     const handleGlobalRewardClaimed = () => {
       setIsDailyRewardReady(false);
       setHasDismissedRewardToast(true);
+      if (currentUser?.uid) {
+        try {
+          sessionStorage.setItem(`gtavi_reward_toast_dismissed_${currentUser.uid}`, 'true');
+        } catch (e) {}
+      }
     };
     window.addEventListener('gtavi_reward_claimed', handleGlobalRewardClaimed);
     return () => window.removeEventListener('gtavi_reward_claimed', handleGlobalRewardClaimed);
-  }, []);
+  }, [currentUser]);
 
   const handleDirectClaim = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent the outer click from changing tabs
@@ -530,21 +475,27 @@ export default function App() {
     setIsClaimingDaily(true);
     try {
       const res = await claimDailyReward(currentUser.uid);
+      setIsDailyRewardReady(false);
+      setHasDismissedRewardToast(true);
+      try {
+        sessionStorage.setItem(`gtavi_reward_toast_dismissed_${currentUser.uid}`, 'true');
+      } catch (e) {}
+
       if (res.success) {
-        setIsDailyRewardReady(false);
-        setHasDismissedRewardToast(true);
         // Dispatch event for real-time synchronization across tabs and components
         window.dispatchEvent(new CustomEvent('gtavi_reward_claimed', { detail: res }));
       } else {
         console.warn('Daily Reward Status:', res.message);
-        // Cooldown active or reward already claimed: dismiss toast immediately so popup disappears
-        setIsDailyRewardReady(false);
-        setHasDismissedRewardToast(true);
       }
     } catch (err: any) {
       console.error('Error claiming daily reward directly:', err);
       setIsDailyRewardReady(false);
       setHasDismissedRewardToast(true);
+      if (currentUser?.uid) {
+        try {
+          sessionStorage.setItem(`gtavi_reward_toast_dismissed_${currentUser.uid}`, 'true');
+        } catch (e) {}
+      }
     } finally {
       setIsClaimingDaily(false);
     }
@@ -558,35 +509,41 @@ export default function App() {
 
     const checkRewardExpiry = async () => {
       try {
+        const isDismissed = sessionStorage.getItem(`gtavi_reward_toast_dismissed_${currentUser.uid}`) === 'true';
         const rewardStatus = await checkUserRewardStatus(currentUser.uid);
-        setIsDailyRewardReady(rewardStatus.canClaim);
 
-        if (rewardStatus.canClaim && !hasDismissedRewardToast) {
-          // Send browser push notification if permitted
-          if (typeof window !== 'undefined' && 'Notification' in window) {
-            if (Notification.permission === 'granted') {
-              try {
-                new Notification('🎁 Vice City Daily Reward Ready!', {
-                  body: 'Your +50 Vice City Credits sign-in bonus is available to claim now!',
-                  icon: '/favicon.ico'
-                });
-              } catch (err) {
-                console.warn('Browser push notification error:', err);
-              }
-            } else if (Notification.permission !== 'denied') {
-              Notification.requestPermission().then((permission) => {
-                if (permission === 'granted') {
-                  try {
-                    new Notification('🎁 Vice City Daily Reward Ready!', {
-                      body: 'Your +50 Vice City Credits sign-in bonus is available to claim now!',
-                      icon: '/favicon.ico'
-                    });
-                  } catch (err) {
-                    console.warn('Browser push notification permission error:', err);
-                  }
-                }
+        if (!rewardStatus.canClaim || isDismissed) {
+          setIsDailyRewardReady(false);
+          setHasDismissedRewardToast(true);
+          return;
+        }
+
+        setIsDailyRewardReady(true);
+
+        // Send browser push notification if permitted
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            try {
+              new Notification('🎁 Vice City Daily Reward Ready!', {
+                body: 'Your +50 Vice City Credits sign-in bonus is available to claim now!',
+                icon: '/favicon.ico'
               });
+            } catch (err) {
+              console.warn('Browser push notification error:', err);
             }
+          } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then((permission) => {
+              if (permission === 'granted') {
+                try {
+                  new Notification('🎁 Vice City Daily Reward Ready!', {
+                    body: 'Your +50 Vice City Credits sign-in bonus is available to claim now!',
+                    icon: '/favicon.ico'
+                  });
+                } catch (err) {
+                  console.warn('Browser push notification permission error:', err);
+                }
+              }
+            });
           }
         }
       } catch (e) {
@@ -595,13 +552,13 @@ export default function App() {
     };
 
     checkRewardExpiry();
-  }, [currentUser, hasDismissedRewardToast]);
+  }, [currentUser]);
 
   // Notifications State
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const isInitialNotificationsLoadRef = useRef(true);
 
-  // Listen to User Notifications from Firestore
+  // Listen to User Notifications from MongoDB REST API
   useEffect(() => {
     if (!currentUser) {
       setNotifications([]);
@@ -611,92 +568,134 @@ export default function App() {
 
     isInitialNotificationsLoadRef.current = true;
     const userTag = currentUser.displayName || currentUser.email?.split('@')[0] || '';
-    const userTagLower = userTag.toLowerCase();
 
-    let unsub: () => void = () => {};
-    try {
-      // Query notifications targeted at user or global broadcast with limit
-      const targetIds = Array.from(new Set([currentUser.uid, userTag, userTagLower, 'ALL', 'PUBLIC_MEMBERS'])).filter(Boolean);
-      const q = query(
-        collection(db, 'userNotifications'),
-        where('targetUserId', 'in', targetIds),
-        limit(10)
-      );
-      unsub = onSnapshot(q, (snapshot) => {
-        const list: UserNotification[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...docSnap.data() } as UserNotification);
-        });
+    let isMounted = true;
+    let prevIds = new Set<string>();
 
-        // Sort: descending order of creation time
-        list.sort((a, b) => {
-          const timeA = a.createdAt || (a.timestamp ? new Date(a.timestamp).getTime() : 0);
-          const timeB = b.createdAt || (b.timestamp ? new Date(b.timestamp).getTime() : 0);
-          return timeB - timeA;
-        });
+    const fetchNotifications = async () => {
+      try {
+        const res = await fetch(`/api/user/notifications?uid=${encodeURIComponent(currentUser.uid)}&username=${encodeURIComponent(userTag)}`);
+        if (res.ok && isMounted) {
+          const payload = await res.json();
+          if (payload.success && Array.isArray(payload.data)) {
+            const rawList: UserNotification[] = payload.data;
 
-        // Deduplicate: only keep the most recent notification with a unique combination of title and message
-        const seenKeys = new Set<string>();
-        const uniqueList: UserNotification[] = [];
-        for (const item of list) {
-          const key = `${item.title.trim().toLowerCase()}_${item.message.trim().toLowerCase()}`;
-          if (!seenKeys.has(key)) {
-            seenKeys.add(key);
-            uniqueList.push(item);
-          }
-        }
+            // Load local read & deleted IDs for instant client consistency
+            const localReadIds = new Set<string>();
+            const localDeletedIds = new Set<string>();
+            try {
+              const storedReads = JSON.parse(localStorage.getItem(`read_notifs_${currentUser.uid}`) || '[]');
+              if (Array.isArray(storedReads)) storedReads.forEach((id: string) => localReadIds.add(id));
+              
+              const storedDeletes = JSON.parse(localStorage.getItem(`deleted_notifs_${currentUser.uid}`) || '[]');
+              if (Array.isArray(storedDeletes)) storedDeletes.forEach((id: string) => localDeletedIds.add(id));
+            } catch (e) {}
 
-        if (isInitialNotificationsLoadRef.current) {
-          isInitialNotificationsLoadRef.current = false;
-        } else {
-          let hasNewUnread = false;
-          snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added' && !change.doc.data().read) {
-              hasNewUnread = true;
+            // Deduplicate: only keep the most recent notification with a unique combination of title and message
+            const seenKeys = new Set<string>();
+            const uniqueList: UserNotification[] = [];
+            for (const item of rawList) {
+              if (item.id && localDeletedIds.has(item.id)) continue;
+
+              const isRead = Boolean(item.read || (item as any).isRead || (item.id && localReadIds.has(item.id)));
+              const normalizedItem = { ...item, read: isRead };
+
+              const key = `${(item.title || '').trim().toLowerCase()}_${(item.message || '').trim().toLowerCase()}`;
+              if (!seenKeys.has(key)) {
+                seenKeys.add(key);
+                uniqueList.push(normalizedItem);
+              }
             }
-          });
-          if (hasNewUnread) {
-            playNotificationChime();
+
+            if (isInitialNotificationsLoadRef.current) {
+              isInitialNotificationsLoadRef.current = false;
+              prevIds = new Set(uniqueList.map(n => n.id));
+            } else {
+              const hasNewUnread = uniqueList.some(n => !n.read && !prevIds.has(n.id));
+              if (hasNewUnread) {
+                playNotificationChime();
+              }
+              prevIds = new Set(uniqueList.map(n => n.id));
+            }
+
+            setNotifications(uniqueList);
           }
         }
+      } catch (err) {
+        console.warn('Failed to fetch notifications from MongoDB:', err);
+      }
+    };
 
-        setNotifications(uniqueList);
-      }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'userNotifications');
-      });
-    } catch (err) {
-      console.warn('Failed to setup notifications listener:', err);
-    }
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000);
 
-    return () => unsub();
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [currentUser]);
 
   const handleMarkAsRead = async (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    try {
-      await setDoc(doc(db, 'userNotifications', id), { read: true }, { merge: true });
-    } catch (err) {
-      console.warn('Could not mark notification as read:', err);
+    if (currentUser?.uid) {
+      const userTag = currentUser.displayName || currentUser.email?.split('@')[0] || '';
+
+      try {
+        const stored = JSON.parse(localStorage.getItem(`read_notifs_${currentUser.uid}`) || '[]');
+        const updated = Array.from(new Set([...stored, id]));
+        localStorage.setItem(`read_notifs_${currentUser.uid}`, JSON.stringify(updated));
+      } catch (e) {}
+
+      try {
+        await fetch('/api/user/notifications/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, uid: currentUser.uid, username: userTag })
+        });
+      } catch (err) {
+        console.warn('Could not mark notification as read:', err);
+      }
     }
   };
 
   const handleMarkAllAsRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    notifications.forEach(async (n) => {
-      if (!n.read) {
-        try {
-          await setDoc(doc(db, 'userNotifications', n.id), { read: true }, { merge: true });
-        } catch (err) {
-          console.warn('Could not mark notification read:', err);
-        }
+    if (currentUser?.uid) {
+      const userTag = currentUser.displayName || currentUser.email?.split('@')[0] || '';
+
+      try {
+        const stored = JSON.parse(localStorage.getItem(`read_notifs_${currentUser.uid}`) || '[]');
+        const allIds = notifications.map(n => n.id);
+        const updated = Array.from(new Set([...stored, ...allIds]));
+        localStorage.setItem(`read_notifs_${currentUser.uid}`, JSON.stringify(updated));
+      } catch (e) {}
+
+      try {
+        await fetch('/api/user/notifications/read-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: currentUser.uid, username: userTag })
+        });
+      } catch (err) {
+        console.warn('Could not mark all notifications as read:', err);
       }
-    });
+    }
   };
 
   const handleDeleteNotification = async (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
+    if (currentUser?.uid) {
+      try {
+        const stored = JSON.parse(localStorage.getItem(`deleted_notifs_${currentUser.uid}`) || '[]');
+        const updated = Array.from(new Set([...stored, id]));
+        localStorage.setItem(`deleted_notifs_${currentUser.uid}`, JSON.stringify(updated));
+      } catch (e) {}
+    }
+
     try {
-      await deleteDoc(doc(db, 'userNotifications', id));
+      await fetch(`/api/user/notifications/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
     } catch (err) {
       console.warn('Could not delete notification:', err);
     }
@@ -704,31 +703,36 @@ export default function App() {
 
   const handleApproveJoinRequest = async (channelId: string, requesterName: string) => {
     try {
-      const chanRef = doc(db, 'customChannels', channelId);
-      const chanSnap = await getDoc(chanRef);
-      if (chanSnap.exists()) {
-        const data = chanSnap.data();
+      const chanRes = await fetch(`/api/admin/cms/customChannels/${encodeURIComponent(channelId)}`);
+      if (chanRes.ok) {
+        const data = await chanRes.json();
         const members = Array.isArray(data.members) ? data.members : [];
         const pending = Array.isArray(data.pendingRequests) ? data.pendingRequests : [];
 
         if (!members.includes(requesterName)) members.push(requesterName);
         const updatedPending = pending.filter((m: string) => m !== requesterName);
 
-        await setDoc(chanRef, {
-          members,
-          pendingRequests: updatedPending,
-          updatedAt: Date.now()
-        }, { merge: true });
+        await fetch(`/api/admin/cms/customChannels/${encodeURIComponent(channelId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...data,
+            members,
+            pendingRequests: updatedPending,
+            updatedAt: Date.now()
+          })
+        });
 
         // Update notification metadata status
         const reqNotif = notifications.find(
           n => n.type === 'channel_join_request' && n.metadata?.channelId === channelId && n.metadata?.requesterName === requesterName
         );
         if (reqNotif) {
-          await setDoc(doc(db, 'userNotifications', reqNotif.id), {
-            metadata: { ...reqNotif.metadata, status: 'approved' },
-            read: true
-          }, { merge: true });
+          await fetch('/api/user/notifications/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: reqNotif.id })
+          });
         }
       }
     } catch (err) {
@@ -738,26 +742,31 @@ export default function App() {
 
   const handleDeclineJoinRequest = async (channelId: string, requesterName: string) => {
     try {
-      const chanRef = doc(db, 'customChannels', channelId);
-      const chanSnap = await getDoc(chanRef);
-      if (chanSnap.exists()) {
-        const data = chanSnap.data();
+      const chanRes = await fetch(`/api/admin/cms/customChannels/${encodeURIComponent(channelId)}`);
+      if (chanRes.ok) {
+        const data = await chanRes.json();
         const pending = Array.isArray(data.pendingRequests) ? data.pendingRequests : [];
         const updatedPending = pending.filter((m: string) => m !== requesterName);
 
-        await setDoc(chanRef, {
-          pendingRequests: updatedPending,
-          updatedAt: Date.now()
-        }, { merge: true });
+        await fetch(`/api/admin/cms/customChannels/${encodeURIComponent(channelId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...data,
+            pendingRequests: updatedPending,
+            updatedAt: Date.now()
+          })
+        });
 
         const reqNotif = notifications.find(
           n => n.type === 'channel_join_request' && n.metadata?.channelId === channelId && n.metadata?.requesterName === requesterName
         );
         if (reqNotif) {
-          await setDoc(doc(db, 'userNotifications', reqNotif.id), {
-            metadata: { ...reqNotif.metadata, status: 'declined' },
-            read: true
-          }, { merge: true });
+          await fetch('/api/user/notifications/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: reqNotif.id })
+          });
         }
       }
     } catch (err) {
@@ -777,14 +786,27 @@ export default function App() {
 
     if (currentUser) {
       try {
-        const userDocRef = doc(db, 'userProfiles', currentUser.uid);
-        const existingSnap = await getDoc(userDocRef);
-        const existingData = existingSnap.data() || {};
-        const oldRole = existingData.role || 'User';
-        const oldVc = typeof existingData.vcBalance === 'number' ? existingData.vcBalance : 0;
-        const finalVc = Math.max(oldVc, targetVc);
+        let existingData: any = {};
+        let oldRole = 'User';
+        let oldVc = 0;
 
-        await setDoc(userDocRef, {
+        // Fetch existing data from MongoDB profile API first
+        try {
+          const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+          if (apiRes.ok) {
+            const payload = await apiRes.json();
+            if (payload.success && payload.data) {
+              existingData = payload.data;
+              oldRole = existingData.role || 'User';
+              oldVc = typeof existingData.vcBalance === 'number' ? existingData.vcBalance : 0;
+            }
+          }
+        } catch (apiErr) {
+          console.warn('MongoDB profile fetch failed in grant admin, using local fallbacks:', apiErr);
+        }
+
+        const finalVc = Math.max(oldVc, targetVc);
+        const updatePayload = {
           uid: currentUser.uid,
           role: targetRole,
           isAdmin: targetRole === 'Admin',
@@ -795,7 +817,17 @@ export default function App() {
           vcBalance: finalVc,
           credits: finalVc,
           updatedAt: new Date().toISOString()
-        }, { merge: true });
+        };
+
+        // Save via POST to MongoDB profile API
+        await fetch('/api/user/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatePayload)
+        });
+
+        // Update local user profile state
+        setUserProfileRecord((prev: any) => ({ ...prev, ...updatePayload }));
 
         await logStaffActivity({
           actionType: 'USER_ROLE_CHANGE',
@@ -804,7 +836,7 @@ export default function App() {
           targetName: `@${existingData.username || currentUser.displayName || 'Admin_User'}`,
           targetType: 'user',
           severity: 'CRITICAL',
-          details: `Administrative passkey authorization granted ${targetRole} (${targetClearance}) clearance level to @${existingData.username || currentUser.displayName || 'Admin_User'} (${currentUser.email || 'MohdOwais762@gmail.com'}). VC balance set to ${finalVc.toLocaleString()} VC.`,
+          details: `Administrative passkey authorization granted ${targetRole} (${targetClearance}) clearance level to @${existingData.username || currentUser.displayName || 'Admin_User'} (${currentUser.email || 'authorized_admin'}). VC balance set to ${finalVc.toLocaleString()} VC.`,
           changes: [
             { field: 'role', oldValue: oldRole, newValue: targetRole, fieldLabel: 'Account Role' },
             { field: 'clearanceLevel', oldValue: existingData.clearanceLevel || 'Member', newValue: targetClearance, fieldLabel: 'Clearance Level' },
@@ -812,14 +844,14 @@ export default function App() {
           ],
           actorOverride: {
             actorId: currentUser.uid,
-            actorEmail: currentUser.email || 'MohdOwais762@gmail.com',
+            actorEmail: currentUser.email || 'admin@vicecity.app',
             actorUsername: existingData.username || (targetRole === 'Admin' ? 'Admin_L4_Lucia' : 'Staff_L3_Marco'),
             actorRole: targetRole,
             actorClearance: targetClearance
           }
         });
       } catch (err) {
-        console.warn('Firestore staff doc update note (operating with local state):', err);
+        console.warn('MongoDB staff update exception (operating with local state):', err);
       }
       setIsAdmin(targetRole === 'Admin');
       setIsStaff(true);
@@ -844,7 +876,7 @@ export default function App() {
       }
       if (userCred?.user) {
         try {
-          await setDoc(doc(db, 'userProfiles', userCred.user.uid), {
+          const updatePayload = {
             uid: userCred.user.uid,
             username: targetRole === 'Admin' ? 'Admin_L4_Lucia' : 'Staff_L3_Marco',
             usernameLower: targetRole === 'Admin' ? 'admin_l4_lucia' : 'staff_l3_marco',
@@ -860,7 +892,14 @@ export default function App() {
             credits: targetVc,
             status: 'Active',
             updatedAt: new Date().toISOString()
-          }, { merge: true });
+          };
+
+          // Save fallback Admin credentials via MongoDB profile API
+          await fetch('/api/user/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatePayload)
+          });
 
           await logStaffActivity({
             actionType: 'USER_ROLE_CHANGE',
@@ -884,7 +923,7 @@ export default function App() {
             }
           });
         } catch (err) {
-          console.warn('Firestore staff signup doc creation note:', err);
+          console.warn('MongoDB staff signup creation exception:', err);
         }
       }
       setIsAdmin(targetRole === 'Admin');
@@ -907,9 +946,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-rose-500 selection:text-white overflow-x-hidden max-w-full">
-      {/* Firestore Quota Exceeded Notification Banner */}
-      <FirestoreQuotaBanner />
-
       {/* Context-Aware Third-Party Ad Script Injector */}
       <AdScriptLoader user={{ isVip: isVipActive, isAdmin, isStaff }} />
 
@@ -1024,6 +1060,7 @@ export default function App() {
                       }
                     : null
                 }
+                isVipActive={isVipActive}
                 onOpenAuthModal={() => setIsAuthOpen(true)}
                 onSelectVehicle={async (slug) => {
                   const storedVehicles = await getCachedVehicles();
@@ -1131,7 +1168,9 @@ export default function App() {
                   displayName: currentUser.displayName || currentUser.email?.split('@')[0],
                   email: currentUser.email || undefined,
                   isAdmin,
-                  isStaff
+                  isStaff,
+                  discordUsername: fullCurrentUser?.discordUsername,
+                  discordId: fullCurrentUser?.discordId
                 } : null}
                 onOpenAuth={() => setIsAuthOpen(true)}
               />
@@ -1511,19 +1550,16 @@ export default function App() {
       />
 
       {/* Quick 1-Click Floating Report Trigger */}
-      <div className="fixed bottom-5 left-5 z-40 hidden sm:block">
+      <div className={`fixed bottom-4 left-4 z-40 transition-all ${activeTab === 'handling-editor' ? 'hidden' : 'hidden sm:block'}`}>
         <button
           onClick={() => setIsReportModalOpen(true)}
-          className="group flex items-center gap-2 px-3 py-2 bg-zinc-900/90 hover:bg-zinc-850 text-zinc-300 hover:text-white border border-zinc-700/80 hover:border-rose-500/50 rounded-2xl shadow-xl backdrop-blur-md text-xs font-bold transition-all duration-200 cursor-pointer shadow-black/40 hover:shadow-rose-500/10"
+          className="group flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900/95 hover:bg-zinc-850 text-zinc-300 hover:text-white border border-zinc-700/80 hover:border-rose-500/50 rounded-full shadow-xl backdrop-blur-md text-xs font-bold transition-all duration-200 cursor-pointer shadow-black/50 hover:shadow-rose-500/10 active:scale-95"
           title="Report a bug, error or issue with 1-click screenshot capture"
         >
-          <div className="p-1 rounded-lg bg-rose-500/15 text-rose-400 group-hover:bg-rose-500 group-hover:text-white transition">
+          <div className="p-1 rounded-full bg-rose-500/15 text-rose-400 group-hover:bg-rose-500 group-hover:text-white transition">
             <Bug className="w-3.5 h-3.5" />
           </div>
-          <span className="text-[11px] font-mono">Report Bug</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-zinc-800 text-zinc-400 group-hover:text-rose-300 group-hover:bg-rose-950/60 border border-zinc-700">
-            📸
-          </span>
+          <span className="text-[11px] font-mono pr-1">Report Bug</span>
         </button>
       </div>
 
@@ -1532,7 +1568,13 @@ export default function App() {
         <div 
           onClick={() => {
             setProfileSubTab('daily-reward');
+            setIsDailyRewardReady(false);
             setHasDismissedRewardToast(true);
+            if (currentUser?.uid) {
+              try {
+                sessionStorage.setItem(`gtavi_reward_toast_dismissed_${currentUser.uid}`, 'true');
+              } catch (e) {}
+            }
             handleTabChange('profile');
           }}
           className="fixed bottom-6 right-6 z-50 max-w-md bg-zinc-950/95 border border-emerald-500/60 p-4 rounded-2xl shadow-2xl backdrop-blur-md flex items-center justify-between gap-4 animate-bounce shadow-emerald-500/20 cursor-pointer hover:border-emerald-400 hover:bg-zinc-900/95 transition-all group"
@@ -1558,7 +1600,13 @@ export default function App() {
             <button
               onClick={(e) => {
                 e.stopPropagation(); // Prevent trigger tab navigation
+                setIsDailyRewardReady(false);
                 setHasDismissedRewardToast(true);
+                if (currentUser?.uid) {
+                  try {
+                    sessionStorage.setItem(`gtavi_reward_toast_dismissed_${currentUser.uid}`, 'true');
+                  } catch (err) {}
+                }
               }}
               className="text-zinc-500 hover:text-zinc-300 text-xs font-bold p-1 cursor-pointer"
               title="Dismiss"
@@ -1577,6 +1625,11 @@ export default function App() {
           onOpenOfflineSync={() => setIsOfflineSyncOpen(true)}
         />
       )}
+
+      {/* Global Cookie & Privacy Consent Banner */}
+      <CookieConsentBanner
+        onNavigatePrivacy={() => handleTabChange('privacy')}
+      />
 
 
     </div>

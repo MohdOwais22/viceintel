@@ -32,7 +32,8 @@ import {
   saveFormConfig, 
   sendDiscordNotification, 
   DEFAULT_WHITELIST_QUESTIONS,
-  normalizeServerSlug
+  normalizeServerSlug,
+  checkSlugAvailabilityApi
 } from '../../lib/whitelist-service';
 import { copyToClipboard } from '../../lib/copyUtils';
 import { isDiscordSnowflakeValid, isDiscordWebhookUrlValid } from '../ServerOnboardingWizard';
@@ -49,6 +50,8 @@ interface ServerManageFormTabProps {
     email?: string;
     isAdmin?: boolean;
     isStaff?: boolean;
+    discordUsername?: string;
+    discordId?: string;
   } | null;
   onOpenAuth?: () => void;
 }
@@ -95,8 +98,8 @@ export const ServerManageFormTab: React.FC<ServerManageFormTabProps> = ({
     s => s.id === serverSlug || normalizeServerSlug(s.name) === normalizeServerSlug(serverSlug)
   );
 
-  const userDiscordId = (typeof window !== 'undefined' ? localStorage.getItem('gtavi_discord_user_id') : null);
-  const userDiscordUsername = (typeof window !== 'undefined' ? localStorage.getItem('gtavi_discord_username') : null);
+  const userDiscordId = currentUser?.discordId || (typeof window !== 'undefined' ? localStorage.getItem('gtavi_discord_user_id') : null);
+  const userDiscordUsername = currentUser?.discordUsername || (typeof window !== 'undefined' ? localStorage.getItem('gtavi_discord_username') : null);
 
   // Check if current authenticated user is the registered Server Owner of this specific server
   const isServerOwner = Boolean(
@@ -120,6 +123,53 @@ export const ServerManageFormTab: React.FC<ServerManageFormTabProps> = ({
 
   // Strict authorization: ONLY L4 Global Admins OR verified paid Server Owners can edit/manage the form builder
   const hasManageAccess = isL4Admin || (isServerOwner && isVerifiedPayment);
+
+  // Portal URL slug checking state
+  const [slugStatus, setSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [slugError, setSlugError] = useState<string>('');
+
+  useEffect(() => {
+    if (!config.serverSlug) {
+      setSlugStatus('idle');
+      setSlugError('');
+      return;
+    }
+
+    if (config.serverSlug === normalizeServerSlug(serverSlug)) {
+      // It's the current slug of this server, so it is definitely available/fine
+      setSlugStatus('available');
+      setSlugError('');
+      return;
+    }
+
+    setSlugStatus('checking');
+    setSlugError('');
+
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const res = await checkSlugAvailabilityApi(
+          config.serverSlug,
+          currentUser?.uid || undefined,
+          currentUser?.email || undefined
+        );
+        if (res.available) {
+          setSlugStatus('available');
+          setSlugError('');
+        } else if (res.taken) {
+          setSlugStatus('taken');
+          setSlugError(res.error || 'This slug is already claimed by another server.');
+        } else {
+          setSlugStatus('invalid');
+          setSlugError(res.error || 'Invalid slug format.');
+        }
+      } catch (err: any) {
+        setSlugStatus('idle');
+        console.warn('Slug check error:', err);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounce);
+  }, [config.serverSlug, serverSlug, currentUser]);
 
   // Load Form Config & Check Stripe Return Params on Mount
   useEffect(() => {
@@ -247,10 +297,30 @@ export const ServerManageFormTab: React.FC<ServerManageFormTabProps> = ({
   };
 
   const handleSave = async () => {
+    if (slugStatus === 'taken') {
+      alert(`⚠️ Cannot save: ${slugError || 'This public URL slug is already claimed.'}`);
+      return;
+    }
+    if (slugStatus === 'invalid') {
+      alert(`⚠️ Cannot save: ${slugError || 'Please fix the public URL slug format.'}`);
+      return;
+    }
+
     setSaving(true);
     setSaveSuccess(false);
 
     try {
+      if (config.serverSlug && config.serverSlug !== normalizeServerSlug(serverSlug)) {
+        const slugCheck = await checkSlugAvailabilityApi(
+          config.serverSlug,
+          currentUser?.uid || undefined,
+          currentUser?.email || undefined
+        );
+        if (!slugCheck.available) {
+          throw new Error(slugCheck.error || 'This public URL slug is taken by another community.');
+        }
+      }
+
       const result = await saveFormConfig(
         {
           ...config,
@@ -1286,8 +1356,37 @@ export const ServerManageFormTab: React.FC<ServerManageFormTabProps> = ({
                     type="text"
                     value={config.serverSlug}
                     onChange={(e) => setConfig({ ...config, serverSlug: normalizeServerSlug(e.target.value) })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-mono focus:border-indigo-500 focus:outline-none"
+                    className={`w-full bg-zinc-950 border rounded-xl p-3 text-xs text-white font-mono focus:outline-none ${
+                      slugStatus === 'available' ? 'border-emerald-500/50 focus:border-emerald-500' :
+                      slugStatus === 'taken' ? 'border-rose-500/50 focus:border-rose-500' :
+                      slugStatus === 'invalid' ? 'border-amber-500/50 focus:border-amber-500' :
+                      'border-zinc-800 focus:border-indigo-500'
+                    }`}
                   />
+                </div>
+                {/* Visual Status Indicator */}
+                <div className="mt-1.5 min-h-[18px] flex items-center">
+                  {slugStatus === 'checking' && (
+                    <span className="text-[11px] text-zinc-400 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+                      Checking availability...
+                    </span>
+                  )}
+                  {slugStatus === 'available' && (
+                    <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                      ✓ Slug is available!
+                    </span>
+                  )}
+                  {slugStatus === 'taken' && (
+                    <span className="text-[11px] text-rose-400 font-medium flex items-center gap-1">
+                      ✗ Taken: {slugError || 'This slug is already claimed.'}
+                    </span>
+                  )}
+                  {slugStatus === 'invalid' && (
+                    <span className="text-[11px] text-amber-400 font-medium flex items-center gap-1">
+                      ⚠️ {slugError || 'Invalid format.'}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

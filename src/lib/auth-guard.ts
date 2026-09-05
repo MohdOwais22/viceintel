@@ -49,13 +49,7 @@ export async function validateServerOwnerSubscription(
   }
 
   // Admin / Superuser override for platform administrators
-  const isSuperAdmin = Boolean(
-    isAdmin ||
-    (userEmail && (
-      userEmail.toLowerCase() === 'admin@vicecity.app' ||
-      userEmail.toLowerCase() === 'l4_admin@vicecity.app'
-    ))
-  );
+  const isSuperAdmin = Boolean(isAdmin);
 
   let serverData: any = null;
   let serverDocId: string | null = null;
@@ -83,28 +77,6 @@ export async function validateServerOwnerSubscription(
         if (!qServerSlugSnap.empty) {
           serverData = qServerSlugSnap.docs[0].data();
           serverDocId = qServerSlugSnap.docs[0].id;
-        } else {
-          // Fallback check in `rpServers` collection
-          const rpRef = doc(db, 'rpServers', serverSlug);
-          const rpSnap = await getDoc(rpRef);
-          if (rpSnap.exists()) {
-            serverData = rpSnap.data();
-            serverDocId = rpSnap.id;
-          } else {
-            const rpQ = query(collection(db, 'rpServers'), where('slug', '==', serverSlug));
-            const rpQSnap = await getDocs(rpQ);
-            if (!rpQSnap.empty) {
-              serverData = rpQSnap.docs[0].data();
-              serverDocId = rpQSnap.docs[0].id;
-            } else {
-              const rpQ2 = query(collection(db, 'rpServers'), where('serverSlug', '==', serverSlug));
-              const rpQ2Snap = await getDocs(rpQ2);
-              if (!rpQ2Snap.empty) {
-                serverData = rpQ2Snap.docs[0].data();
-                serverDocId = rpQ2Snap.docs[0].id;
-              }
-            }
-          }
         }
       }
     }

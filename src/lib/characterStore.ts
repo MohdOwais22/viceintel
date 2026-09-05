@@ -42,6 +42,7 @@ function sortCharacters(chars: Character[]): Character[] {
 export const characterBundleEngine = new BundledStoreEngine<Character>({
   bundleCollection: 'character_gallery_bundles',
   bundleDocId: 'master_character_bundle',
+  apiCollection: 'characters',
   storageKey: 'gtavi_cached_characters_gallery',
   updateEventName: CHARACTERS_UPDATED_EVENT,
   defaultItems: CHARACTERS_DATA,
