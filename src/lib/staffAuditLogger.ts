@@ -1,17 +1,4 @@
 import {
-  collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  limit,
-  orderBy,
-  getDocs
-} from 'firebase/firestore';
-import { db, auth } from './firebase';
-import { safeFirestoreWrite, markFirestoreQuotaExhausted, isResourceExhaustedError } from './firebase/firestoreCircuitBreaker';
-import {
   StaffAuditLog,
   StaffActionType,
   StaffActionCategory,
@@ -20,6 +7,7 @@ import {
   UserRole
 } from '../types';
 import { isAdminUser, isStaffUser } from './rbac';
+import { auth } from './firebase';
 
 export const STAFF_LOGS_COLLECTION = 'staff_activity_logs';
 
@@ -268,25 +256,7 @@ export interface LogStaffActivityParams {
 }
 
 /**
- * Sanitizes an object for Firestore to avoid "undefined" property write errors
- */
-function sanitizeFirestorePayload<T extends Record<string, any>>(obj: T): T {
-  const clean: Record<string, any> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value === undefined) continue;
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      clean[key] = sanitizeFirestorePayload(value);
-    } else if (Array.isArray(value)) {
-      clean[key] = value.map(item => (typeof item === 'object' && item !== null ? sanitizeFirestorePayload(item) : item));
-    } else {
-      clean[key] = value;
-    }
-  }
-  return clean as T;
-}
-
-/**
- * Logs an activity performed by an L3 Staff member or L4 Admin to Firestore and server ledger
+ * Logs an activity performed by an L3 Staff member or L4 Admin to MongoDB single source of truth
  */
 export async function logStaffActivity(params: LogStaffActivityParams): Promise<StaffAuditLog> {
   const now = new Date();
@@ -299,7 +269,7 @@ export async function logStaffActivity(params: LogStaffActivityParams): Promise<
   const isL4 = isAdminUser(params.actorOverride?.actorRole, currentEmail);
   const isL3 = isStaffUser(params.actorOverride?.actorRole, currentEmail);
 
-  const actorRole: UserRole = params.actorOverride?.actorRole as UserRole || (isL4 ? 'Admin' : (isL3 ? 'Staff' : 'Staff'));
+  const actorRole: UserRole = (params.actorOverride?.actorRole as UserRole) || (isL4 ? 'Admin' : (isL3 ? 'Staff' : 'Staff'));
   const actorClearance: 'L3' | 'L4' = isL4 ? 'L4' : 'L3';
   const actorUsername = params.actorOverride?.actorUsername ||
     currentAuthUser?.displayName ||
@@ -346,124 +316,113 @@ export async function logStaffActivity(params: LogStaffActivityParams): Promise<
     l4ReviewNote: isL4 ? 'Executed directly by Level 4 Administrator.' : undefined
   };
 
-  const sanitized = sanitizeFirestorePayload(logEntry);
-
-  // 1. Persist directly to Firestore collection
-  await safeFirestoreWrite(async () => {
-    const docRef = doc(db, STAFF_LOGS_COLLECTION, logId);
-    await setDoc(docRef, sanitized, { merge: true });
-    console.log(`[StaffAuditLogger] Persisted ${params.actionType} by ${actorUsername} (${actorClearance}) to Firestore.`);
-  });
-
-  // 2. Sync to Server REST API endpoint
+  // Cache locally
   try {
-    fetch('/api/admin/staff-logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sanitized)
-    }).catch(() => {});
-  } catch (apiErr) {
-    // Non-blocking background sync
+    const cached = localStorage.getItem('gtavi_staff_audit_logs');
+    const logsList: StaffAuditLog[] = cached ? JSON.parse(cached) : [];
+    logsList.unshift(logEntry);
+    localStorage.setItem('gtavi_staff_audit_logs', JSON.stringify(logsList.slice(0, 500)));
+  } catch {}
+
+  // Dispatch custom event for immediate UI updates
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('gtavi_staff_log_created', { detail: logEntry }));
   }
 
-  return sanitized;
+  // Persist directly to MongoDB via REST API (Single source of truth)
+  try {
+    await fetch('/api/admin/staff-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(logEntry)
+    });
+  } catch (apiErr) {
+    console.warn('[StaffAuditLogger] Error sending staff log to server:', apiErr);
+  }
+
+  return logEntry;
 }
 
 /**
- * Subscribes in real-time to Staff Activity Logs from Firestore (L4 Admin Only)
+ * Subscribes to Staff Activity Logs from MongoDB (L4 Admin Only) using API polling & event hooks
  */
 export function subscribeToStaffAuditLogs(
   onUpdate: (logs: StaffAuditLog[]) => void,
   maxLimit = 150
 ): () => void {
-  try {
-    const q = query(
-      collection(db, STAFF_LOGS_COLLECTION),
-      limit(maxLimit)
-    );
+  let isMounted = true;
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const fsLogs: StaffAuditLog[] = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data();
-            return {
-              id: docSnap.id,
-              timestamp: data.timestamp || new Date().toISOString(),
-              timestampMs: data.timestampMs || (data.timestamp ? new Date(data.timestamp).getTime() : Date.now()),
-              actorId: data.actorId || 'unknown_staff',
-              actorEmail: data.actorEmail || 'staff@vicecity.app',
-              actorUsername: data.actorUsername || 'Staff Member',
-              actorRole: data.actorRole || 'Staff',
-              actorClearance: data.actorClearance || 'L3',
-              actionType: data.actionType || 'USER_EDIT',
-              actionCategory: data.actionCategory || 'User Management',
-              targetId: data.targetId,
-              targetName: data.targetName,
-              targetType: data.targetType,
-              severity: data.severity || 'LOW',
-              details: data.details || 'Staff activity recorded.',
-              changes: Array.isArray(data.changes) ? data.changes : undefined,
-              metadata: data.metadata,
-              isReviewedByL4: Boolean(data.isReviewedByL4),
-              reviewedAt: data.reviewedAt,
-              reviewedBy: data.reviewedBy,
-              l4ReviewNote: data.l4ReviewNote,
-              ipAddress: data.ipAddress
-            };
-          });
-
-          // Merge with initial demo seed to prevent empty ledger on fresh deployments
-          const mergedMap = new Map<string, StaffAuditLog>();
-          INITIAL_STAFF_AUDIT_LOGS.forEach(l => mergedMap.set(l.id, l));
-          fsLogs.forEach(l => mergedMap.set(l.id, l));
-
-          const sorted = Array.from(mergedMap.values()).sort((a, b) => b.timestampMs - a.timestampMs);
+  const fetchLogsFromMongo = async () => {
+    try {
+      const res = await fetch(`/api/admin/staff-logs?limit=${maxLimit}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.logs) && isMounted) {
+          const sorted = [...data.logs].sort((a, b) => (b.timestampMs || 0) - (a.timestampMs || 0));
           onUpdate(sorted);
-        } else {
-          // If Firestore is empty, show initial template logs in memory without firing auto-seeding writes
-          onUpdate(INITIAL_STAFF_AUDIT_LOGS);
+          try {
+            localStorage.setItem('gtavi_staff_audit_logs', JSON.stringify(sorted.slice(0, maxLimit)));
+          } catch {}
+          return;
         }
-      },
-      (error) => {
-        if (isResourceExhaustedError(error)) {
-          markFirestoreQuotaExhausted(error);
-        } else {
-          console.warn('[StaffAuditLogger] Real-time snapshot listener error, falling back to REST API:', error);
-        }
-        // REST API Fallback
-        fetch('/api/admin/staff-logs')
-          .then(res => res.json())
-          .then(data => {
-            if (data.success && Array.isArray(data.logs)) {
-              onUpdate(data.logs);
-            } else {
-              onUpdate(INITIAL_STAFF_AUDIT_LOGS);
-            }
-          })
-          .catch(() => {
-            onUpdate(INITIAL_STAFF_AUDIT_LOGS);
-          });
       }
-    );
+    } catch (err) {
+      console.debug('[StaffAuditLogger] Fetch notice:', err);
+    }
 
-    return unsubscribe;
-  } catch (err) {
-    console.warn('[StaffAuditLogger] Error initializing Firestore subscription:', err);
-    onUpdate(INITIAL_STAFF_AUDIT_LOGS);
-    return () => {};
+    // Fallback to local cache or initial seeds
+    if (isMounted) {
+      try {
+        const cached = localStorage.getItem('gtavi_staff_audit_logs');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            onUpdate(parsed);
+            return;
+          }
+        }
+      } catch {}
+      onUpdate(INITIAL_STAFF_AUDIT_LOGS);
+    }
+  };
+
+  // Initial load
+  fetchLogsFromMongo();
+
+  // Poll every 8 seconds for real-time updates from MongoDB
+  const intervalId = setInterval(fetchLogsFromMongo, 8000);
+
+  // Listen for local creation & update events
+  const handleLocalLog = () => {
+    fetchLogsFromMongo();
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('gtavi_staff_log_created', handleLocalLog);
+    window.addEventListener('gtavi_staff_log_updated', handleLocalLog);
   }
+
+  return () => {
+    isMounted = false;
+    clearInterval(intervalId);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('gtavi_staff_log_created', handleLocalLog);
+      window.removeEventListener('gtavi_staff_log_updated', handleLocalLog);
+    }
+  };
 }
 
 /**
- * Seeds initial demo logs into Firestore if needed
+ * Seeds initial demo logs into MongoDB if needed
  */
 export async function seedInitialStaffAuditLogs(): Promise<void> {
   try {
     for (const log of INITIAL_STAFF_AUDIT_LOGS) {
-      const docRef = doc(db, STAFF_LOGS_COLLECTION, log.id);
-      await setDoc(docRef, sanitizeFirestorePayload(log), { merge: true });
+      await fetch('/api/admin/staff-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(log)
+      });
     }
   } catch (err) {
     console.warn('[StaffAuditLogger] Seed initial logs notice:', err);
@@ -471,7 +430,7 @@ export async function seedInitialStaffAuditLogs(): Promise<void> {
 }
 
 /**
- * L4 Super Administrator review & verification action
+ * L4 Super Administrator review & verification action on MongoDB
  */
 export async function reviewStaffAuditLog(
   logId: string,
@@ -489,11 +448,19 @@ export async function reviewStaffAuditLog(
   };
 
   try {
-    const docRef = doc(db, STAFF_LOGS_COLLECTION, logId);
-    await setDoc(docRef, updatePayload, { merge: true });
-  } catch (err) {
-    console.warn('[StaffAuditLogger] Firestore review update error:', err);
-  }
+    const cached = localStorage.getItem('gtavi_staff_audit_logs');
+    if (cached) {
+      const logsList: StaffAuditLog[] = JSON.parse(cached);
+      const idx = logsList.findIndex(l => l.id === logId);
+      if (idx !== -1) {
+        logsList[idx] = { ...logsList[idx], ...updatePayload };
+        localStorage.setItem('gtavi_staff_audit_logs', JSON.stringify(logsList));
+      }
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gtavi_staff_log_updated', { detail: { logId, ...updatePayload } }));
+    }
+  } catch {}
 
   try {
     await fetch(`/api/admin/staff-logs/${logId}/review`, {
@@ -502,25 +469,32 @@ export async function reviewStaffAuditLog(
       body: JSON.stringify(updatePayload)
     });
   } catch (e) {
-    // Non-blocking
+    console.warn('[StaffAuditLogger] Error reviewing log in MongoDB:', e);
   }
 }
 
 /**
- * Purges a specific audit log from Firestore (L4 Admin Only)
+ * Purges a specific audit log from MongoDB (L4 Admin Only)
  */
 export async function purgeStaffAuditLog(logId: string): Promise<void> {
   try {
-    await deleteDoc(doc(db, STAFF_LOGS_COLLECTION, logId));
-  } catch (err) {
-    console.warn('[StaffAuditLogger] Firestore log delete error:', err);
-  }
+    const cached = localStorage.getItem('gtavi_staff_audit_logs');
+    if (cached) {
+      const logsList: StaffAuditLog[] = JSON.parse(cached);
+      localStorage.setItem('gtavi_staff_audit_logs', JSON.stringify(logsList.filter(l => l.id !== logId)));
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gtavi_staff_log_updated', { detail: { logId, deleted: true } }));
+    }
+  } catch {}
 
   try {
     await fetch(`/api/admin/staff-logs/${logId}`, {
       method: 'DELETE'
     });
-  } catch (e) {}
+  } catch (e) {
+    console.warn('[StaffAuditLogger] Error deleting log from MongoDB:', e);
+  }
 }
 
 /**

@@ -356,12 +356,32 @@ export const EconomyBalancerTab: React.FC<EconomyBalancerTabProps> = ({
       const docRef = doc(db, 'economy_presets', newPresetId);
       await setDoc(docRef, newPreset);
 
-      // 2. Grant +100 VC balance bonus in user profile
+      // 2. Grant +100 VC balance bonus in user profile (MongoDB)
       try {
-        const userDocRef = doc(db, 'userProfiles', userId);
-        await updateDoc(userDocRef, {
-          vcBalance: increment(100)
+        let curVc = 0;
+        try {
+          const pRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(userId)}`);
+          if (pRes.ok) {
+            const uData = (await pRes.json()).data;
+            if (uData && typeof uData.vcBalance === 'number') curVc = uData.vcBalance;
+          }
+        } catch {}
+
+        const newBal = curVc + 100;
+        await fetch('/api/user/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: userId, vcBalance: newBal })
         });
+
+        try {
+          localStorage.setItem(`gtavi_vcBalance_${userId}`, String(newBal));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('gtavi_profile_updated', {
+              detail: { uid: userId, vcBalance: newBal }
+            }));
+          }
+        } catch {}
       } catch (vcErr) {
         console.warn('Could not increment VC balance bonus:', vcErr);
       }

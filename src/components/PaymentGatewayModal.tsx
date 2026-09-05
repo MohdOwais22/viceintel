@@ -607,28 +607,29 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
       const createdAt = new Date().toISOString();
       const recipientName = checkoutPackage.isGift ? recipientGamerTag.trim() : (currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Vice Squad Gamer');
 
-      // Update Firestore based on item type
-      if (db && currentUser?.uid) {
+      // Update MongoDB and collections based on item type
+      if (currentUser?.uid) {
         if (checkoutPackage.itemType === 'vip_pass') {
-          const userRef = doc(db, 'userProfiles', currentUser.uid);
           let baseStartMs = Date.now();
           let currentVcBalance = 0;
           let userRole = 'VIP Member';
           let clearance = 'L2';
 
           try {
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-              const uData = userSnap.data();
-              if (typeof uData.vcBalance === 'number') currentVcBalance = uData.vcBalance;
-              if (uData.role) userRole = uData.role;
-              if (uData.clearanceLevel) clearance = uData.clearanceLevel;
-              
-              const existingExpires = uData.vipExpires;
-              if (existingExpires && existingExpires !== 'Expired' && existingExpires !== 'Lifetime' && existingExpires !== 'Staff Account') {
-                const existingTime = new Date(existingExpires).getTime();
-                if (existingTime > baseStartMs) {
-                  baseStartMs = existingTime;
+            const profileRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+            if (profileRes.ok) {
+              const uData = (await profileRes.json()).data;
+              if (uData) {
+                if (typeof uData.vcBalance === 'number') currentVcBalance = uData.vcBalance;
+                if (uData.role) userRole = uData.role;
+                if (uData.clearanceLevel) clearance = uData.clearanceLevel;
+                
+                const existingExpires = uData.vipExpires;
+                if (existingExpires && existingExpires !== 'Expired' && existingExpires !== 'Lifetime' && existingExpires !== 'Staff Account') {
+                  const existingTime = new Date(existingExpires).getTime();
+                  if (existingTime > baseStartMs) {
+                    baseStartMs = existingTime;
+                  }
                 }
               }
             }
@@ -642,37 +643,56 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
           const newVipUntilIso = new Date(newVipUntilMs).toISOString();
           const expireIso = newVipUntilIso.split('T')[0];
           const grantedVc = checkoutPackage.vcGranted || getVipVcGrantedNumber();
+          const newTotalVc = currentVcBalance + grantedVc;
 
-          await updateDoc(userRef, {
+          const updatedProfilePayload = {
             isVip: true,
             role: userRole === 'Admin' || userRole === 'Staff' ? userRole : 'VIP Member',
             vipExpires: userRole === 'Admin' || userRole === 'Staff' ? (userRole === 'Admin' ? 'Lifetime' : 'Staff Account') : expireIso,
             vipUntil: newVipUntilIso,
             clearanceLevel: userRole === 'Admin' || userRole === 'Staff' ? clearance : 'L2',
-            vcBalance: increment(grantedVc)
-          }).catch(async () => {
-            await setDoc(userRef, {
-              isVip: true,
-              role: 'VIP Member',
-              vipExpires: expireIso,
-              vipUntil: newVipUntilIso,
-              clearanceLevel: 'L2',
-              vcBalance: grantedVc
-            }, { merge: true });
-          });
+            vcBalance: newTotalVc
+          };
 
-          await setDoc(doc(db, 'vipTransactions', transactionId), {
-            transactionId,
-            uid: currentUser.uid,
-            gamerTag: recipientName,
-            planType: 'vip_monthly',
-            amountPaid: effectiveNetPrice,
-            paymentMethod: paymentMethod.toUpperCase(),
-            createdAt,
-            expiresAt: expireIso,
-            vcGranted: grantedVc,
-            vipDaysGranted: addDays
-          }).catch(err => console.warn('Firestore vipTransactions setDoc fallback:', err));
+          // Save to MongoDB Single Source of Truth
+          try {
+            await fetch('/api/user/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                uid: currentUser.uid,
+                ...updatedProfilePayload
+              })
+            });
+          } catch (err) {
+            console.warn('Failed to update VIP profile in MongoDB:', err);
+          }
+
+          try {
+            localStorage.setItem(`gtavi_vcBalance_${currentUser.uid}`, String(newTotalVc));
+            localStorage.setItem(`gtavi_isVip_${currentUser.uid}`, 'true');
+            localStorage.setItem(`gtavi_vipUntil_${currentUser.uid}`, newVipUntilIso);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('gtavi_profile_updated', {
+                detail: { uid: currentUser.uid, ...updatedProfilePayload }
+              }));
+            }
+          } catch {}
+
+          if (db) {
+            await setDoc(doc(db, 'vipTransactions', transactionId), {
+              transactionId,
+              uid: currentUser.uid,
+              gamerTag: recipientName,
+              planType: 'vip_monthly',
+              amountPaid: effectiveNetPrice,
+              paymentMethod: paymentMethod.toUpperCase(),
+              createdAt,
+              expiresAt: expireIso,
+              vcGranted: grantedVc,
+              vipDaysGranted: addDays
+            }).catch(err => console.warn('Firestore vipTransactions setDoc fallback:', err));
+          }
         } else if (checkoutPackage.itemType === 'server_pro_pass') {
           const cleanSlug = (serverSlugInput || checkoutPackage.serverSlug || 'custom-server').toLowerCase().trim();
           const cleanName = serverNameInput || checkoutPackage.serverName || 'Verified RP Server';
@@ -740,14 +760,38 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
           }).catch(err => console.warn('Firestore giftCard setDoc fallback:', err));
 
           if (!checkoutPackage.isGift) {
-            const userRef = doc(db, 'userProfiles', currentUser.uid);
-            await updateDoc(userRef, {
-              vcBalance: increment(checkoutPackage.vcGranted || getVipVcGrantedNumber())
-            }).catch(async () => {
-              await setDoc(userRef, {
-                vcBalance: checkoutPackage.vcGranted || getVipVcGrantedNumber()
-              }, { merge: true });
-            });
+            const addVc = checkoutPackage.vcGranted || getVipVcGrantedNumber();
+            let currentVc = 0;
+            try {
+              const pRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+              if (pRes.ok) {
+                const uData = (await pRes.json()).data;
+                if (uData && typeof uData.vcBalance === 'number') currentVc = uData.vcBalance;
+              }
+            } catch {}
+
+            const updatedBal = currentVc + addVc;
+            try {
+              await fetch('/api/user/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  uid: currentUser.uid,
+                  vcBalance: updatedBal
+                })
+              });
+            } catch (err) {
+              console.warn('Failed to update VC balance in MongoDB:', err);
+            }
+
+            try {
+              localStorage.setItem(`gtavi_vcBalance_${currentUser.uid}`, String(updatedBal));
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('gtavi_profile_updated', {
+                  detail: { uid: currentUser.uid, vcBalance: updatedBal }
+                }));
+              }
+            } catch {}
           }
         } else if (checkoutPackage.itemType === 'b2b_sponsor') {
           await setDoc(doc(db, 'adCampaigns', transactionId), {

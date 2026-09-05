@@ -21,23 +21,20 @@ export interface FullMigrationResult {
   message: string;
 }
 
-// Known Firestore collections across ViceIntel
+// Known Firestore collections across ViceIntel (Excluding userProfiles and staff_activity_logs which are strictly owned by MongoDB as the single source of truth)
 const KNOWN_COLLECTIONS = [
   'communityPolls',
   'customChannels',
   'chatMessages',
-  'userProfiles',
   'vehicle_tuning_builds',
   'serverWhitelistForms',
   'pseoArticles',
-  'customChannels',
   'userNotifications',
   'servers',
   'whitelist_forms',
   'whitelist_applications',
   'spotlight_rentals',
   'affiliate_partners',
-  'staff_activity_logs',
   'system_config',
   'subscriptions',
   'ownership_transfers',

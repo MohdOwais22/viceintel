@@ -85,6 +85,7 @@ import { VehicleBuildModel } from './src/lib/db/models/VehicleBuild';
 import { ServerWhitelistFormModel } from './src/lib/db/models/ServerWhitelistForm';
 import { PseoArticleModel } from './src/lib/db/models/PseoArticle';
 import { CustomChannelModel } from './src/lib/db/models/CustomChannel';
+import { StaffAuditLogModel } from './src/lib/db/models/StaffAuditLog';
 import { saveDocument, findDocument, findDocuments, deleteDocument, addDocument, updateDocument, deleteWhereDocuments } from './src/lib/db/mongoHelpers';
 import { migrateFirestoreProfilesToMongoDB } from './src/lib/db/migrateProfiles';
 import { migrateAllFirestoreToMongoDB } from './src/lib/db/migrateAllFirestore';
@@ -2677,164 +2678,147 @@ async function startServer() {
       const cleanUserId = userId.trim();
       const now = Date.now();
 
-      const userDocRef = doc(db, 'users', cleanUserId);
-      const profileDocRef = doc(db, 'userProfiles', cleanUserId);
-
-      const result = await runTransaction(db, async (transaction) => {
-        const userSnap = await transaction.get(userDocRef);
-        const profileSnap = await transaction.get(profileDocRef);
-
-        const userData = userSnap.exists() ? userSnap.data() || {} : {};
-        const profileData = profileSnap.exists() ? profileSnap.data() || {} : {};
-
-        let level: 'L1' | 'L2' = targetLevel || userData.level || profileData.level || 'L1';
-        if (level !== 'L1' && level !== 'L2') level = 'L1';
-
-        let vcBalance: number = typeof userData.vcBalance === 'number'
-          ? userData.vcBalance
-          : (typeof profileData.credits === 'number' ? profileData.credits : 0);
-
-        let streakCount: number = typeof userData.streakCount === 'number'
-          ? userData.streakCount
-          : (typeof profileData.rewardStreak === 'number' ? profileData.rewardStreak : (profileData.dailyStreak || 0));
-
-        let lastClaimedTimestamp: number | null = userData.lastClaimedTimestamp || null;
-        if (!lastClaimedTimestamp && profileData.lastClaimDate) {
-          const parsed = Date.parse(profileData.lastClaimDate);
-          if (!isNaN(parsed) && parsed > 0) lastClaimedTimestamp = parsed;
-        }
-
-        let isVipUnlockReady: boolean = Boolean(userData.isVipUnlockReady ?? profileData.isVipUnlockReady);
-        let vipUnlockTriggeredAt: number | null = userData.vipUnlockTriggeredAt || profileData.vipUnlockTriggeredAt || null;
-
-        let isVipMember: boolean = Boolean(userData.isVipMember ?? profileData.isVip ?? profileData.isVipMember);
-        let vipExpiresAt: number | null = userData.vipExpiresAt || null;
-
-        if (vipExpiresAt && vipExpiresAt < now) {
-          isVipMember = false;
-        }
-
-        // Action: Claim VIP Pass
-        if (action === 'claim_vip') {
-          isVipMember = true;
-          vipExpiresAt = now + 30 * 24 * 60 * 60 * 1000;
-          streakCount = 0;
-          vcBalance = 0;
-          isVipUnlockReady = false;
-          vipUnlockTriggeredAt = null;
-
-          const vipUpdates = {
-            isVipMember: true,
-            isVip: true,
-            userLevel: 'VIP',
-            vipExpiresAt,
-            vipUntil: new Date(vipExpiresAt).toISOString(),
-            streakCount: 0,
-            rewardStreak: 0,
-            dailyStreak: 0,
-            vcBalance: 0,
-            credits: 0,
-            isVipUnlockReady: false,
-            vipUnlockTriggeredAt: null,
-            updatedAt: new Date(now).toISOString()
-          };
-
-          transaction.set(userDocRef, vipUpdates, { merge: true });
-          transaction.set(profileDocRef, vipUpdates, { merge: true });
-
-          return {
-            status: 200,
-            data: {
-              success: true,
-              message: '30-Day VIP Pass unlocked! Streak and VC balance reset.',
-              isVipMember: true,
-              vipExpiresAt,
-              vcBalance: 0,
-              streakCount: 0,
-              isVipUnlockReady: false
-            }
-          };
-        }
-
-        // Action: Daily Claim
-        if (lastClaimedTimestamp && (now - lastClaimedTimestamp < 24 * 60 * 60 * 1000)) {
-          const timeRemainingMs = 24 * 60 * 60 * 1000 - (now - lastClaimedTimestamp);
-          return {
-            status: 429,
-            data: {
-              success: false,
-              error: 'COOLDOWN_ACTIVE',
-              message: 'Daily reward is on cooldown. You must wait 24 hours between claims.',
-              timeRemainingMs,
-              vcBalance,
-              streakCount,
-              isVipUnlockReady,
-              vipUnlockTriggeredAt
-            }
-          };
-        }
-
-        const timeSinceLastClaim = lastClaimedTimestamp ? now - lastClaimedTimestamp : Infinity;
-        let newStreakCount = 1;
-        if (!lastClaimedTimestamp || timeSinceLastClaim >= 48 * 60 * 60 * 1000) {
-          newStreakCount = 1;
-        } else {
-          newStreakCount = Math.min(streakCount + 1, 30);
-        }
-
-        const baseVc = 50;
-        const levelBonus = level === 'L2' ? 22 : 0;
-        const streakBonus = Math.min(newStreakCount, 30);
-        const rewardVcAmount = baseVc + levelBonus + streakBonus;
-
-        vcBalance = vcBalance + rewardVcAmount;
-        lastClaimedTimestamp = now;
-
-        if (newStreakCount === 30 && !isVipUnlockReady) {
-          isVipUnlockReady = true;
-          vipUnlockTriggeredAt = now;
-        }
-
-        const isoClaimDate = new Date(now).toISOString();
-
-        const dailyUpdates = {
-          level,
-          vcBalance,
-          credits: vcBalance,
-          streakCount: newStreakCount,
-          rewardStreak: newStreakCount,
-          dailyStreak: newStreakCount,
-          lastClaimedTimestamp: now,
-          lastClaimDate: isoClaimDate,
-          lastLogin: now,
-          isVipUnlockReady,
-          vipUnlockTriggeredAt,
-          isVipMember,
-          vipExpiresAt,
-          updatedAt: isoClaimDate
-        };
-
-        transaction.set(userDocRef, dailyUpdates, { merge: true });
-        transaction.set(profileDocRef, dailyUpdates, { merge: true });
-
-        return {
-          status: 200,
-          data: {
-            success: true,
-            rewardVcAmount,
-            vcBalance,
-            streakCount: newStreakCount,
-            lastClaimedTimestamp: now,
-            isVipUnlockReady,
-            vipUnlockTriggeredAt,
-            isVipMember,
-            vipExpiresAt,
-            level
-          }
-        };
+      // Load user profile from MongoDB (single source of truth)
+      let profileDoc = await findDocument('userProfiles', {
+        $or: [{ uid: cleanUserId }, { id: cleanUserId }]
       });
 
-      return res.status(result.status).json(result.data);
+      const profileData = profileDoc || {};
+
+      let level: 'L1' | 'L2' = targetLevel || profileData.level || 'L1';
+      if (level !== 'L1' && level !== 'L2') level = 'L1';
+
+      let vcBalance: number = typeof profileData.vcBalance === 'number'
+        ? profileData.vcBalance
+        : (typeof profileData.credits === 'number' ? profileData.credits : 0);
+
+      let streakCount: number = typeof profileData.rewardStreak === 'number'
+        ? profileData.rewardStreak
+        : (typeof profileData.dailyStreak === 'number' ? profileData.dailyStreak : (profileData.streakCount || 0));
+
+      let lastClaimedTimestamp: number | null = profileData.lastClaimedTimestamp || profileData.lastLogin || null;
+      if (!lastClaimedTimestamp && profileData.lastClaimDate) {
+        const parsed = Date.parse(profileData.lastClaimDate);
+        if (!isNaN(parsed) && parsed > 0) lastClaimedTimestamp = parsed;
+      }
+
+      let isVipUnlockReady: boolean = Boolean(profileData.isVipUnlockReady);
+      let vipUnlockTriggeredAt: number | null = profileData.vipUnlockTriggeredAt || null;
+
+      let isVipMember: boolean = Boolean(profileData.isVip ?? profileData.isVipMember);
+      let vipExpiresAt: number | null = profileData.vipExpiresAt || (profileData.vipUntil ? Date.parse(profileData.vipUntil) : null);
+
+      if (vipExpiresAt && vipExpiresAt < now) {
+        isVipMember = false;
+      }
+
+      // Action: Claim VIP Pass
+      if (action === 'claim_vip') {
+        isVipMember = true;
+        vipExpiresAt = now + 30 * 24 * 60 * 60 * 1000;
+        streakCount = 0;
+        vcBalance = 0;
+        isVipUnlockReady = false;
+        vipUnlockTriggeredAt = null;
+
+        const vipUpdates = {
+          isVipMember: true,
+          isVip: true,
+          userLevel: 'VIP',
+          vipExpiresAt,
+          vipUntil: new Date(vipExpiresAt).toISOString(),
+          streakCount: 0,
+          rewardStreak: 0,
+          dailyStreak: 0,
+          vcBalance: 0,
+          credits: 0,
+          isVipUnlockReady: false,
+          vipUnlockTriggeredAt: null,
+          updatedAt: new Date(now).toISOString()
+        };
+
+        await saveDocument('userProfiles', cleanUserId, vipUpdates);
+
+        return res.json({
+          success: true,
+          message: '30-Day VIP Pass unlocked! Streak and VC balance reset.',
+          isVipMember: true,
+          vipExpiresAt,
+          vcBalance: 0,
+          streakCount: 0,
+          isVipUnlockReady: false
+        });
+      }
+
+      // Action: Daily Claim
+      if (lastClaimedTimestamp && (now - lastClaimedTimestamp < 24 * 60 * 60 * 1000)) {
+        const timeRemainingMs = 24 * 60 * 60 * 1000 - (now - lastClaimedTimestamp);
+        return res.status(429).json({
+          success: false,
+          error: 'COOLDOWN_ACTIVE',
+          message: 'Daily reward is on cooldown. You must wait 24 hours between claims.',
+          timeRemainingMs,
+          vcBalance,
+          streakCount,
+          isVipUnlockReady,
+          vipUnlockTriggeredAt
+        });
+      }
+
+      const timeSinceLastClaim = lastClaimedTimestamp ? now - lastClaimedTimestamp : Infinity;
+      let newStreakCount = 1;
+      if (!lastClaimedTimestamp || timeSinceLastClaim >= 48 * 60 * 60 * 1000) {
+        newStreakCount = 1;
+      } else {
+        newStreakCount = Math.min(streakCount + 1, 30);
+      }
+
+      const baseVc = 50;
+      const levelBonus = level === 'L2' ? 22 : 0;
+      const streakBonus = Math.min(newStreakCount, 30);
+      const rewardVcAmount = baseVc + levelBonus + streakBonus;
+
+      vcBalance = vcBalance + rewardVcAmount;
+      lastClaimedTimestamp = now;
+
+      if (newStreakCount === 30 && !isVipUnlockReady) {
+        isVipUnlockReady = true;
+        vipUnlockTriggeredAt = now;
+      }
+
+      const isoClaimDate = new Date(now).toISOString();
+
+      const dailyUpdates = {
+        level,
+        vcBalance,
+        credits: vcBalance,
+        streakCount: newStreakCount,
+        rewardStreak: newStreakCount,
+        dailyStreak: newStreakCount,
+        lastClaimedTimestamp: now,
+        lastClaimDate: isoClaimDate,
+        lastLogin: now,
+        isVipUnlockReady,
+        vipUnlockTriggeredAt,
+        isVipMember,
+        vipExpiresAt,
+        updatedAt: isoClaimDate
+      };
+
+      await saveDocument('userProfiles', cleanUserId, dailyUpdates);
+
+      return res.json({
+        success: true,
+        rewardVcAmount,
+        vcBalance,
+        streakCount: newStreakCount,
+        lastClaimedTimestamp: now,
+        isVipUnlockReady,
+        vipUnlockTriggeredAt,
+        isVipMember,
+        vipExpiresAt,
+        level
+      });
     } catch (err: any) {
       console.error('Error processing rewards claim:', err);
 
@@ -4936,9 +4920,8 @@ Showing top entries for "${query || 'All'}":
         console.warn('[System Pricing] Firestore sync warning:', fsErr);
       }
 
-      // Record in Staff Audit Logs
+      // Record in Staff Audit Logs (MongoDB single source of truth)
       try {
-        const { doc, setDoc } = await import('./src/lib/db/firestoreMongoAdapter');
         const logId = `log_pricing_${Date.now()}`;
         const logData = {
           id: logId,
@@ -4948,7 +4931,7 @@ Showing top entries for "${query || 'All'}":
           details: `Updated VIP Price: $${state.systemPricing.vipPrice}/mo, B2B Sponsor Prices: $${state.systemPricing.sponsorPrice12}, $${state.systemPricing.sponsorPrice29}, $${state.systemPricing.b2bSponsorPrice}, $${state.systemPricing.sponsorPrice99}, $${state.systemPricing.sponsorPrice199}/mo`,
           target: 'System Monetization Pricing'
         };
-        await setDoc(doc(db, 'staff_activity_logs', logId), logData, { merge: true });
+        await saveDocument('staff_activity_logs', logId, logData);
       } catch (logErr) {
         console.warn('[System Pricing] Log warning:', logErr);
       }
@@ -5295,19 +5278,19 @@ Showing top entries for "${query || 'All'}":
         });
       }
 
-      // Verify user profile exists in Firestore registry and hasn't claimed a trial already
+      // Verify user profile exists in MongoDB registry and hasn't claimed a trial already
       try {
-        const { doc, getDoc } = await import('./src/lib/db/firestoreMongoAdapter');
-        const userProfileSnap = await getDoc(doc(db, 'userProfiles', ownerUid));
-        if (!userProfileSnap.exists()) {
+        const userProfileDoc = await findDocument('userProfiles', {
+          $or: [{ uid: ownerUid }, { id: ownerUid }]
+        });
+        if (!userProfileDoc) {
           return res.status(401).json({
             success: false,
             error: 'INVALID_USER_PROFILE: User account profile was not found in Vice Squad registry. Please sign in.'
           });
         }
         
-        const profileData = userProfileSnap.data();
-        if (profileData && profileData.hasClaimedTrial) {
+        if (userProfileDoc.hasClaimedTrial) {
           return res.status(400).json({
             success: false,
             error: 'TRIAL_ALREADY_CLAIMED: You have already claimed a 14-day free trial on this account. Each account is strictly limited to one free trial.'
@@ -5481,7 +5464,7 @@ Showing top entries for "${query || 'All'}":
           updatedAt: nowMs
         }, { merge: true });
 
-        // 5. Update user profile to mark trial as claimed in MongoDB and Firestore
+        // 5. Update user profile to mark trial as claimed in MongoDB (single source of truth)
         await saveDocument('userProfiles', ownerUid, {
           uid: ownerUid,
           hasClaimedTrial: true,
@@ -5489,15 +5472,8 @@ Showing top entries for "${query || 'All'}":
           trialClaimedServerId: cleanServerId,
           trialClaimedServerSlug: cleanSlug
         });
-
-        await setDoc(doc(db, 'userProfiles', ownerUid), {
-          hasClaimedTrial: true,
-          trialClaimedAt: nowMs,
-          trialClaimedServerId: cleanServerId,
-          trialClaimedServerSlug: cleanSlug
-        }, { merge: true });
       } catch (fsErr) {
-        console.warn('Firestore trial claim notice:', fsErr);
+        console.warn('Trial claim persistence notice:', fsErr);
       }
 
       return res.json({
@@ -6571,7 +6547,7 @@ Showing top entries for "${query || 'All'}":
         });
       }
 
-      // Step 2: Check MongoDB for GamerTag uniqueness
+      // Step 2: Check MongoDB for GamerTag uniqueness (Single Source of Truth)
       try {
         const mongoDuplicate = await findDocument('userProfiles', {
           $and: [
@@ -6600,44 +6576,10 @@ Showing top entries for "${query || 'All'}":
         console.warn('[GamerTag API Check] MongoDB check warning:', mongoErr);
       }
 
-      const { collection, query, where, getDocs } = await import('./src/lib/db/firestoreMongoAdapter');
-
-      // Step 3: Check Firestore usernameLower query fallback
-      const qLower = query(collection(db, 'userProfiles'), where('usernameLower', '==', tagLower));
-      const snapLower = await getDocs(qLower);
-      const duplicateDoc = snapLower.docs.find(d => d.id !== currentUid && d.data()?.uid !== currentUid);
-
-      if (duplicateDoc) {
-        globalGamerTagEngine.registerHandle(cleanTag, duplicateDoc.id);
-        return res.json({
-          isUnique: false,
-          cleanTag,
-          level: 'L3_FIRESTORE',
-          latencyMs: Date.now() - startMs,
-          error: `⚠️ GamerTag "${cleanTag}" is already taken by another player! GamerTags must be unique.`
-        });
-      }
-
-      // Step 3: Check username standard query as fallback
-      const qStandard = query(collection(db, 'userProfiles'), where('username', '==', cleanTag));
-      const snapStandard = await getDocs(qStandard);
-      const duplicateStandard = snapStandard.docs.find(d => d.id !== currentUid && d.data()?.uid !== currentUid);
-
-      if (duplicateStandard) {
-        globalGamerTagEngine.registerHandle(cleanTag, duplicateStandard.id);
-        return res.json({
-          isUnique: false,
-          cleanTag,
-          level: 'L3_FIRESTORE',
-          latencyMs: Date.now() - startMs,
-          error: `⚠️ GamerTag "${cleanTag}" is already taken by another player! GamerTags must be unique.`
-        });
-      }
-
       return res.json({
         isUnique: true,
         cleanTag,
-        level: instantCheck.level === 'L1_BLOOM' ? 'L1_BLOOM' : 'L3_FIRESTORE',
+        level: instantCheck.level === 'L1_BLOOM' ? 'L1_BLOOM' : 'L3_MONGODB',
         latencyMs: Math.max(0.01, Date.now() - startMs)
       });
     } catch (err: any) {
@@ -6731,28 +6673,24 @@ Showing top entries for "${query || 'All'}":
       });
     }
 
-    // 1.5 Verify GamerTag uniqueness in Firestore
+    // 1.5 Verify GamerTag uniqueness in MongoDB (Single Source of Truth)
     try {
-      const { collection, query, where, getDocs } = await import('./src/lib/db/firestoreMongoAdapter');
-      const qLower = query(collection(db, 'userProfiles'), where('usernameLower', '==', cleanUsername.toLowerCase()));
-      const snapLower = await getDocs(qLower);
-      if (!snapLower.empty) {
-        return res.status(400).json({
-          success: false,
-          error: `⚠️ GamerTag "${cleanUsername}" is already taken by another player! GamerTags must be unique.`
-        });
-      }
+      const duplicateUser = await findDocument('userProfiles', {
+        $or: [
+          { usernameLower: cleanUsername.toLowerCase() },
+          { gamerTag: cleanUsername },
+          { username: cleanUsername }
+        ]
+      });
 
-      const qStandard = query(collection(db, 'userProfiles'), where('username', '==', cleanUsername));
-      const snapStandard = await getDocs(qStandard);
-      if (!snapStandard.empty) {
+      if (duplicateUser) {
         return res.status(400).json({
           success: false,
           error: `⚠️ GamerTag "${cleanUsername}" is already taken by another player! GamerTags must be unique.`
         });
       }
     } catch (err: any) {
-      console.warn('[GamerTag Server Check] Firestore warning:', err?.message);
+      console.warn('[GamerTag Server Check] MongoDB check warning:', err?.message);
     }
 
     // Rate limit check: prevent rapid spamming (max 1 code request per 20 seconds)
@@ -7482,16 +7420,38 @@ Showing top entries for "${query || 'All'}":
   });
 
   // -------------------------------------------------------------
-  // L4-RESTRICTED STAFF ACTIVITY AUDIT LOG ENDPOINTS
+  // L4-RESTRICTED STAFF ACTIVITY AUDIT LOG ENDPOINTS (MongoDB Single Source of Truth)
   // -------------------------------------------------------------
-  app.get('/api/admin/staff-logs', (req: Request, res: Response) => {
-    // Return all in-memory staff logs combined with timestamp sorting
-    const sorted = [...state.staffAuditLogs].sort((a, b) => (b.timestampMs || 0) - (a.timestampMs || 0));
-    res.json({
-      success: true,
-      count: sorted.length,
-      logs: sorted
-    });
+  app.get('/api/admin/staff-logs', async (req: Request, res: Response) => {
+    try {
+      const limitParam = parseInt(req.query.limit as string) || 150;
+      let logsFromDb = await findDocuments('staff_activity_logs', {}, limitParam);
+
+      if (!logsFromDb || logsFromDb.length === 0) {
+        // Fallback to in-memory state if DB is just bootstrapping
+        logsFromDb = state.staffAuditLogs || [];
+      } else {
+        // Sync to in-memory cache
+        state.staffAuditLogs = logsFromDb;
+      }
+
+      const sorted = [...logsFromDb].sort((a, b) => (b.timestampMs || 0) - (a.timestampMs || 0));
+      res.json({
+        success: true,
+        source: 'MongoDB',
+        count: sorted.length,
+        logs: sorted
+      });
+    } catch (err: any) {
+      console.warn('[Staff Logs API] Error fetching logs from MongoDB:', err);
+      const sorted = [...state.staffAuditLogs].sort((a, b) => (b.timestampMs || 0) - (a.timestampMs || 0));
+      res.json({
+        success: true,
+        source: 'MemoryState',
+        count: sorted.length,
+        logs: sorted
+      });
+    }
   });
 
   app.post('/api/admin/staff-logs', async (req: Request, res: Response) => {
@@ -7501,7 +7461,10 @@ Showing top entries for "${query || 'All'}":
         return res.status(400).json({ success: false, error: 'Invalid staff log payload' });
       }
 
-      // Upsert into in-memory state
+      // 1. Persist directly to MongoDB (Single source of truth)
+      await saveDocument('staff_activity_logs', logEntry.id, logEntry);
+
+      // 2. Upsert into in-memory state cache
       const existingIdx = state.staffAuditLogs.findIndex(l => l.id === logEntry.id);
       if (existingIdx >= 0) {
         state.staffAuditLogs[existingIdx] = logEntry;
@@ -7509,22 +7472,13 @@ Showing top entries for "${query || 'All'}":
         state.staffAuditLogs.unshift(logEntry);
       }
 
-      // Keep max 500 logs in server memory
       if (state.staffAuditLogs.length > 500) {
         state.staffAuditLogs = state.staffAuditLogs.slice(0, 500);
       }
 
-      // Sync to Firestore background
-      try {
-        const { setDoc, doc } = await import('./src/lib/db/firestoreMongoAdapter');
-        await setDoc(doc(db, 'staff_activity_logs', logEntry.id), logEntry, { merge: true });
-      } catch (fsErr) {
-        // Non-blocking
-      }
-
-      return res.json({ success: true, log: logEntry });
+      return res.json({ success: true, source: 'MongoDB', log: logEntry });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err?.message || 'Failed to save staff log' });
+      return res.status(500).json({ success: false, error: err?.message || 'Failed to save staff log to MongoDB' });
     }
   });
 
@@ -7545,13 +7499,12 @@ Showing top entries for "${query || 'All'}":
         Object.assign(targetLog, reviewData);
       }
 
-      // Update in Firestore
-      try {
-        const { setDoc, doc } = await import('./src/lib/db/firestoreMongoAdapter');
-        await setDoc(doc(db, 'staff_activity_logs', logId), reviewData, { merge: true });
-      } catch (fsErr) {}
+      // Update in MongoDB
+      const existingLog = await findDocument('staff_activity_logs', { id: logId });
+      const updatedLog = { ...(existingLog || targetLog || {}), ...reviewData, id: logId };
+      await saveDocument('staff_activity_logs', logId, updatedLog);
 
-      return res.json({ success: true, review: reviewData });
+      return res.json({ success: true, source: 'MongoDB', review: reviewData });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Failed to review log' });
     }
@@ -7562,12 +7515,10 @@ Showing top entries for "${query || 'All'}":
       const logId = req.params.id;
       state.staffAuditLogs = state.staffAuditLogs.filter(l => l.id !== logId);
 
-      try {
-        const { deleteDoc, doc } = await import('./src/lib/db/firestoreMongoAdapter');
-        await deleteDoc(doc(db, 'staff_activity_logs', logId));
-      } catch (fsErr) {}
+      // Delete from MongoDB
+      await deleteDocument('staff_activity_logs', logId);
 
-      return res.json({ success: true, message: `Staff audit log ${logId} deleted.` });
+      return res.json({ success: true, source: 'MongoDB', message: `Staff audit log ${logId} deleted from MongoDB.` });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Failed to delete log' });
     }
@@ -7990,16 +7941,15 @@ Showing top entries for "${query || 'All'}":
       }
 
       try {
-        const qProfiles = query(collection(db, 'userProfiles'), where('isVipUnlockReady', '==', true));
-        const profilesSnap = await getDocs(qProfiles);
-        profilesSnap.forEach((d) => {
-          if (d.exists()) {
-            const existing = candidateUsers.get(d.id);
-            candidateUsers.set(d.id, { ...existing, id: d.id, ...d.data() });
-          }
-        });
+        const mongoProfiles = await findDocuments('userProfiles', { isVipUnlockReady: true }, 500);
+        if (mongoProfiles && Array.isArray(mongoProfiles)) {
+          mongoProfiles.forEach((p: any) => {
+            const uid = p.uid || p.id;
+            if (uid) candidateUsers.set(uid, { ...p, id: uid });
+          });
+        }
       } catch (e) {
-        console.warn('UserProfiles query notice in cron:', e);
+        console.warn('MongoDB userProfiles query notice in cron:', e);
       }
 
       const warnedUsers: any[] = [];
@@ -8021,6 +7971,7 @@ Showing top entries for "${query || 'All'}":
 
         if (timeRemainingMs <= 0) {
           const resetPayload = {
+            ...userData,
             streakCount: 0,
             rewardStreak: 0,
             dailyStreak: 0,
@@ -8029,13 +7980,10 @@ Showing top entries for "${query || 'All'}":
             reminder24hSent: false,
             updatedAt: nowIso
           };
-          const batch = writeBatch(db);
-          batch.set(doc(db, 'users', userId), resetPayload, { merge: true });
-          batch.set(doc(db, 'userProfiles', userId), resetPayload, { merge: true });
-          await batch.commit();
+          await saveDocument('userProfiles', userId, resetPayload);
 
           try {
-            await setDoc(doc(collection(db, 'userNotifications')), {
+            await saveDocument('userNotifications', `notif_${userId}_${Date.now()}`, {
               userId,
               username,
               type: 'VIP_OFFER_EXPIRED',
@@ -8076,7 +8024,7 @@ Showing top entries for "${query || 'All'}":
           }
 
           try {
-            await setDoc(doc(collection(db, 'userNotifications')), {
+            await saveDocument('userNotifications', `notif_${userId}_${Date.now()}`, {
               userId,
               username,
               type: 'VIP_EXPIRATION_WARNING_24H',
@@ -8088,11 +8036,8 @@ Showing top entries for "${query || 'All'}":
             });
           } catch (notifErr) {}
 
-          const markPayload = { reminder24hSent: true, reminder24hSentAt: nowIso, updatedAt: nowIso };
-          const batch = writeBatch(db);
-          batch.set(doc(db, 'users', userId), markPayload, { merge: true });
-          batch.set(doc(db, 'userProfiles', userId), markPayload, { merge: true });
-          await batch.commit();
+          const markPayload = { ...userData, reminder24hSent: true, reminder24hSentAt: nowIso, updatedAt: nowIso };
+          await saveDocument('userProfiles', userId, markPayload);
 
           warnedUsers.push({ userId, username, hoursRemaining, vcBalance, actionTaken: '24h_warning_dispatched', discordNotified: discordDispatched });
         } else {
@@ -8239,27 +8184,31 @@ Showing top entries for "${query || 'All'}":
     const winner = entriesList[0];
     const rewardVc = activeChallenge.rewardVc || 500;
 
-    // 4. If we have a winner, process rewards
+    // 4. If we have a winner, process rewards in MongoDB
     if (winner && winner.userUid) {
-      const userRef = doc(db, 'userProfiles', winner.userUid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        const currentVc = userData.vcBalance || 0;
-        let currentBadges = userData.unlockedBadges || userData.badges || [];
-        if (!Array.isArray(currentBadges)) currentBadges = [];
+      try {
+        const userData = await findDocument('userProfiles', { $or: [{ uid: winner.userUid }, { id: winner.userUid }] });
+        if (userData) {
+          let currentBadges = userData.unlockedBadges || userData.badges || [];
+          if (!Array.isArray(currentBadges)) currentBadges = [];
 
-        const updatedBadges = [...currentBadges];
-        if (!updatedBadges.includes('Master Tuner')) {
-          updatedBadges.push('Master Tuner');
+          const updatedBadges = [...currentBadges];
+          if (!updatedBadges.includes('Master Tuner')) {
+            updatedBadges.push('Master Tuner');
+          }
+
+          const profileUpdates = {
+            unlockedBadges: updatedBadges,
+            badges: updatedBadges,
+            lastRewardReason: `Won tuning challenge: ${activeChallenge.title} (Badge granted, prize VC pending claim)`,
+            lastRewardedAt: Date.now(),
+            updatedAt: new Date().toISOString()
+          };
+
+          await saveDocument('userProfiles', winner.userUid, { ...userData, ...profileUpdates });
         }
-
-        await updateDoc(userRef, {
-          unlockedBadges: updatedBadges,
-          badges: updatedBadges, // Keep both fields in sync
-          lastRewardReason: `Won tuning challenge: ${activeChallenge.title} (Badge granted, prize VC pending claim)`,
-          lastRewardedAt: Date.now()
-        });
+      } catch (err: any) {
+        console.warn('[Challenge Rewards] Error updating winner in MongoDB:', err);
       }
 
       // Add user notification with claimable metadata
@@ -9129,19 +9078,6 @@ Showing top entries for "${query || 'All'}":
             console.log(`[Discord OAuth] Matched userProfile UID ${targetUid} in MongoDB by email ${discordUser.email}`);
           }
         } catch (mErr) {}
-
-        if (!targetUid) {
-          try {
-            const userQuery = query(collection(db, 'userProfiles'), where('email', '==', discordUser.email));
-            const querySnap = await getDocs(userQuery);
-            if (!querySnap.empty) {
-              targetUid = querySnap.docs[0].id;
-              console.log(`[Discord OAuth] Matched userProfile UID ${targetUid} in Firestore by email ${discordUser.email}`);
-            }
-          } catch (queryErr) {
-            console.warn('[Discord OAuth] User email lookup warning:', queryErr);
-          }
-        }
       }
 
       if (!targetUid) {
@@ -9160,21 +9096,12 @@ Showing top entries for "${query || 'All'}":
         } catch (mErr) {}
 
         if (!targetUid) {
-          try {
-            const discordIdQuery = query(collection(db, 'userProfiles'), where('discordId', '==', discordUser.id));
-            const querySnap = await getDocs(discordIdQuery);
-            if (!querySnap.empty) {
-              targetUid = querySnap.docs[0].id;
-              console.log(`[Discord OAuth] Matched existing userProfile UID ${targetUid} in Firestore by discordId ${discordUser.id}`);
-            }
-          } catch (queryErr) {
-            console.warn('[Discord OAuth] Discord ID lookup warning:', queryErr);
-          }
+          console.log(`[Discord OAuth] Target user not found in MongoDB, will auto-provision.`);
         }
       }
 
       if (!targetUid) {
-        // Auto-provision a full profile for new direct Discord registrations
+        // Auto-provision a full profile for new direct Discord registrations in MongoDB
         targetUid = `discord_${discordUser.id}`;
         const newProfilePayload = {
           uid: targetUid,
@@ -9203,11 +9130,8 @@ Showing top entries for "${query || 'All'}":
           updatedAt: new Date().toISOString()
         };
         await saveDocument('userProfiles', targetUid, newProfilePayload);
-        try {
-          await setDoc(doc(db, 'userProfiles', targetUid), newProfilePayload, { merge: true });
-        } catch {}
         state.users.push(newProfilePayload as any);
-        console.log(`[Discord OAuth] Created new registered profile for Discord user ${targetUid}`);
+        console.log(`[Discord OAuth] Created new registered profile for Discord user ${targetUid} in MongoDB`);
       } else {
         try {
           const discordAuthPayload = {
@@ -9224,19 +9148,13 @@ Showing top entries for "${query || 'All'}":
 
           await saveDocument('userProfiles', targetUid, discordAuthPayload);
 
-          try {
-            await setDoc(doc(db, 'userProfiles', targetUid), discordAuthPayload, { merge: true });
-          } catch (fsErr) {
-            console.warn('[Discord OAuth] Direct Discord link update warning:', fsErr);
-          }
-
           const uIdx = state.users.findIndex(u => u.uid === targetUid || u.id === targetUid);
           if (uIdx !== -1) {
             state.users[uIdx] = { ...state.users[uIdx], ...discordAuthPayload };
           }
-          console.log(`[Discord OAuth] Successfully attached secure discordAuth to userProfile ${targetUid} in MongoDB, Firestore and Memory`);
-        } catch (fsErr) {
-          console.warn('[Discord OAuth] Direct Discord link update warning:', fsErr);
+          console.log(`[Discord OAuth] Successfully attached secure discordAuth to userProfile ${targetUid} in MongoDB`);
+        } catch (mErr) {
+          console.warn('[Discord OAuth] Direct Discord link update warning:', mErr);
         }
       }
 
@@ -9418,17 +9336,10 @@ Showing top entries for "${query || 'All'}":
         updatedAt: new Date().toISOString()
       };
 
-      // 1. Save to MongoDB
+      // 1. Save to MongoDB (Single source of truth)
       await saveDocument('userProfiles', uid, discordPayload);
 
-      // 2. Save to Firestore
-      try {
-        await setDoc(doc(db, 'userProfiles', uid), discordPayload, { merge: true });
-      } catch (fsErr) {
-        console.warn('Firestore link-profile sync warning:', fsErr);
-      }
-
-      // 3. Save to server memory state
+      // 2. Save to server memory state
       const uIdx = state.users.findIndex(u => u.uid === uid || u.id === uid);
       if (uIdx !== -1) {
         state.users[uIdx] = { ...state.users[uIdx], ...discordPayload };
@@ -9629,17 +9540,10 @@ Showing top entries for "${query || 'All'}":
         updatedAt: new Date().toISOString()
       };
 
-      // 1. MongoDB
+      // 1. MongoDB (Single source of truth)
       await saveDocument('userProfiles', uid, unlinkPayload);
 
-      // 2. Firestore
-      try {
-        await setDoc(doc(db, 'userProfiles', uid), unlinkPayload, { merge: true });
-      } catch (fsErr) {
-        console.warn('Firestore unlink sync warning:', fsErr);
-      }
-
-      // 3. Memory state
+      // 2. Memory state
       const uIdx = state.users.findIndex(u => u.uid === uid || u.id === uid);
       if (uIdx !== -1) {
         state.users[uIdx] = { ...state.users[uIdx], ...unlinkPayload };

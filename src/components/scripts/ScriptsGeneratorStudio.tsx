@@ -89,14 +89,19 @@ export const ScriptsGeneratorStudio: React.FC<ScriptsGeneratorStudioProps> = ({ 
       setCurrentUser(user);
       if (user) {
         try {
-          const profileRef = doc(db, 'userProfiles', user.uid);
-          const snap = await getDoc(profileRef);
-          if (snap.exists()) {
-            const data = snap.data();
-            setUserProfile(data);
-            const lvl = getUserClearanceLevel(data);
-            const isVipOrAdmin = lvl >= 2 || data.isVip || data.role === 'Admin' || data.role === 'Staff' || data.role === 'VIP Member';
-            setIsProUser(isVipOrAdmin);
+          const res = await fetch(`/api/user/profile?uid=${encodeURIComponent(user.uid)}`);
+          if (res.ok) {
+            const json = await res.json();
+            const data = json.data;
+            if (data) {
+              setUserProfile(data);
+              const lvl = getUserClearanceLevel(data);
+              const isVipOrAdmin = lvl >= 2 || data.isVip || data.role === 'Admin' || data.role === 'Staff' || data.role === 'VIP Member';
+              setIsProUser(isVipOrAdmin);
+            } else {
+              setUserProfile({ role: 'User', clearanceLevel: 1 });
+              setIsProUser(false);
+            }
           } else {
             setUserProfile({ role: 'User', clearanceLevel: 1 });
             setIsProUser(false);

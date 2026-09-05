@@ -519,14 +519,26 @@ export const HandlingEditorTab: React.FC<HandlingEditorTabProps> = ({
       const docRef = doc(db, 'vehicle_tuning_builds', newBuildId);
       await setDoc(docRef, newBuild);
 
-      // 2. Grant +50 VC balance bonus in userProfiles if user exists
+      // 2. Grant +50 VC balance bonus in MongoDB userProfiles
       try {
-        const userDocRef = doc(db, 'userProfiles', userId);
-        await updateDoc(userDocRef, {
-          vcBalance: increment(50)
-        });
+        const resProf = await fetch(`/api/user/profile?uid=${encodeURIComponent(userId)}`);
+        if (resProf.ok) {
+          const pJson = await resProf.json();
+          const pData = pJson?.data || pJson;
+          const currentVc = typeof pData?.vcBalance === 'number' ? pData.vcBalance : (pData?.credits || 0);
+          await fetch('/api/user/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: userId,
+              vcBalance: currentVc + 50,
+              updatedAt: new Date().toISOString()
+            })
+          });
+          window.dispatchEvent(new CustomEvent('gtavi_profile_updated'));
+        }
       } catch (vcErr) {
-        console.warn('Could not increment VC balance bonus:', vcErr);
+        console.warn('Could not increment VC balance bonus in MongoDB:', vcErr);
       }
 
       setCommunityBuilds((prev) =>

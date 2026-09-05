@@ -772,14 +772,37 @@ export async function disqualifyChallengeEntry(entryId: string, challengeId?: st
 }
 
 /**
- * Awards manual bonus VC credits to a user profile in Firestore
+ * Awards manual bonus VC credits to a user profile in MongoDB (single source of truth)
  */
 export async function awardManualBonusVc(userUid: string, amount: number, reason: string): Promise<void> {
-  const userRef = doc(db, 'userProfiles', userUid);
-  await updateDoc(userRef, {
-    vcBalance: increment(amount),
-    lastRewardReason: reason,
-    lastRewardedAt: Date.now()
+  let curVc = 0;
+  try {
+    const pRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(userUid)}`);
+    if (pRes.ok) {
+      const uData = (await pRes.json()).data;
+      if (uData && typeof uData.vcBalance === 'number') curVc = uData.vcBalance;
+    }
+  } catch {}
+
+  const newBal = curVc + amount;
+  await fetch('/api/user/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      uid: userUid,
+      vcBalance: newBal,
+      lastRewardReason: reason,
+      lastRewardedAt: Date.now()
+    })
   });
+
+  try {
+    localStorage.setItem(`gtavi_vcBalance_${userUid}`, String(newBal));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gtavi_profile_updated', {
+        detail: { uid: userUid, vcBalance: newBal, lastRewardReason: reason }
+      }));
+    }
+  } catch {}
 }
 

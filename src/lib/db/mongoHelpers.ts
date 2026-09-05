@@ -7,6 +7,7 @@ import { ServerWhitelistFormModel } from './models/ServerWhitelistForm';
 import { PseoArticleModel } from './models/PseoArticle';
 import { CustomChannelModel } from './models/CustomChannel';
 import { ChatMessageModel } from './models/ChatMessage';
+import { StaffAuditLogModel } from './models/StaffAuditLog';
 
 /**
  * Returns the appropriate Mongoose model for a given collection name.
@@ -15,6 +16,9 @@ export function getModelForCollection(collectionName: string) {
   switch (collectionName) {
     case 'userProfiles':
       return UserProfileModel;
+    case 'staff_activity_logs':
+    case 'staffAuditLogs':
+      return StaffAuditLogModel;
     case 'vehicle_tuning_builds':
       return VehicleBuildModel;
     case 'serverWhitelistForms':

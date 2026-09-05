@@ -166,6 +166,9 @@ export async function claimDailyReward(userId: string): Promise<ClaimRewardResul
           if (payload.autoUnlockedVip) {
             localStorage.setItem(`gtavi_isVip_${userId}`, 'true');
           }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('gtavi_profile_updated', { detail: { uid: userId, vcBalance: payload.vcBalance, dailyStreak: payload.dailyStreak } }));
+          }
         } catch (e) {}
         return payload;
       } else {
@@ -294,6 +297,9 @@ export async function claimStreakMilestone(
               localStorage.setItem(`gtavi_vipUntil_${userId}`, payload.vipUntilIso);
             }
             localStorage.setItem(`gtavi_claimed30DayVip_${userId}`, 'true');
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('gtavi_profile_updated', { detail: { uid: userId, vcBalance: payload.vcBalance } }));
           }
         } catch (e) {}
         return payload;

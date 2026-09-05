@@ -146,11 +146,14 @@ export const InteractiveMap: React.FC = () => {
         let displayName = firebaseUser.displayName || 'Vice Gamer';
 
         try {
-          const profileDoc = await getDoc(doc(db, 'userProfiles', firebaseUser.uid));
-          if (profileDoc.exists()) {
-            const data = profileDoc.data();
-            isVip = Boolean(data.isVip || data.role === 'Admin' || data.role === 'Staff');
-            if (data.username) displayName = data.username;
+          const res = await fetch(`/api/user/profile?uid=${encodeURIComponent(firebaseUser.uid)}`);
+          if (res.ok) {
+            const resJson = await res.json();
+            const data = resJson?.data || resJson;
+            if (data) {
+              isVip = Boolean(data.isVip || data.vipStatus || data.role === 'Admin' || data.role === 'Staff');
+              if (data.username || data.gamerTag) displayName = data.username || data.gamerTag;
+            }
           }
         } catch (e) {
           console.warn('Profile fetch notice:', e);

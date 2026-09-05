@@ -1173,7 +1173,6 @@ export async function linkDiscordToUser(
     discordAvatar?: string;
   }
 ): Promise<void> {
-  const docRef = doc(db, USERS_COLLECTION, uid);
   const cleanId = String(discordData.discordId || '').trim();
   const cleanTag = String(discordData.discordUsername || '').trim();
   const cleanAvatar = String(discordData.discordAvatar || '').trim();
@@ -1188,7 +1187,7 @@ export async function linkDiscordToUser(
     updatedAt: new Date().toISOString()
   };
 
-  // 1. Sync to MongoDB via backend REST API (Primary Source of Truth)
+  // 1. Sync to MongoDB via backend REST API (Single Source of Truth)
   try {
     const res = await fetch('/api/auth/discord/link-profile', {
       method: 'POST',
@@ -1208,18 +1207,7 @@ export async function linkDiscordToUser(
     console.warn('Failed to link Discord in MongoDB REST API:', err);
   }
 
-  // 2. Sync to Firestore (Real-time fallback/listener)
-  try {
-    await updateDoc(docRef, updates);
-  } catch (err) {
-    try {
-      await setDoc(docRef, updates, { merge: true });
-    } catch (setErr) {
-      console.warn('Failed to link Discord in Firestore:', setErr);
-    }
-  }
-
-  // 3. Sync to localStorage & Dispatch Global Sync Events
+  // 2. Sync to localStorage & Dispatch Global Sync Events
   try {
     localStorage.setItem(`gtavi_discord_link_${uid}`, JSON.stringify(updates));
     localStorage.setItem('gtavi_discord_user_id', cleanId);
@@ -1236,29 +1224,7 @@ export async function linkDiscordToUser(
  * Unlink Discord Account from User Profile
  */
 export async function unlinkDiscordFromUser(uid: string): Promise<void> {
-  const docRef = doc(db, USERS_COLLECTION, uid);
-  const updates: Record<string, any> = {
-    discordConnected: false,
-    discordId: deleteField(),
-    discordUsername: deleteField(),
-    discordAvatar: deleteField(),
-    claimedByDiscordId: deleteField(),
-    claimedByDiscordUsername: deleteField(),
-    discordAuth: deleteField(),
-    updatedAt: new Date().toISOString()
-  };
-
-  try {
-    await updateDoc(docRef, updates);
-  } catch (err) {
-    try {
-      await setDoc(docRef, updates, { merge: true });
-    } catch (setErr) {
-      console.warn('Firestore unlink Discord failed:', setErr);
-    }
-  }
-
-  // Also notify server backend endpoint
+  // Notify server backend endpoint (MongoDB single source of truth)
   try {
     await fetch('/api/auth/discord/unlink', {
       method: 'POST',
@@ -1274,6 +1240,10 @@ export async function unlinkDiscordFromUser(uid: string): Promise<void> {
     localStorage.removeItem('gtavi_discord_user_id');
     localStorage.removeItem('gtavi_discord_username');
     localStorage.removeItem('gtavi_discord_avatar');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gtavi_discord_unlinked', { detail: { uid } }));
+      window.dispatchEvent(new CustomEvent('gtavi_profile_updated', { detail: { uid } }));
+    }
   } catch {}
 }
 
@@ -1339,7 +1309,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   let mongoData: any = null;
   let firestoreData: any = null;
 
-  // 1. Query MongoDB REST API (source of truth)
+  // 1. Query MongoDB REST API (single source of truth)
   try {
     const res = await fetch(`/api/user/profile?uid=${encodeURIComponent(uid)}`);
     if (res.ok) {
@@ -1352,20 +1322,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     console.warn(`[getUserProfile] REST API fetch error for ${uid}:`, apiErr);
   }
 
-  // 2. Query Firestore collection only if mongoData is not found
-  if (!mongoData) {
-    try {
-      const docRef = doc(db, USERS_COLLECTION, uid);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        firestoreData = snap.data();
-      }
-    } catch (fsErr) {
-      console.warn(`[getUserProfile] Firestore fetch error for ${uid}:`, fsErr);
-    }
-  }
-
-  // If neither returned, check localStorage
+  // If REST API didn't return, check localStorage
   let localData: any = null;
   try {
     const cachedDiscord = localStorage.getItem(`gtavi_discord_link_${uid}`);

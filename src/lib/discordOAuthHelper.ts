@@ -188,27 +188,44 @@ export async function processDiscordCallback(currentUserUid?: string): Promise<{
             discordAvatar: avatarUrl
           });
 
-          // Store discordAuth metadata in Firestore
+          // Store discordAuth metadata in MongoDB (single source of truth)
           try {
-            await setDoc(doc(db, 'userProfiles', targetUid), {
-              discordConnected: true,
-              discordId: discordUser.id,
-              discordUsername: discordTag,
-              discordAvatar: avatarUrl,
-              discordAuth: {
-                tokenType,
-                scope,
-                expiresAt: Date.now() + expiresIn * 1000,
+            await fetch('/api/user/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                uid: targetUid,
+                discordConnected: true,
                 discordId: discordUser.id,
                 discordUsername: discordTag,
                 discordAvatar: avatarUrl,
-                linkedAt: new Date().toISOString(),
-                lastRefreshedAt: new Date().toISOString()
-              },
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
-          } catch (fsErr) {
-            console.warn('Firestore direct auth doc update notice:', fsErr);
+                discordAuth: {
+                  tokenType,
+                  scope,
+                  expiresAt: Date.now() + expiresIn * 1000,
+                  discordId: discordUser.id,
+                  discordUsername: discordTag,
+                  discordAvatar: avatarUrl,
+                  linkedAt: new Date().toISOString(),
+                  lastRefreshedAt: new Date().toISOString()
+                },
+                updatedAt: new Date().toISOString()
+              })
+            });
+
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('gtavi_profile_updated', {
+                detail: {
+                  uid: targetUid,
+                  discordConnected: true,
+                  discordId: discordUser.id,
+                  discordUsername: discordTag,
+                  discordAvatar: avatarUrl
+                }
+              }));
+            }
+          } catch (apiErr) {
+            console.warn('[handleDiscordOAuthCallback] MongoDB save notice:', apiErr);
           }
         }
 

@@ -1749,28 +1749,44 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
       return;
     }
 
-    let unsub: () => void = () => {};
-    try {
-      unsub = onSnapshot(doc(db, 'userProfiles', currentUser.uid), (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setUserProfileData(data);
-          const vip = data.isVip === true || data.role === 'VIP Member' || isVipActive;
-          const adm = data.role === 'Admin' || data.isAdmin === true;
-          const stf = adm || data.role === 'Staff' || data.isStaff === true;
-          setIsVipUser(vip);
-          setIsAdminUser(adm || isAdmin);
-          setIsStaffUser(stf || isStaff);
-          setIsAccountSuspended(data.status === 'Suspended');
-        }
-      }, (err) => {
-        console.warn('Profile sync in chat error:', err);
-      });
-    } catch (e) {
-      console.warn('Could not listen to profile in chat:', e);
-    }
+    let isMounted = true;
 
-    return () => unsub();
+    const fetchUserProfile = async () => {
+      try {
+        const res = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+        if (res.ok) {
+          const resJson = await res.json();
+          const data = resJson?.data || resJson;
+          if (data && isMounted) {
+            setUserProfileData(data);
+            const vip = data.isVip === true || data.vipStatus === true || data.role === 'VIP Member' || isVipActive;
+            const adm = data.role === 'Admin' || data.isAdmin === true;
+            const stf = adm || data.role === 'Staff' || data.isStaff === true;
+            setIsVipUser(vip);
+            setIsAdminUser(adm || isAdmin);
+            setIsStaffUser(stf || isStaff);
+            setIsAccountSuspended(data.status === 'Suspended');
+          }
+        }
+      } catch (err) {
+        console.debug('[CommunityChatTab] Profile sync notice:', err);
+      }
+    };
+
+    fetchUserProfile();
+    const intervalId = setInterval(fetchUserProfile, 12000);
+
+    const handleProfileUpdate = () => {
+      fetchUserProfile();
+    };
+
+    window.addEventListener('gtavi_profile_updated', handleProfileUpdate);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('gtavi_profile_updated', handleProfileUpdate);
+    };
   }, [currentUser, isVipActive, isAdmin, isStaff]);
 
   // Helper to synchronize custom VIP channel changes to MongoDB
@@ -2232,18 +2248,26 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
         }
       }
 
-      // 2. Fetch current user profile to update balance
-      const userDocRef = doc(db, 'userProfiles', currentUser.uid);
-      const userSnap = await getDoc(userDocRef);
+      // 2. Fetch current user profile from MongoDB to update balance
       let currentVc = 0;
       let claimedArr: string[] = [];
       let logsArr: any[] = [];
+      let currentVipUntil = Date.now();
 
-      if (userSnap.exists()) {
-        const uData = userSnap.data();
-        currentVc = typeof uData.vcBalance === 'number' ? uData.vcBalance : (uData.credits || 0);
-        claimedArr = Array.isArray(uData.claimedVouchers) ? uData.claimedVouchers : [];
-        logsArr = Array.isArray(uData.voucherLogs) ? uData.voucherLogs : [];
+      try {
+        const resProf = await fetch(`/api/user/profile?uid=${encodeURIComponent(currentUser.uid)}`);
+        if (resProf.ok) {
+          const resJson = await resProf.json();
+          const uData = resJson?.data || resJson;
+          if (uData) {
+            currentVc = typeof uData.vcBalance === 'number' ? uData.vcBalance : (uData.credits || 0);
+            claimedArr = Array.isArray(uData.claimedVouchers) ? uData.claimedVouchers : [];
+            logsArr = Array.isArray(uData.voucherLogs) ? uData.voucherLogs : [];
+            currentVipUntil = uData.vipUntil || Date.now();
+          }
+        }
+      } catch (e) {
+        console.warn('Profile read warning for voucher claim:', e);
       }
 
       const newVcBalance = currentVc + rewardVc;
@@ -2266,13 +2290,21 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
 
       if (rewardVipDays > 0) {
         const now = Date.now();
-        const currentVipUntil = (userSnap.data() as any)?.vipUntil || now;
         const newVipUntil = Math.max(now, currentVipUntil) + (rewardVipDays * 24 * 60 * 60 * 1000);
         updatePayload.isVip = true;
         updatePayload.vipUntil = newVipUntil;
       }
 
-      await setDoc(userDocRef, updatePayload, { merge: true });
+      await fetch('/api/user/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: currentUser.uid,
+          ...updatePayload
+        })
+      });
+
+      window.dispatchEvent(new CustomEvent('gtavi_profile_updated'));
 
       setVoucherClaimToast({
         type: 'success',
@@ -2992,12 +3024,17 @@ export const CommunityChatTab: React.FC<CommunityChatTabProps> = ({
     setIsUpgradingVip(true);
     if (currentUser?.uid) {
       try {
-        const userRef = doc(db, 'userProfiles', currentUser.uid);
-        await updateDoc(userRef, {
-          isVip: true,
-          role: 'VIP Member',
-          updatedAt: new Date().toISOString()
+        await fetch('/api/user/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: currentUser.uid,
+            isVip: true,
+            role: 'VIP Member',
+            updatedAt: new Date().toISOString()
+          })
         });
+        window.dispatchEvent(new CustomEvent('gtavi_profile_updated'));
         setIsVipUser(true);
         setVipLockModalTarget(null);
         setReportSuccessToast('👑 Welcome to VIP! Your account now has VIP Member perks unlocked.');
