@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from './_lib/db';
+import { getMongoDb, sendJson, parseBody } from '../lib/db';
 import { BUSINESSES_DATA } from '../src/data/businesses';
 
 function getFilteredBusinesses(query: any) {

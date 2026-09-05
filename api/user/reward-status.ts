@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson } from '../_lib/db';
+import { getMongoDb, sendJson } from '../../lib/db';
 
 function getTodayString(): string {
   return new Date().toISOString().split('T')[0];

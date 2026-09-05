@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from './_lib/db';
+import { getMongoDb, sendJson, parseBody } from '../lib/db';
 import { WEAPONS_DATA } from '../src/data/weapons';
 
 function getFilteredWeapons(query: any) {

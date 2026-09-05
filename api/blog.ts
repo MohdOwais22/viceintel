@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from './_lib/db';
+import { getMongoDb, sendJson, parseBody } from '../lib/db';
 import { BLOG_POSTS } from '../src/data/blogPosts';
 
 const POSTS = BLOG_POSTS || [];

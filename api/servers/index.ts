@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from '../_lib/db';
+import { getMongoDb, sendJson, parseBody } from '../../lib/db';
 import { RP_SERVERS_DATA } from '../../src/data/rpServers';
 
 function getFilteredRpServers(query: any) {

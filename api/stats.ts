@@ -1,4 +1,4 @@
-import { sendJson } from './_lib/db';
+import { sendJson } from '../lib/db';
 import { VEHICLES_DATA } from '../src/data/vehicles';
 import { WEAPONS_DATA } from '../src/data/weapons';
 

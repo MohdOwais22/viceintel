@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from './_lib/db';
+import { getMongoDb, sendJson, parseBody } from '../lib/db';
 import { MAP_LOCATIONS_DATA } from '../src/data/mapLocations';
 
 function getFilteredMapLocations(query: any) {

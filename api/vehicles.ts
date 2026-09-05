@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from './_lib/db';
+import { getMongoDb, sendJson, parseBody } from '../lib/db';
 import { VEHICLES_DATA } from '../src/data/vehicles';
 
 function getFilteredVehicles(query: any) {

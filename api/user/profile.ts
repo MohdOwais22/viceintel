@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from '../_lib/db';
+import { getMongoDb, sendJson, parseBody } from '../../lib/db';
 
 function normalizeProfile(doc: any): any {
   if (!doc) return null;

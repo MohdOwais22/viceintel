@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from './_lib/db';
+import { getMongoDb, sendJson, parseBody } from '../lib/db';
 import { CHARACTERS_DATA } from '../src/data/characters';
 
 function getFilteredCharacters(query: any) {
