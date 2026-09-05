@@ -915,7 +915,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               }
             }
           } catch (apiErr) {
-            console.warn('MongoDB profile API fetch failed:', apiErr);
+            console.warn('Profile API fetch failed:', apiErr);
           }
 
           if (data) {
@@ -1046,6 +1046,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
       };
 
       loadProfileData();
+      const profileInterval = setInterval(loadProfileData, 10000);
 
       // Listen for popup OAuth messages for instant, no-reload state sync in iframe environments
       const handlePopupMessage = (event: MessageEvent) => {
@@ -1069,6 +1070,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
 
       window.addEventListener('message', handlePopupMessage);
       return () => {
+        clearInterval(profileInterval);
         window.removeEventListener('message', handlePopupMessage);
       };
     }

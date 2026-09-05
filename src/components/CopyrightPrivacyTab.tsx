@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { copyToClipboard } from '../lib/copyUtils';
-import { ENV } from '../lib/envConfig';
+import { ENV, getAppHostname } from '../lib/envConfig';
 import { openCookiePreferencesModal } from '../lib/cookieConsent';
 
 interface CopyrightPrivacyTabProps {
@@ -243,7 +243,7 @@ export const CopyrightPrivacyTab: React.FC<CopyrightPrivacyTabProps> = ({
                 For urgent trademark takedowns or statutory DMCA inquiries:
               </p>
               <div className="text-[11px] font-mono font-bold text-rose-400 bg-zinc-950 p-2 rounded-lg border border-zinc-800">
-                legal@{ENV.APP_URL ? new URL(ENV.APP_URL).hostname : 'viceintel.app'}
+                legal@{getAppHostname()}
               </div>
             </div>
           </div>
@@ -275,7 +275,7 @@ export const CopyrightPrivacyTab: React.FC<CopyrightPrivacyTabProps> = ({
                     <span>Non-Commercial Fan Utility Acknowledgement</span>
                   </div>
                   <p>
-                    <strong>{ENV.APP_NAME}</strong> (operating under <em>{ENV.APP_URL ? new URL(ENV.APP_URL).hostname : 'viceintel.app'}</em> and associated subdomains) is an independent, community-maintained, non-commercial fan encyclopedia and gaming utility portal.
+                    <strong>{ENV.APP_NAME}</strong> (operating under <em>{getAppHostname()}</em> and associated subdomains) is an independent, community-maintained, non-commercial fan encyclopedia and gaming utility portal.
                   </p>
                   <p className="font-semibold text-white">
                     This project is NOT sponsored by, authorized by, affiliated with, endorsed by, or in any way officially associated with Rockstar Games, Rockstar North, Take-Two Interactive Software, Inc., or any of their respective subsidiaries, parent corporations, or affiliates.

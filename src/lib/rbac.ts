@@ -12,32 +12,62 @@ export function getRoleLevel(role?: UserRole | string): number {
   return ROLE_HIERARCHY[role as UserRole] || 1;
 }
 
-export function isAdminUser(roleOrUser?: UserRole | string | { userLevel?: string; role?: string; isAdmin?: boolean; email?: string } | null, _email?: string | null): boolean {
+export function isAdminUser(roleOrUser?: UserRole | string | { userLevel?: string | number; role?: string; isAdmin?: boolean; email?: string; clearanceLevel?: string | number; username?: string; displayName?: string } | null, _email?: string | null): boolean {
   if (!roleOrUser) return false;
   if (typeof roleOrUser === 'object') {
     if (roleOrUser.isAdmin === true) return true;
     const r = String(roleOrUser.role || '').trim().toUpperCase();
-    return r === 'ADMIN';
+    if (r === 'ADMIN' || r === 'ADMINISTRATOR') return true;
+
+    const cl = String(roleOrUser.clearanceLevel || '').trim().toUpperCase();
+    if (cl === 'L4' || cl === '4' || cl.includes('ADMIN')) return true;
+
+    const ul = String(roleOrUser.userLevel || '').trim().toUpperCase();
+    if (ul === 'L4' || ul === '4' || ul.includes('ADMIN')) return true;
+
+    return false;
   }
   const str = String(roleOrUser).trim().toUpperCase();
-  return str === 'ADMIN';
+  return str === 'ADMIN' || str === 'ADMINISTRATOR' || str === 'L4';
 }
 
-export function isStaffUser(roleOrUser?: UserRole | string | { userLevel?: string; role?: string; isStaff?: boolean; email?: string } | null, email?: string | null): boolean {
+export function isStaffUser(roleOrUser?: UserRole | string | { userLevel?: string | number; role?: string; isStaff?: boolean; isAdmin?: boolean; email?: string; clearanceLevel?: string | number; username?: string; displayName?: string } | null, email?: string | null): boolean {
   if (isAdminUser(roleOrUser, email)) return true;
   if (!roleOrUser) return false;
+
   if (typeof roleOrUser === 'object') {
     if (roleOrUser.isStaff === true) return true;
     const r = String(roleOrUser.role || '').trim().toUpperCase();
-    return r === 'STAFF';
+    if (r === 'STAFF' || r === 'MODERATOR') return true;
+
+    const cl = String(roleOrUser.clearanceLevel || '').trim().toUpperCase();
+    if (cl === 'L3' || cl === '3' || cl.includes('STAFF')) return true;
+
+    const ul = String(roleOrUser.userLevel || '').trim().toUpperCase();
+    if (ul === 'L3' || ul === '3' || ul.includes('STAFF')) return true;
+
+    return false;
   }
   const str = String(roleOrUser).trim().toUpperCase();
-  return str === 'STAFF';
+  return str === 'STAFF' || str === 'MODERATOR' || str === 'L3';
 }
 
-export function isVipUser(role?: UserRole | string, isVipFlag?: boolean): boolean {
+export function isVipUser(role?: UserRole | string | { role?: string; isVip?: boolean; clearanceLevel?: string | number; userLevel?: string | number; vipExpires?: string }, isVipFlag?: boolean): boolean {
   if (isVipFlag === true) return true;
-  return role === 'VIP Member' || role === 'Staff' || role === 'Admin';
+  if (!role) return false;
+
+  if (typeof role === 'object') {
+    if (role.isVip === true) return true;
+    if (role.vipExpires === 'Lifetime' || role.vipExpires === 'Staff Account') return true;
+    const r = String(role.role || '').trim().toUpperCase();
+    if (r === 'VIP MEMBER' || r === 'VIP' || r === 'STAFF' || r === 'ADMIN') return true;
+    const cl = String(role.clearanceLevel || role.userLevel || '').trim().toUpperCase();
+    if (cl === 'L2' || cl === 'L3' || cl === 'L4' || cl === '2' || cl === '3' || cl === '4') return true;
+    return false;
+  }
+
+  const r = String(role).trim().toUpperCase();
+  return r === 'VIP MEMBER' || r === 'VIP' || r === 'STAFF' || r === 'ADMIN' || r === 'L2' || r === 'L3' || r === 'L4';
 }
 
 /**

@@ -1480,7 +1480,7 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
                         type="text"
                         value={cardHolderName}
                         onChange={(e) => setCardHolderName(e.target.value)}
-                        placeholder="e.g. Mohd Vance"
+                        placeholder="e.g. Jason Vance"
                         className="w-full h-10 bg-slate-900 border border-slate-800 rounded-xl px-3.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                       />
                     </div>

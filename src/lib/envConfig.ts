@@ -22,6 +22,16 @@ function getEnvVar(key: string, defaultValue: string = ''): string {
   return defaultValue;
 }
 
+function formatSafeUrl(url: string): string {
+  if (!url) return '';
+  const trimmed = url.trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
 export const ENV = {
   /** Application display name */
   APP_NAME: getEnvVar('APP_NAME', 'viceintel'),
@@ -30,7 +40,7 @@ export const ENV = {
   GA_MEASUREMENT_ID: getEnvVar('GA_MEASUREMENT_ID', 'G-VICE2026INTEL'),
   
   /** Base application URL for self-referential links & share URLs */
-  APP_URL: getEnvVar('APP_URL', typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'),
+  APP_URL: formatSafeUrl(getEnvVar('APP_URL', typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')),
   
   /** Google AdSense & GPT Ad Network Keys */
   ADSENSE_CLIENT_ID: getEnvVar('ADSENSE_CLIENT_ID', 'ca-pub-4929828472918402'),
@@ -102,4 +112,18 @@ export function getFormattedVipPrice(interval: string = '/mo'): string {
 export function getFormattedSponsorPrice(interval: string = '/mo'): string {
   const price = isNaN(ENV.B2B_SPONSOR_PRICE) ? 49.00 : ENV.B2B_SPONSOR_PRICE;
   return `$${price.toFixed(2)}${interval}`;
+}
+
+export function getAppHostname(): string {
+  try {
+    if (typeof window !== 'undefined' && window.location?.hostname) {
+      return window.location.hostname;
+    }
+    const raw = ENV.APP_URL || '';
+    if (!raw) return 'viceintel.app';
+    const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    return new URL(withProto).hostname || 'viceintel.app';
+  } catch {
+    return 'viceintel.app';
+  }
 }

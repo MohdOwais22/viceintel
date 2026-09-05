@@ -269,11 +269,12 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+
       if (user) {
         try {
           let data: any = null;
 
-          // 1. Fetch from MongoDB API
+          // 1. Fetch from Server Profile API
           try {
             const emailParam = user.email ? `&email=${encodeURIComponent(user.email)}` : '';
             const apiRes = await fetch(`/api/user/profile?uid=${encodeURIComponent(user.uid)}${emailParam}`);
@@ -281,59 +282,79 @@ export default function App() {
               const payload = await apiRes.json();
               if (payload.success && payload.data) {
                 data = payload.data;
-                applyUserPermissions(data, user.email);
               }
             }
           } catch (apiErr) {
-            console.warn('Failed to load profile from MongoDB API:', apiErr);
+            console.warn('Server profile API unavailable:', apiErr);
           }
 
-          // 2. Auto-initialize new profile if completely missing
+          // 2. Auto-initialize new profile if missing
           if (!data) {
             const rawName = user.displayName || user.email?.split('@')[0] || 'ViceCityPlayer_2026';
             const defaultName = rawName.replace(/\s+/g, '_');
-            const initRole = 'User';
-            const initClearance = 'Member';
-            const initVc = 100;
+            const isInitialAdmin = isAdminUser({ email: user.email || '', username: defaultName }, user.email);
+            const isInitialStaff = isStaffUser({ email: user.email || '', username: defaultName }, user.email);
+
+            const initRole = isInitialAdmin ? 'Admin' : isInitialStaff ? 'Staff' : 'User';
+            const initClearance = isInitialAdmin ? 'L4' : isInitialStaff ? 'L3' : 'Member';
+            const initVc = isInitialAdmin ? 2500 : isInitialStaff ? 1000 : 100;
 
             data = {
               uid: user.uid,
               username: defaultName,
               usernameLower: defaultName.toLowerCase(),
-              email: user.email || 'user@vicecity.app',
+              email: user.email || '',
               avatar: user.photoURL || DEFAULT_GTA6_AVATAR,
               role: initRole,
-              isAdmin: false,
-              isStaff: false,
+              isAdmin: isInitialAdmin,
+              isStaff: isInitialStaff,
               clearanceLevel: initClearance,
               userLevel: initClearance,
-              isVip: false,
+              isVip: isInitialAdmin || isInitialStaff,
+              vipExpires: isInitialAdmin ? 'Lifetime' : isInitialStaff ? 'Staff Account' : undefined,
               vcBalance: initVc,
               status: 'Active',
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             };
 
-            applyUserPermissions(data, user.email);
-
-            // Save to MongoDB API asynchronously in background
+            // Save to server API asynchronously
             fetch('/api/user/profile', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(data)
-            }).catch((saveErr) => {
-              console.warn('Failed to auto-save new profile to MongoDB:', saveErr);
-            });
+            }).catch(() => {});
           }
 
           // Apply permissions immediately
           applyUserPermissions(data, user.email);
 
-          // Non-blocking VIP expiry and notification checks in background
+          const bestStreak = Math.max(
+            data.dailyStreak || 0,
+            data.rewardStreak || 0,
+            data.streakCount || 0
+          );
+
+          setUserProfileRecord((prev: any) => ({
+            ...(prev || {}),
+            ...data,
+            dailyStreak: bestStreak,
+            rewardStreak: bestStreak,
+            vcBalance: data.vcBalance ?? data.credits ?? prev?.vcBalance ?? 100
+          }));
+
+          const lastClaimMs = getTimestampFromClaimDate(
+            data.lastClaimDate ? String(data.lastClaimDate) : undefined,
+            typeof data.lastLogin === 'number' ? data.lastLogin : undefined
+          );
+          const cooldownRemaining = getRewardCooldown(lastClaimMs, data.lastClaimDate ? String(data.lastClaimDate) : undefined);
+          setIsDailyRewardReady(lastClaimMs === 0 || cooldownRemaining === 0);
+
+          // Non-blocking VIP expiry check
           const now = Date.now();
           if (data.vipUntil) {
             const expiry = typeof data.vipUntil === 'number' ? data.vipUntil : new Date(data.vipUntil).getTime();
-            if (expiry <= now && data.isVip) {
+            if (expiry <= now && data.isVip && !data.isAdmin && !data.isStaff) {
               fetch('/api/user/profile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -351,10 +372,13 @@ export default function App() {
         setUserProfileRecord(null);
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
-  // Poll MongoDB profile changes for real-time VIP & Admin status updates
+  // Poll profile changes and synchronize Daily Reward readiness
   useEffect(() => {
     if (!currentUser) return;
 
@@ -375,7 +399,7 @@ export default function App() {
               data.streakCount || 0
             );
 
-            setUserProfileRecord(prev => ({
+            setUserProfileRecord((prev: any) => ({
               ...(prev || {}),
               ...data,
               discordId: data.discordId || data.claimedByDiscordId || data.discordAuth?.discordId || prev?.discordId,
@@ -398,12 +422,12 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.warn('Failed to poll latest profile from MongoDB:', err);
+        console.warn('Failed to poll latest profile:', err);
       }
     };
 
     fetchLatestProfile();
-    const interval = setInterval(fetchLatestProfile, 15000);
+    const interval = setInterval(fetchLatestProfile, 10000);
 
     const handleProfileUpdated = () => {
       fetchLatestProfile();

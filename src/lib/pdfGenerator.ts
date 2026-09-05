@@ -659,7 +659,7 @@ export function generateInvestorPitchPdf(data: InvestorPitchPdfData) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(51, 65, 85);
-  doc.text('• Direct Inquiry Contact: ir@viceintel.app  |  MohdOwais762@gmail.com', 18, y); y += 5;
+  doc.text(`• Direct Inquiry Contact: ir@${(data.appName || 'viceintel').toLowerCase().replace(/\s+/g, '')}.app`, 18, y); y += 5;
   doc.text('• Confidential Passkey HQ Access: Granted to accredited angel and VC institutional partners.', 18, y); y += 5;
   doc.text('• Due Diligence SLA: Guaranteed 24-hour turnaround on cap table & financial audit requests.', 18, y); y += 8;
 
