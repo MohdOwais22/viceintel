@@ -1,6 +1,23 @@
 import { getMongoDb, sendJson, parseBody } from './_lib/db';
 import { WEAPONS_DATA } from '../src/data/weapons';
 
+function getFilteredWeapons(query: any) {
+  const { category, search } = query || {};
+  let list = [...WEAPONS_DATA];
+  if (category && category !== 'all') {
+    list = list.filter(w => w.category?.toLowerCase() === category.toLowerCase());
+  }
+  if (search) {
+    const s = search.toLowerCase();
+    list = list.filter(w =>
+      w.name?.toLowerCase().includes(s) ||
+      w.category?.toLowerCase().includes(s) ||
+      w.description?.toLowerCase().includes(s)
+    );
+  }
+  return list;
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
     return sendJson(res, 204, {});
@@ -11,12 +28,6 @@ export default async function handler(req: any, res: any) {
   try {
     if (db) {
       const collection = db.collection('weapons');
-
-      // Auto-seed if empty
-      const count = await collection.countDocuments();
-      if (count === 0 && WEAPONS_DATA && WEAPONS_DATA.length > 0) {
-        await collection.insertMany(WEAPONS_DATA.map(w => ({ ...w, id: w.id || w.name })));
-      }
 
       if (req.method === 'GET') {
         const { category, search } = req.query || {};
@@ -33,11 +44,22 @@ export default async function handler(req: any, res: any) {
         }
 
         const weapons = await collection.find(filter).toArray();
+        if (weapons.length > 0) {
+          return sendJson(res, 200, {
+            success: true,
+            count: weapons.length,
+            source: 'MongoDB',
+            data: weapons
+          });
+        }
+
+        // Fallback to pre-seeded static weapons if database was not loaded/empty
+        const fallbackData = getFilteredWeapons(req.query);
         return sendJson(res, 200, {
           success: true,
-          count: weapons.length,
-          source: 'MongoDB',
-          data: weapons
+          count: fallbackData.length,
+          source: 'PreSeededFallback',
+          data: fallbackData
         });
       }
 
@@ -64,17 +86,19 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'GET') {
+      const fallbackData = getFilteredWeapons(req.query);
       return sendJson(res, 200, {
         success: true,
-        count: WEAPONS_DATA.length,
-        source: 'StaticFallback',
-        data: WEAPONS_DATA
+        count: fallbackData.length,
+        source: 'PreSeededFallback',
+        data: fallbackData
       });
     }
 
     return sendJson(res, 503, { success: false, error: 'MongoDB not available' });
   } catch (err: any) {
     console.error('Weapons API error:', err);
-    return sendJson(res, 500, { success: false, error: err.message || 'Server error', data: WEAPONS_DATA || [] });
+    const fallbackData = getFilteredWeapons(req.query);
+    return sendJson(res, 200, { success: true, count: fallbackData.length, source: 'PreSeededFallback', data: fallbackData });
   }
 }

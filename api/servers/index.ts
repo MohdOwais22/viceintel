@@ -1,6 +1,31 @@
 import { getMongoDb, sendJson, parseBody } from '../_lib/db';
 import { RP_SERVERS_DATA } from '../../src/data/rpServers';
 
+function getFilteredRpServers(query: any) {
+  const { framework, region, isWhitelisted, search } = query || {};
+  let list = [...RP_SERVERS_DATA];
+  if (framework && framework !== 'all') {
+    list = list.filter(s => s.framework?.toLowerCase() === framework.toLowerCase());
+  }
+  if (region && region !== 'all') {
+    list = list.filter(s => s.region?.toLowerCase() === region.toLowerCase());
+  }
+  if (isWhitelisted === 'true') {
+    list = list.filter(s => s.isWhitelisted === true);
+  } else if (isWhitelisted === 'false') {
+    list = list.filter(s => s.isWhitelisted === false);
+  }
+  if (search) {
+    const s = search.toLowerCase();
+    list = list.filter(srv =>
+      srv.name?.toLowerCase().includes(s) ||
+      srv.description?.toLowerCase().includes(s) ||
+      srv.tags?.some(t => t.toLowerCase().includes(s))
+    );
+  }
+  return list;
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
     return sendJson(res, 204, {});
@@ -11,12 +36,6 @@ export default async function handler(req: any, res: any) {
   try {
     if (db) {
       const collection = db.collection('rpServers');
-
-      // Auto-seed if empty
-      const count = await collection.countDocuments();
-      if (count === 0 && RP_SERVERS_DATA && RP_SERVERS_DATA.length > 0) {
-        await collection.insertMany(RP_SERVERS_DATA.map(s => ({ ...s, id: s.id || `rp_${Date.now()}` })));
-      }
 
       if (req.method === 'GET') {
         const { framework, region, isWhitelisted, search } = req.query || {};
@@ -42,11 +61,22 @@ export default async function handler(req: any, res: any) {
         }
 
         const servers = await collection.find(filter).toArray();
+        if (servers.length > 0) {
+          return sendJson(res, 200, {
+            success: true,
+            count: servers.length,
+            source: 'MongoDB',
+            data: servers
+          });
+        }
+
+        // Fallback to pre-seeded static RP servers if database was not loaded/empty
+        const fallbackData = getFilteredRpServers(req.query);
         return sendJson(res, 200, {
           success: true,
-          count: servers.length,
-          source: 'MongoDB',
-          data: servers
+          count: fallbackData.length,
+          source: 'PreSeededFallback',
+          data: fallbackData
         });
       }
 
@@ -78,17 +108,19 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'GET') {
+      const fallbackData = getFilteredRpServers(req.query);
       return sendJson(res, 200, {
         success: true,
-        count: RP_SERVERS_DATA.length,
-        source: 'StaticFallback',
-        data: RP_SERVERS_DATA
+        count: fallbackData.length,
+        source: 'PreSeededFallback',
+        data: fallbackData
       });
     }
 
     return sendJson(res, 503, { success: false, error: 'MongoDB not available' });
   } catch (err: any) {
     console.error('RP Servers API error:', err);
-    return sendJson(res, 500, { success: false, error: err.message || 'Server error', data: RP_SERVERS_DATA || [] });
+    const fallbackData = getFilteredRpServers(req.query);
+    return sendJson(res, 200, { success: true, count: fallbackData.length, source: 'PreSeededFallback', data: fallbackData });
   }
 }

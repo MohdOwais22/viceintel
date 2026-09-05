@@ -1759,39 +1759,40 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
         {/* Top Header Banner Skeleton */}
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 relative overflow-hidden shadow-2xl">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-zinc-800/80 border border-zinc-700/60 shrink-0" />
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="h-7 w-56 bg-zinc-800 rounded-lg" />
-                  <div className="h-5 w-24 bg-zinc-800/60 rounded-full" />
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="h-4 w-32 bg-zinc-800/50 rounded" />
-                  <div className="h-4 w-28 bg-zinc-800/50 rounded" />
-                  <div className="h-4 w-20 bg-zinc-800/50 rounded" />
-                </div>
+            <div className="space-y-3">
+              {/* Badges Row */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="h-6 w-36 bg-zinc-800 rounded-full" />
+                <div className="h-6 w-32 bg-zinc-800/80 rounded-full" />
+                <div className="h-6 w-28 bg-zinc-800/70 rounded-full" />
               </div>
+
+              {/* Title & Slug */}
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-zinc-800 shrink-0" />
+                <div className="h-8 w-64 sm:w-80 bg-zinc-800 rounded-xl" />
+                <div className="h-5 w-24 bg-zinc-800/60 rounded-md hidden sm:block" />
+              </div>
+
+              {/* Subtitle */}
+              <div className="h-4 w-full max-w-xl bg-zinc-800/50 rounded" />
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-28 bg-zinc-800 rounded-xl" />
+            {/* Quick Action Buttons */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="h-10 w-32 bg-zinc-800 rounded-xl" />
               <div className="h-10 w-36 bg-zinc-800/80 rounded-xl" />
+              <div className="h-10 w-28 bg-zinc-800/70 rounded-xl" />
+              <div className="h-10 w-28 bg-zinc-800/70 rounded-xl" />
+              <div className="h-10 w-10 bg-zinc-800 rounded-xl" />
             </div>
-          </div>
-
-          {/* Sub-navigation Tabs Skeleton */}
-          <div className="pt-4 border-t border-zinc-800/80 flex items-center gap-2 overflow-x-auto">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={`dash_tab_skel_${i}`} className="h-9 w-28 sm:w-36 bg-zinc-800/70 rounded-xl shrink-0" />
-            ))}
           </div>
         </div>
 
-        {/* Analytics Performance Cards Skeleton Row */}
+        {/* Analytics Performance KPI Cards Skeleton Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={`stat_skel_${i}`} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 space-y-3">
+            <div key={`server_stat_skel_${i}`} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 space-y-3">
               <div className="flex justify-between items-center">
                 <div className="h-3.5 w-24 bg-zinc-800/70 rounded" />
                 <div className="w-8 h-8 rounded-xl bg-zinc-800/60" />
@@ -1802,36 +1803,85 @@ export const ServerDashboardTab: React.FC<ServerDashboardTabProps> = ({
           ))}
         </div>
 
-        {/* Main Content Workspace / Applications Table Skeleton */}
-        <div className="bg-zinc-900/80 border border-zinc-800 rounded-3xl p-6 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-            <div className="space-y-1.5">
-              <div className="h-5 w-48 bg-zinc-800 rounded" />
-              <div className="h-3.5 w-72 bg-zinc-800/60 rounded" />
+        {/* Two-Column Workspace Skeleton (Desktop Sidebar + Main Canvas) */}
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          {/* Mobile Navigation Strip Skeleton */}
+          <div className="lg:hidden w-full p-2 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center gap-2 overflow-x-auto">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={`m_tab_skel_${i}`} className="h-9 w-28 bg-zinc-800/70 rounded-xl shrink-0" />
+            ))}
+          </div>
+
+          {/* Desktop Left Sidebar Skeleton */}
+          <div className="hidden lg:block w-72 bg-zinc-900/90 border border-zinc-800 rounded-3xl p-4 space-y-5 shrink-0">
+            <div className="space-y-2">
+              <div className="h-3 w-28 bg-zinc-800/60 rounded" />
+              <div className="space-y-1.5">
+                <div className="h-10 w-full bg-zinc-800/80 rounded-xl" />
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="h-9 w-48 bg-zinc-800/80 rounded-xl" />
-              <div className="h-9 w-28 bg-zinc-800/80 rounded-xl" />
+
+            <div className="space-y-2">
+              <div className="h-3 w-36 bg-zinc-800/60 rounded" />
+              <div className="space-y-1.5">
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="h-3 w-32 bg-zinc-800/60 rounded" />
+              <div className="space-y-1.5">
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="h-3 w-36 bg-zinc-800/60 rounded" />
+              <div className="space-y-1.5">
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+                <div className="h-10 w-full bg-zinc-800/50 rounded-xl" />
+              </div>
             </div>
           </div>
 
-          {/* List/Table Rows Skeletons */}
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={`row_skel_${i}`} className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-zinc-800/80 shrink-0" />
-                  <div className="space-y-1.5">
-                    <div className="h-4 w-40 bg-zinc-800 rounded" />
-                    <div className="h-3 w-56 bg-zinc-800/50 rounded" />
+          {/* Main Content Workspace Skeleton */}
+          <div className="flex-1 w-full bg-zinc-900/80 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6">
+            {/* Tool Header & Filters Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-zinc-800">
+              <div className="space-y-2">
+                <div className="h-6 w-52 bg-zinc-800 rounded-lg" />
+                <div className="h-3.5 w-72 bg-zinc-800/60 rounded" />
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="h-9 w-44 bg-zinc-800/80 rounded-xl" />
+                <div className="h-9 w-28 bg-zinc-800/70 rounded-xl" />
+                <div className="h-9 w-28 bg-zinc-800/70 rounded-xl" />
+              </div>
+            </div>
+
+            {/* List/Table Rows Skeletons */}
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={`server_row_skel_${i}`} className="p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-zinc-800/80 shrink-0" />
+                    <div className="space-y-1.5">
+                      <div className="h-4 w-44 bg-zinc-800 rounded" />
+                      <div className="h-3 w-56 bg-zinc-800/50 rounded" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 self-end sm:self-auto">
+                    <div className="h-6 w-24 bg-zinc-800/70 rounded-full" />
+                    <div className="h-8 w-24 bg-zinc-800 rounded-xl" />
                   </div>
                 </div>
-                <div className="flex items-center gap-3 self-end sm:self-auto">
-                  <div className="h-6 w-20 bg-zinc-800/70 rounded-full" />
-                  <div className="h-8 w-24 bg-zinc-800 rounded-xl" />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>

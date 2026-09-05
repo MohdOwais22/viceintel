@@ -1,6 +1,26 @@
 import { getMongoDb, sendJson, parseBody } from './_lib/db';
 import { VEHICLES_DATA } from '../src/data/vehicles';
 
+function getFilteredVehicles(query: any) {
+  const { category, brand, search } = query || {};
+  let list = [...VEHICLES_DATA];
+  if (category && category !== 'all') {
+    list = list.filter(v => v.category?.toLowerCase() === category.toLowerCase());
+  }
+  if (brand && brand !== 'all') {
+    list = list.filter(v => v.brand?.toLowerCase() === brand.toLowerCase());
+  }
+  if (search) {
+    const s = search.toLowerCase();
+    list = list.filter(v =>
+      v.name?.toLowerCase().includes(s) ||
+      v.brand?.toLowerCase().includes(s) ||
+      v.category?.toLowerCase().includes(s)
+    );
+  }
+  return list;
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
     return sendJson(res, 204, {});
@@ -11,12 +31,6 @@ export default async function handler(req: any, res: any) {
   try {
     if (db) {
       const collection = db.collection('vehicles');
-
-      // Auto-seed if empty
-      const count = await collection.countDocuments();
-      if (count === 0 && VEHICLES_DATA && VEHICLES_DATA.length > 0) {
-        await collection.insertMany(VEHICLES_DATA.map(v => ({ ...v, id: v.id || v.slug })));
-      }
 
       if (req.method === 'GET') {
         const { category, brand, search } = req.query || {};
@@ -36,11 +50,22 @@ export default async function handler(req: any, res: any) {
         }
 
         const vehicles = await collection.find(filter).toArray();
+        if (vehicles.length > 0) {
+          return sendJson(res, 200, {
+            success: true,
+            count: vehicles.length,
+            source: 'MongoDB',
+            data: vehicles
+          });
+        }
+
+        // Fallback to pre-seeded static vehicles if database was not loaded/empty
+        const fallbackData = getFilteredVehicles(req.query);
         return sendJson(res, 200, {
           success: true,
-          count: vehicles.length,
-          source: 'MongoDB',
-          data: vehicles
+          count: fallbackData.length,
+          source: 'PreSeededFallback',
+          data: fallbackData
         });
       }
 
@@ -66,19 +91,20 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Static fallback if MongoDB is not connected
     if (req.method === 'GET') {
+      const fallbackData = getFilteredVehicles(req.query);
       return sendJson(res, 200, {
         success: true,
-        count: VEHICLES_DATA.length,
-        source: 'StaticFallback',
-        data: VEHICLES_DATA
+        count: fallbackData.length,
+        source: 'PreSeededFallback',
+        data: fallbackData
       });
     }
 
     return sendJson(res, 503, { success: false, error: 'MongoDB not available' });
   } catch (err: any) {
     console.error('Vehicles API error:', err);
-    return sendJson(res, 500, { success: false, error: err.message || 'Server error', data: VEHICLES_DATA || [] });
+    const fallbackData = getFilteredVehicles(req.query);
+    return sendJson(res, 200, { success: true, count: fallbackData.length, source: 'PreSeededFallback', data: fallbackData });
   }
 }
