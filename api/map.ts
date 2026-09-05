@@ -1,5 +1,5 @@
 import { getMongoDb, sendJson, parseBody } from './_lib/db';
-import { WEAPONS_DATA } from '../src/data/weapons';
+import { MAP_LOCATIONS_DATA } from '../src/data/mapLocations';
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
@@ -10,12 +10,12 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (db) {
-      const collection = db.collection('weapons');
+      const collection = db.collection('mapLocations');
 
       // Auto-seed if empty
       const count = await collection.countDocuments();
-      if (count === 0 && WEAPONS_DATA && WEAPONS_DATA.length > 0) {
-        await collection.insertMany(WEAPONS_DATA.map(w => ({ ...w, id: w.id || w.name })));
+      if (count === 0 && MAP_LOCATIONS_DATA && MAP_LOCATIONS_DATA.length > 0) {
+        await collection.insertMany(MAP_LOCATIONS_DATA.map(m => ({ ...m, id: m.id || `loc_${Date.now()}` })));
       }
 
       if (req.method === 'GET') {
@@ -27,23 +27,23 @@ export default async function handler(req: any, res: any) {
         if (search) {
           filter.$or = [
             { name: { $regex: search, $options: 'i' } },
-            { category: { $regex: search, $options: 'i' } },
-            { description: { $regex: search, $options: 'i' } }
+            { description: { $regex: search, $options: 'i' } },
+            { district: { $regex: search, $options: 'i' } }
           ];
         }
 
-        const weapons = await collection.find(filter).toArray();
+        const locations = await collection.find(filter).toArray();
         return sendJson(res, 200, {
           success: true,
-          count: weapons.length,
+          count: locations.length,
           source: 'MongoDB',
-          data: weapons
+          data: locations
         });
       }
 
       if (req.method === 'POST' || req.method === 'PUT') {
         const body = await parseBody(req);
-        const targetId = body.id || `weap_${Date.now()}`;
+        const targetId = body.id || `loc_${Date.now()}`;
         const item = { ...body, id: targetId, updatedAt: new Date().toISOString() };
 
         await collection.updateOne(
@@ -52,29 +52,29 @@ export default async function handler(req: any, res: any) {
           { upsert: true }
         );
 
-        return sendJson(res, 200, { success: true, message: 'Weapon saved to MongoDB', data: item });
+        return sendJson(res, 200, { success: true, message: 'Location saved to MongoDB', data: item });
       }
 
       if (req.method === 'DELETE') {
         const { id } = req.query || {};
-        if (!id) return sendJson(res, 400, { success: false, error: 'Weapon ID is required' });
+        if (!id) return sendJson(res, 400, { success: false, error: 'Location ID required' });
         await collection.deleteOne({ id });
-        return sendJson(res, 200, { success: true, message: `Deleted weapon ${id}` });
+        return sendJson(res, 200, { success: true, message: `Deleted location ${id}` });
       }
     }
 
     if (req.method === 'GET') {
       return sendJson(res, 200, {
         success: true,
-        count: WEAPONS_DATA.length,
+        count: MAP_LOCATIONS_DATA.length,
         source: 'StaticFallback',
-        data: WEAPONS_DATA
+        data: MAP_LOCATIONS_DATA
       });
     }
 
     return sendJson(res, 503, { success: false, error: 'MongoDB not available' });
   } catch (err: any) {
-    console.error('Weapons API error:', err);
-    return sendJson(res, 500, { success: false, error: err.message || 'Server error', data: WEAPONS_DATA || [] });
+    console.error('Map API error:', err);
+    return sendJson(res, 500, { success: false, error: err.message || 'Server error', data: MAP_LOCATIONS_DATA || [] });
   }
 }

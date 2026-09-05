@@ -57,6 +57,7 @@ export default async function handler(req: any, res: any) {
         const mongoose = (mongooseModule as any).default || mongooseModule;
         if (!mongoose.connection || mongoose.connection.readyState !== 1) {
           await mongoose.connect(mongoUri.trim(), {
+            dbName: process.env.MONGODB_DB_NAME || undefined,
             serverSelectionTimeoutMS: 3000,
             socketTimeoutMS: 5000,
             bufferCommands: false,

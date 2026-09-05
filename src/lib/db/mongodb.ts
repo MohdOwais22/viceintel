@@ -58,6 +58,7 @@ export async function connectToMongoDB(): Promise<typeof mongoose | null> {
     console.log('🔄 Connecting to MongoDB via Mongoose...');
     
     const opts = {
+      dbName: process.env.MONGODB_DB_NAME || undefined,
       bufferCommands: false,
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,

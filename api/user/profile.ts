@@ -93,6 +93,7 @@ export default async function handler(req: any, res: any) {
           mongooseInstance = mongoose;
         } else {
           await mongoose.connect(mongoUri.trim(), {
+            dbName: process.env.MONGODB_DB_NAME || undefined,
             serverSelectionTimeoutMS: 3000,
             socketTimeoutMS: 5000,
             bufferCommands: false,
