@@ -52,7 +52,8 @@ export const TAB_TO_PATH: Record<ActiveTab, string> = {
   'market-agency': '/admin/marketagency',
   marketagency: '/admin/marketagency',
   pitch: '/pitch',
-  investors: '/investors'
+  investors: '/investors',
+  'not-found': '/404'
 };
 
 export const PATH_TO_TAB: Record<string, ActiveTab> = {
@@ -62,6 +63,8 @@ export const PATH_TO_TAB: Record<string, ActiveTab> = {
   '/index.html': 'home',
   '/main': 'home',
   '/portal': 'home',
+  '/404': 'not-found',
+  '/not-found': 'not-found',
   '/pitch': 'pitch',
   '/investors': 'investors',
   '/vehicles': 'vehicles',
@@ -201,7 +204,8 @@ export const TAB_TITLES: Record<ActiveTab, string> = {
   'market-agency': 'AI Agent Console & Subdomain Routing — ViceIntel',
   marketagency: 'AI Agent Console & Subdomain Routing — ViceIntel',
   pitch: 'Investor Growth Deck & Unit Economics — ViceIntel Series Seed',
-  investors: 'Investor Growth Deck & Unit Economics — ViceIntel Series Seed'
+  investors: 'Investor Growth Deck & Unit Economics — ViceIntel Series Seed',
+  'not-found': '404 — Page Not Found | ViceIntel — Lost in Leonida'
 };
 
 export const TAB_DESCRIPTIONS: Record<ActiveTab, string> = {
@@ -254,7 +258,8 @@ export const TAB_DESCRIPTIONS: Record<ActiveTab, string> = {
   'whitelist-review': 'Staff review queue for inspecting applicant backstories, saving internal notes, and triggering 1-click Discord webhook approvals.',
   'whitelist-status': 'Track the real-time review progress of your RP server whitelist application.',
   pitch: 'Executive investor memorandum, TAM analysis, unit economics simulator, and Series Seed pitch deck for ViceIntel.',
-  investors: 'Executive investor memorandum, TAM analysis, unit economics simulator, and Series Seed pitch deck for ViceIntel.'
+  investors: 'Executive investor memorandum, TAM analysis, unit economics simulator, and Series Seed pitch deck for ViceIntel.',
+  'not-found': 'The page or intel you are looking for does not exist or has moved. Return to the ViceIntel master portal to explore databases and community features.'
 };
 
 /**
@@ -287,8 +292,16 @@ export function getTabFromPath(pathname: string): { tab: ActiveTab; slug?: strin
     return { tab: 'server-apply', slug };
   }
 
-  const tab = PATH_TO_TAB[cleanPath] || 'home';
-  return { tab };
+  if (PATH_TO_TAB[cleanPath]) {
+    return { tab: PATH_TO_TAB[cleanPath] };
+  }
+
+  // If path is not root or known, route to 404 not-found
+  if (cleanPath !== '/' && cleanPath !== '') {
+    return { tab: 'not-found' };
+  }
+
+  return { tab: 'home' };
 }
 
 /**

@@ -612,7 +612,8 @@ export type ActiveTab =
   | 'market-agency' 
   | 'marketagency' 
   | 'pitch' 
-  | 'investors';
+  | 'investors'
+  | 'not-found';
 
 export * from './rpSuite';
 

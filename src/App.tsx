@@ -61,6 +61,7 @@ import { InvestorPitchTab } from './components/InvestorPitchTab';
 import { ForServersPage } from './components/ForServersPage';
 import { ServerOnboardingWizard } from './components/ServerOnboardingWizard';
 import { AdminBusinessDashboard } from './components/AdminBusinessDashboard';
+import { NotFoundPage } from './components/NotFoundPage';
 import { Footer } from './components/Footer';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { registerServiceWorker, preloadAllCriticalData } from './lib/offlineStorage';
@@ -1500,6 +1501,14 @@ export default function App() {
                   onReturnToPublic={() => handleTabChange('for-servers')}
                 />
               )
+            )}
+
+            {activeTab === 'not-found' && (
+              <NotFoundPage
+                onNavigate={handleTabChange}
+                currentPath={typeof window !== 'undefined' ? window.location.pathname : undefined}
+                onOpenReport={() => setIsReportModalOpen(true)}
+              />
             )}
           </motion.div>
         </AnimatePresence>

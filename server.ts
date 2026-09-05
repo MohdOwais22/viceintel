@@ -13729,6 +13729,26 @@ Sitemap: ${baseUrl}/sitemap.xml
     res.send(rss);
   });
 
+  // 404 handler for unmatched /api/* endpoints
+  app.all('/api/*', (req: Request, res: Response) => {
+    res.status(404).json({
+      status: 'error',
+      code: 404,
+      error: 'API endpoint not found',
+      path: req.originalUrl || req.url,
+      availableEndpoints: [
+        '/api/health',
+        '/api/user/profile',
+        '/api/user/reward-status',
+        '/api/user/claim-daily-reward',
+        '/api/vehicles',
+        '/api/weapons',
+        '/api/rp-servers',
+        '/api/stats'
+      ]
+    });
+  });
+
   return app;
 }
 
