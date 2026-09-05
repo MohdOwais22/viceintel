@@ -2216,7 +2216,7 @@ async function runFivemTrafficSyncJob(
 }
 
 
-async function startServer() {
+export async function createExpressApp() {
   const app = express();
 
   // Task 1 Fix: Compression middleware for sub-second gzip/brotli delivery
@@ -13729,6 +13729,12 @@ Sitemap: ${baseUrl}/sitemap.xml
     res.send(rss);
   });
 
+  return app;
+}
+
+async function startServer() {
+  const app = await createExpressApp();
+
   // -------------------------------------------------------------
   // VITE DEV SERVER / STATIC SERVING
   // -------------------------------------------------------------
@@ -13763,4 +13769,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
