@@ -3750,13 +3750,33 @@ Showing top entries for "${query || 'All'}":
   };
 
   // Admin & Users REST API (MongoDB Integrated)
-  // Get User Profile from MongoDB
+  // Get All User Profiles from MongoDB
+  app.get('/api/user/profiles', async (req: Request, res: Response) => {
+    try {
+      const mongoProfiles = await findDocuments('userProfiles', {}, 500);
+      if (mongoProfiles && mongoProfiles.length > 0) {
+        const mapped = mongoProfiles.map(raw => normalizeUserProfileData(raw));
+        return res.json({ success: true, count: mapped.length, source: 'MongoDB', data: mapped });
+      }
+      return res.json({ success: true, source: 'MemoryState', data: state.users.map(u => normalizeUserProfileData(u)) });
+    } catch (err: any) {
+      console.warn('[User Profiles API] Error fetching all profiles:', err);
+      return res.json({ success: true, source: 'MemoryState', data: state.users });
+    }
+  });
+
+  // Get User Profile from MongoDB (or all profiles if uid/email omitted)
   app.get('/api/user/profile', async (req: Request, res: Response) => {
     try {
       const uid = (req.query.uid as string)?.trim();
       const email = (req.query.email as string)?.trim();
       if (!uid && !email) {
-        return res.status(400).json({ success: false, error: 'Missing user uid or email parameter' });
+        const mongoProfiles = await findDocuments('userProfiles', {}, 500);
+        if (mongoProfiles && mongoProfiles.length > 0) {
+          const mapped = mongoProfiles.map(raw => normalizeUserProfileData(raw));
+          return res.json({ success: true, count: mapped.length, source: 'MongoDB', data: mapped });
+        }
+        return res.json({ success: true, source: 'MemoryState', data: state.users.map(u => normalizeUserProfileData(u)) });
       }
 
       const queryConds: any[] = [];

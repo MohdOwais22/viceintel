@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users,
   DollarSign,
@@ -513,6 +513,87 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const currentActorUser = users.find(u => u.uid === auth.currentUser?.uid || u.id === auth.currentUser?.uid || (actorEmail && u.email?.toLowerCase() === actorEmail.toLowerCase()));
   const isActorL4Admin = isAdminUser(currentActorUser, actorEmail);
   const actorRole: UserRole = isActorL4Admin ? 'Admin' : (isStaffUser(currentActorUser, actorEmail) ? 'Staff' : 'User');
+
+  const fetchAdminData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      let loadedUsers: any[] = [];
+
+      // Query userProfiles directly
+      try {
+        const uRes = await fetch('/api/admin/users').then(res => res.json());
+        if (uRes?.success && Array.isArray(uRes.data)) {
+          loadedUsers = uRes.data;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch from /api/admin/users:', err);
+      }
+
+      if (loadedUsers.length > 0) {
+        const normalizedList: UserProfile[] = loadedUsers.map((raw: any) => {
+          const role: UserRole = raw.role || (raw.isAdmin ? 'Admin' : raw.isStaff ? 'Staff' : raw.isVip ? 'VIP Member' : 'User');
+          const isAdmin = Boolean(raw.isAdmin === true || role === 'Admin');
+          const isStaff = Boolean(raw.isStaff === true || role === 'Staff' || isAdmin);
+          const isVip = Boolean(raw.isVip === true || role === 'VIP Member' || isAdmin || isStaff);
+          const userLevel = isAdmin ? 'L4' : isStaff ? 'L3' : isVip ? 'L2' : (raw.userLevel || 'L1');
+          const clearanceLevel = isAdmin ? 'L4' : isStaff ? 'L3' : isVip ? 'L2' : 'L1';
+          const username = raw.username || raw.gamerTag || raw.displayName || 'ViceCityPlayer';
+          const email = raw.email || 'user@viceintel.app';
+          const id = raw.id || raw.uid || String(raw._id || 'user_' + Math.random().toString(36).substring(2, 8));
+
+          return {
+            id,
+            uid: raw.uid || id,
+            username,
+            displayName: raw.displayName || username,
+            gamerTag: raw.gamerTag || username,
+            email,
+            role,
+            userLevel,
+            clearanceLevel,
+            isAdmin,
+            isStaff,
+            isVip,
+            status: (raw.status === 'Suspended' || raw.isSuspended) ? 'Suspended' : 'Active',
+            vipExpires: raw.vipExpires || (isAdmin ? 'Lifetime' : isStaff ? 'Staff Account' : isVip ? '2027-08-01' : 'Expired'),
+            joinedDate: raw.createdAt ? new Date(raw.createdAt).toISOString().split('T')[0] : (raw.joinedDate || '2026-03-01'),
+            avatar: raw.avatar || raw.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + encodeURIComponent(username),
+            vcBalance: typeof raw.vcBalance === 'number' ? raw.vcBalance : (typeof raw.credits === 'number' ? raw.credits : 0),
+            dailyStreak: typeof raw.dailyStreak === 'number' ? raw.dailyStreak : 0,
+            rewardStreak: typeof raw.rewardStreak === 'number' ? raw.rewardStreak : 0,
+            moderationNote: raw.moderationNote || '',
+            publishedBuildsCount: typeof raw.publishedBuildsCount === 'number' ? raw.publishedBuildsCount : 0,
+            discordConnected: Boolean(raw.discordConnected || raw.discordId || raw.discordUsername),
+            discordId: raw.discordId || undefined,
+            discordUsername: raw.discordUsername || undefined,
+            rawFirestoreData: raw
+          };
+        });
+
+        // Deduplicate users by ID and email
+        const userMap = new Map<string, UserProfile>();
+        normalizedList.forEach(u => {
+          if (u.id) userMap.set(u.id, u);
+          else if (u.email) userMap.set(u.email.toLowerCase(), u);
+        });
+        setUsers(Array.from(userMap.values()));
+      }
+
+      // Fetch pending approvals from MongoDB REST API
+      try {
+        const pRes = await fetch('/api/admin/pending').then(res => res.json());
+        if (pRes?.success && Array.isArray(pRes.data)) {
+          setPendingApprovals(pRes.data.filter((p: any) => p && p.id && p.id !== 'p1'));
+        }
+      } catch (e) {
+        console.warn('Failed to fetch pending approvals:', e);
+      }
+    } catch (err) {
+      console.warn('MongoDB Admin Data Sync Notice:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
   // Real-Time Polling for MongoDB State Synchronization
   useEffect(() => {
@@ -1059,33 +1140,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     setUsers(prev => prev.filter(u => u.id !== id));
     setActionNotice(`🗑️ User profile for @${username} was permanently removed.`);
     setTimeout(() => setActionNotice(null), 3500);
-  };
-
-
-  const fetchAdminData = async () => {
-    setIsRefreshing(true);
-    try {
-      // Primary API query directly from high-performance MongoDB backend
-      const [uRes, pRes, cmsRes] = await Promise.allSettled([
-        fetch('/api/admin/users').then(res => res.json()),
-        fetch('/api/admin/pending').then(res => res.json()),
-        fetch('/api/admin/cms/userProfiles').then(res => res.json()).catch(() => null)
-      ]);
-
-      if (uRes.status === 'fulfilled' && uRes.value?.success && Array.isArray(uRes.value.data) && uRes.value.data.length > 0) {
-        setUsers(uRes.value.data);
-      } else if (cmsRes.status === 'fulfilled' && cmsRes.value?.success && Array.isArray(cmsRes.value.data) && cmsRes.value.data.length > 0) {
-        setUsers(cmsRes.value.data);
-      }
-
-      if (pRes.status === 'fulfilled' && pRes.value?.success && Array.isArray(pRes.value.data)) {
-        setPendingApprovals(pRes.value.data.filter((p: any) => p && p.id && p.id !== 'p1'));
-      }
-    } catch (err) {
-      console.warn('MongoDB Admin Data Sync Notice:', err);
-    } finally {
-      setIsRefreshing(false);
-    }
   };
 
   // Assign user role (Admins can assign any role; Staff L3 can assign non-Admin roles to non-Admin users)
@@ -1672,22 +1726,30 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
 
   const filteredUsers = users.filter(u => {
+    if (!u) return false;
     const searchLower = searchUser.toLowerCase().trim();
-    const matchesSearch = !searchLower ||
-      u.username.toLowerCase().includes(searchLower) ||
-      u.email.toLowerCase().includes(searchLower) ||
-      u.id.toLowerCase().includes(searchLower) ||
-      (u.moderationNote && u.moderationNote.toLowerCase().includes(searchLower));
+    const uname = String(u.username || u.gamerTag || u.displayName || '').toLowerCase();
+    const email = String(u.email || '').toLowerCase();
+    const id = String(u.id || u.uid || '').toLowerCase();
+    const note = String(u.moderationNote || '').toLowerCase();
 
-    const matchesRole = roleFilter === 'All' || u.role === roleFilter;
-    const matchesStatus = statusFilter === 'All' || u.status === statusFilter;
+    const matchesSearch = !searchLower ||
+      uname.includes(searchLower) ||
+      email.includes(searchLower) ||
+      id.includes(searchLower) ||
+      note.includes(searchLower);
+
+    const userStatus = (u.status === 'Suspended' || (u as any).isSuspended) ? 'Suspended' : 'Active';
+    const matchesRole = roleFilter === 'All' || u.role === roleFilter || (roleFilter === 'VIP' && (u.isVip || u.role === 'VIP Member'));
+    const matchesStatus = statusFilter === 'All' || userStatus === statusFilter || u.status === statusFilter;
 
     return matchesSearch && matchesRole && matchesStatus;
   }).sort((a, b) => {
-    if (sortBy === 'newest') return (b.joinedDate || '').localeCompare(a.joinedDate || '');
-    if (sortBy === 'oldest') return (a.joinedDate || '').localeCompare(b.joinedDate || '');
-    if (sortBy === 'username') return a.username.localeCompare(b.username);
-    if (sortBy === 'vcBalance') return (b.vcBalance || 0) - (a.vcBalance || 0);
+    if (!a || !b) return 0;
+    if (sortBy === 'newest') return String(b.joinedDate || '').localeCompare(String(a.joinedDate || ''));
+    if (sortBy === 'oldest') return String(a.joinedDate || '').localeCompare(String(b.joinedDate || ''));
+    if (sortBy === 'username') return String(a.username || a.gamerTag || '').localeCompare(String(b.username || b.gamerTag || ''));
+    if (sortBy === 'vcBalance') return (Number(b.vcBalance) || 0) - (Number(a.vcBalance) || 0);
     if (sortBy === 'role') return getRoleLevel(b.role) - getRoleLevel(a.role);
     return 0;
   });
