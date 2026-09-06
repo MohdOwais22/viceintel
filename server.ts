@@ -4612,8 +4612,8 @@ Showing top entries for "${query || 'All'}":
           const isAdmin = Boolean(p.isAdmin === true || role === 'Admin');
           const isStaff = Boolean(p.isStaff === true || role === 'Staff' || isAdmin);
           const isVip = Boolean(p.isVip === true || role === 'VIP Member' || isAdmin || isStaff);
-          const userLevel = isAdmin ? 'L4' : isStaff ? 'L3' : isVip ? 'L2' : (p.userLevel === 'L4' || p.userLevel === 'L3' ? 'L1' : (p.userLevel || 'L1'));
-          const clearanceLevel = isAdmin ? 4 : isStaff ? 3 : isVip ? 2 : 1;
+          const userLevel = p.userLevel || (isAdmin ? 'L4' : isStaff ? 'L3' : isVip ? 'L2' : 'L1');
+          const clearanceLevel = typeof p.clearanceLevel === 'number' ? p.clearanceLevel : (isAdmin ? 4 : isStaff ? 3 : isVip ? 2 : 1);
           const vipExpires = p.vipExpires || (isAdmin ? 'Lifetime' : isStaff ? 'Staff Account' : isVip ? '2027-08-01' : 'Expired');
 
           return {

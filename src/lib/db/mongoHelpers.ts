@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import { connectToMongoDB, invalidateMongoConnection } from './mongodb';
 import { getDynamicModel } from './models/DynamicDoc';
 import { UserProfileModel } from './models/UserProfile';
@@ -10,8 +12,74 @@ import { ChatMessageModel } from './models/ChatMessage';
 import { StaffAuditLogModel } from './models/StaffAuditLog';
 import gtaviData from '../../data/gtavi_data.json';
 
-const localData = (gtaviData || {}) as Record<string, any[]>;
+// In-memory mutable cache of collections
+const localData: Record<string, any[]> = (gtaviData ? JSON.parse(JSON.stringify(gtaviData)) : {}) as Record<string, any[]>;
 let lastReportedAuthErrorTime = 0;
+let saveDiskTimeout: any = null;
+
+function persistLocalDataToDisk(): void {
+  if (typeof window !== 'undefined') return;
+  if (saveDiskTimeout) clearTimeout(saveDiskTimeout);
+  saveDiskTimeout = setTimeout(() => {
+    try {
+      const dataFilePath = path.resolve(process.cwd(), 'src/data/gtavi_data.json');
+      fs.writeFile(dataFilePath, JSON.stringify(localData, null, 2), 'utf-8', (err) => {
+        if (err) console.warn('[Storage] Error persisting to gtavi_data.json:', err.message);
+      });
+    } catch (e) {
+      // Ignore disk write errors in non-node environments
+    }
+  }, 100);
+}
+
+function updateLocalCollection(collectionName: string, id: string, docData: any): void {
+  const targetCols = (collectionName === 'userProfiles' || collectionName === 'users')
+    ? ['userProfiles', 'users']
+    : (collectionName === 'rpServers' || collectionName === 'servers' || collectionName === 'rp_servers')
+    ? ['rpServers', 'servers', 'rp_servers']
+    : [collectionName];
+
+  for (const col of targetCols) {
+    if (!Array.isArray(localData[col])) {
+      localData[col] = [];
+    }
+    const arr = localData[col];
+    const idx = arr.findIndex((item: any) => {
+      if (!item) return false;
+      return item.id === id ||
+        item.uid === id ||
+        item.docId === id ||
+        (docData.uid && (item.uid === docData.uid || item.id === docData.uid)) ||
+        (docData.email && item.email && item.email.toLowerCase() === docData.email.toLowerCase()) ||
+        (docData.slug && item.slug === docData.slug);
+    });
+
+    if (idx !== -1) {
+      arr[idx] = { ...arr[idx], ...docData, id: arr[idx].id || id, docId: arr[idx].docId || id };
+    } else {
+      arr.push({ ...docData, id, docId: id });
+    }
+  }
+  persistLocalDataToDisk();
+}
+
+function removeLocalCollection(collectionName: string, idOrFilter: any): void {
+  const targetCols = (collectionName === 'userProfiles' || collectionName === 'users')
+    ? ['userProfiles', 'users']
+    : (collectionName === 'rpServers' || collectionName === 'servers' || collectionName === 'rp_servers')
+    ? ['rpServers', 'servers', 'rp_servers']
+    : [collectionName];
+
+  const targetId = typeof idOrFilter === 'string' ? idOrFilter : idOrFilter?.id || idOrFilter?.uid || idOrFilter?.docId;
+
+  for (const col of targetCols) {
+    if (!Array.isArray(localData[col])) continue;
+    if (targetId) {
+      localData[col] = localData[col].filter((item: any) => item && item.id !== targetId && item.uid !== targetId && item.docId !== targetId);
+    }
+  }
+  persistLocalDataToDisk();
+}
 
 /**
  * Gracefully handles MongoDB errors, invalidates stale/broken connection pools, and throttles noisy logging.
@@ -45,7 +113,10 @@ function handleMongoError(err: any, context: string, collectionName: string): vo
  * Searches in local bundled gtavi_data.json collection if MongoDB is unreachable or unauthorized.
  */
 function findLocalDocuments(collectionName: string, filter: any = {}, limit: number = 100): any[] {
-  const collection = localData[collectionName];
+  let collection = localData[collectionName];
+  if (!Array.isArray(collection) && (collectionName === 'userProfiles' || collectionName === 'users')) {
+    collection = localData['userProfiles'] || localData['users'] || [];
+  }
   if (!Array.isArray(collection)) return [];
 
   let results = collection;
@@ -81,6 +152,7 @@ function findLocalDocument(collectionName: string, filterOrId: any): any | null 
 export function getModelForCollection(collectionName: string) {
   switch (collectionName) {
     case 'userProfiles':
+    case 'users':
       return UserProfileModel;
     case 'staff_activity_logs':
     case 'staffAuditLogs':
@@ -102,22 +174,26 @@ export function getModelForCollection(collectionName: string) {
 }
 
 /**
- * Upserts a document into MongoDB for a given collection.
+ * Upserts a document into MongoDB for a given collection and keeps local memory/disk in sync.
  */
 export async function saveDocument(collectionName: string, id: string, data: any): Promise<boolean> {
+  const updatePayload: any = {
+    ...data,
+    id,
+    uid: data.uid || id,
+    docId: id,
+    updatedAt: new Date().toISOString(),
+  };
+  delete updatePayload._id;
+
+  // Always update in-memory cache and local disk store first for immediate consistency
+  updateLocalCollection(collectionName, id, updatePayload);
+
   try {
     const conn = await connectToMongoDB();
-    if (!conn) return false;
+    if (!conn) return true;
 
     const db = mongoose.connection.db;
-    const updatePayload: any = {
-      ...data,
-      id,
-      uid: data.uid || id,
-      docId: id,
-      updatedAt: new Date(),
-    };
-    delete updatePayload._id;
 
     if (collectionName === 'userProfiles' || collectionName === 'users') {
       const filterConditions: any[] = [
@@ -163,7 +239,7 @@ export async function saveDocument(collectionName: string, id: string, data: any
     return true;
   } catch (err) {
     handleMongoError(err, 'save', collectionName);
-    return false;
+    return true;
   }
 }
 
@@ -263,9 +339,10 @@ export async function findDocuments(collectionName: string, filter: any = {}, li
  * Supports string ID, ObjectId, or a query filter object.
  */
 export async function deleteDocument(collectionName: string, filterOrId: any): Promise<boolean> {
+  removeLocalCollection(collectionName, filterOrId);
   try {
     const conn = await connectToMongoDB();
-    if (!conn) return false;
+    if (!conn) return true;
 
     const Model = getModelForCollection(collectionName);
     const filter = normalizeFilter(filterOrId);
@@ -273,7 +350,7 @@ export async function deleteDocument(collectionName: string, filterOrId: any): P
     return (result && typeof result.deletedCount === 'number') ? result.deletedCount > 0 : true;
   } catch (err) {
     handleMongoError(err, 'delete', collectionName);
-    return false;
+    return true;
   }
 }
 
@@ -281,9 +358,10 @@ export async function deleteDocument(collectionName: string, filterOrId: any): P
  * Deletes multiple documents from MongoDB matching a filter.
  */
 export async function deleteWhereDocuments(collectionName: string, filter: any): Promise<boolean> {
+  removeLocalCollection(collectionName, filter);
   try {
     const conn = await connectToMongoDB();
-    if (!conn) return false;
+    if (!conn) return true;
 
     const Model = getModelForCollection(collectionName);
     const normalized = typeof filter === 'object' && filter !== null ? filter : normalizeFilter(filter);
@@ -291,7 +369,7 @@ export async function deleteWhereDocuments(collectionName: string, filter: any):
     return true;
   } catch (err) {
     handleMongoError(err, 'deleteMany', collectionName);
-    return false;
+    return true;
   }
 }
 
@@ -299,25 +377,27 @@ export async function deleteWhereDocuments(collectionName: string, filter: any):
  * Adds a new document to MongoDB for a given collection with auto-generated id if not provided.
  */
 export async function addDocument(collectionName: string, data: any): Promise<any> {
+  const docId = data.id || data.docId || `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const payload = {
+    ...data,
+    id: docId,
+    docId,
+    createdAt: data.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  updateLocalCollection(collectionName, docId, payload);
+
   try {
     const conn = await connectToMongoDB();
-    if (!conn) return null;
+    if (!conn) return payload;
 
     const Model = getModelForCollection(collectionName);
-    const docId = data.id || data.docId || `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const payload = {
-      ...data,
-      id: docId,
-      docId,
-      createdAt: data.createdAt || new Date(),
-      updatedAt: new Date(),
-    };
-
     const newDoc = await (Model as any).create(payload);
     return newDoc.toObject ? newDoc.toObject() : newDoc;
   } catch (err) {
     handleMongoError(err, 'addDocument', collectionName);
-    return null;
+    return payload;
   }
 }
 
