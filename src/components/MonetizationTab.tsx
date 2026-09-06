@@ -210,7 +210,7 @@ export const MonetizationTab: React.FC<MonetizationTabProps> = ({ currentUser, u
   const [campaignSearch, setCampaignSearch] = useState('');
   const [campaignStatusFilter, setCampaignStatusFilter] = useState<'ALL' | 'Active' | 'Pending Review' | 'Completed'>('ALL');
 
-  // Live Firestore Active Subscriptions & Impression Telemetry State
+  // Live MongoDB Snapshot & Impression Telemetry State
   const [firestoreVipCount, setFirestoreVipCount] = useState<number>(142);
   const [firestoreTotalUsers, setFirestoreTotalUsers] = useState<number>(384);
   const [firestoreSaasCount, setFirestoreSaasCount] = useState<number>(14);
@@ -218,49 +218,37 @@ export const MonetizationTab: React.FC<MonetizationTabProps> = ({ currentUser, u
   const [chartDataSource, setChartDataSource] = useState<'live_firestore' | 'projected'>('live_firestore');
   const [chartBreakdownType, setChartBreakdownType] = useState<'macro_ratio' | 'detailed_streams'>('macro_ratio');
 
-  // Firestore Snapshot listener for real user active subscriptions and ad impression telemetry
+  // MongoDB & Live Telemetry Poller
   useEffect(() => {
-    if (!db) return;
-    try {
-      // 1. Subscribe to userProfiles to compute real active VIP and SaaS subscriptions
-      const usersQuery = query(collection(db, 'userProfiles'), limit(10));
-      const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
-        if (!snapshot.empty) {
+    // 1. Fetch user counts from MongoDB API
+    const fetchMongoUserStats = async () => {
+      try {
+        const res = await fetch('/api/admin/users');
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
           let vips = 0;
-          snapshot.docs.forEach((docSnap) => {
-            const data = docSnap.data();
-            const isVipBool = data.isVip === true;
-            const isVipRole = data.role === 'L2' || data.role === 'L3' || data.role === 'L4' || data.role === 'VIP';
-            const hasValidExp = data.vipExpires && data.vipExpires !== 'Expired';
+          json.data.forEach((u: any) => {
+            const isVipBool = u.isVip === true;
+            const isVipRole = u.role === 'L2' || u.role === 'L3' || u.role === 'L4' || u.role === 'VIP' || u.role === 'VIP Member' || u.role === 'Admin';
+            const hasValidExp = u.vipExpires && u.vipExpires !== 'Expired';
             if (isVipBool || isVipRole || hasValidExp) {
               vips++;
             }
           });
-          setFirestoreVipCount(vips > 0 ? vips : 142);
-          setFirestoreTotalUsers(snapshot.docs.length);
+          setFirestoreVipCount(vips > 0 ? vips : json.data.length);
+          setFirestoreTotalUsers(json.data.length);
         }
-      }, (err) => {
-        console.debug('[MonetizationTab] userProfiles snapshot notice:', err);
-      });
+      } catch (err) {
+        console.debug('[MonetizationTab] MongoDB users fetch notice:', err);
+      }
+    };
 
-      // 2. Subscribe to ad_impressions collection for live visibility metrics
-      const impressionsQuery = query(collection(db, 'ad_impressions'), orderBy('timestampMs', 'desc'), limit(10));
-      const unsubImpressions = onSnapshot(impressionsQuery, (snapshot) => {
-        if (!snapshot.empty) {
-          const loaded = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          setFirestoreImpressions(loaded);
-        }
-      }, (err) => {
-        console.debug('[MonetizationTab] ad_impressions snapshot notice:', err);
-      });
+    fetchMongoUserStats();
+    const interval = setInterval(fetchMongoUserStats, 15000);
 
-      return () => {
-        unsubUsers();
-        unsubImpressions();
-      };
-    } catch (err) {
-      console.warn('[MonetizationTab] Firestore subscription listener initialization:', err);
-    }
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   // Compute 30-Day AdSlot Impression vs Active User Sessions Telemetry Data

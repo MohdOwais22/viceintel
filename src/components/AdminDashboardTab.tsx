@@ -58,9 +58,8 @@ import {
   Bot,
   Wand2
 } from 'lucide-react';
-import { collection, onSnapshot } from 'firebase/firestore';
 import { ENV } from '../lib/envConfig';
-import { auth, db } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import { deleteRtdbChannel, deleteRtdbMessage, subscribeRtdbMessages } from '../lib/firebase/rtdbChatService';
 import { UserProfile, RpServer, CommunityBuild, UserRole } from '../types';
 import { RP_SERVERS_DATA } from '../data/rpServers';
@@ -515,63 +514,15 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const isActorL4Admin = isAdminUser(currentActorUser, actorEmail);
   const actorRole: UserRole = isActorL4Admin ? 'Admin' : (isStaffUser(currentActorUser, actorEmail) ? 'Staff' : 'User');
 
-  // Real-Time Bounded Firebase Synchronization for High Scalability
+  // Real-Time Polling for MongoDB State Synchronization
   useEffect(() => {
-    // Initial load from API (fully populates users & pending approvals)
+    // Initial load from MongoDB API
     fetchAdminData().catch(() => {});
 
-    // Subscribe to Firestore userProfiles collection for live player data
-    let unsubFirestoreUsers: () => void = () => {};
-    try {
-      unsubFirestoreUsers = onSnapshot(collection(db, 'userProfiles'), (snapshot) => {
-        if (snapshot && !snapshot.empty) {
-          const fsUsers: UserProfile[] = snapshot.docs.map(docSnap => {
-            const data = docSnap.data();
-            const id = docSnap.id || data.uid || data.id;
-            const role = data.role || (data.isAdmin ? 'Admin' : data.isStaff ? 'Staff' : data.isVip ? 'VIP Member' : 'User');
-            const isAdmin = Boolean(data.isAdmin === true || role === 'Admin' || data.userLevel === 'L4');
-            const isStaff = Boolean(data.isStaff === true || role === 'Staff' || isAdmin || data.userLevel === 'L3');
-            const isVip = Boolean(data.isVip === true || role === 'VIP Member' || isAdmin || isStaff);
-            return {
-              id,
-              uid: id,
-              username: data.username || data.gamerTag || `Player_${id.slice(0, 6)}`,
-              displayName: data.displayName || data.username || data.gamerTag,
-              email: data.email || 'player@viceintel.app',
-              avatar: data.avatar || data.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=ViceCity',
-              role,
-              userLevel: isAdmin ? 'L4' : isStaff ? 'L3' : isVip ? 'L2' : 'L1',
-              clearanceLevel: isAdmin ? 'L4' : isStaff ? 'L3' : isVip ? 'L2' : 'L1',
-              isAdmin,
-              isStaff,
-              isVip,
-              vipExpires: data.vipExpires || (isAdmin ? 'Lifetime' : isStaff ? 'Staff Account' : isVip ? '2027-08-01' : 'Expired'),
-              vcBalance: typeof data.vcBalance === 'number' ? data.vcBalance : (typeof data.credits === 'number' ? data.credits : 0),
-              dailyStreak: data.dailyStreak || 0,
-              moderationNote: data.moderationNote || '',
-              joinedDate: data.createdAt ? new Date(data.createdAt).toISOString().split('T')[0] : (data.joinedDate || '2026-03-01'),
-              publishedBuildsCount: data.publishedBuildsCount || 0,
-              status: data.status || 'Active',
-              discordConnected: Boolean(data.discordConnected),
-              discordId: data.discordId || undefined,
-              discordUsername: data.discordUsername || undefined,
-              rawFirestoreData: data
-            };
-          });
-
-          setUsers(prevUsers => {
-            const userMap = new Map<string, UserProfile>();
-            prevUsers.forEach(u => userMap.set(u.id, u));
-            fsUsers.forEach(u => userMap.set(u.id, u));
-            return Array.from(userMap.values());
-          });
-        }
-      }, (err) => {
-        console.warn('Firestore userProfiles snapshot notice:', err);
-      });
-    } catch (e) {
-      console.warn('Firestore userProfiles subscription error:', e);
-    }
+    // Periodic live sync from MongoDB every 10 seconds
+    const interval = setInterval(() => {
+      fetchAdminData().catch(() => {});
+    }, 10000);
 
     // Subscribe to Realtime Database chat messages for Admin Live Chat Manager
     let unsubChatMsgs: () => void = () => {};
@@ -601,7 +552,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       .catch(() => {});
 
     return () => {
-      unsubFirestoreUsers();
+      clearInterval(interval);
       unsubChatMsgs();
     };
   }, []);
@@ -1114,20 +1065,24 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const fetchAdminData = async () => {
     setIsRefreshing(true);
     try {
-      // Supplementary/Primary API check from high-performance MongoDB
-      const [uRes, pRes] = await Promise.allSettled([
+      // Primary API query directly from high-performance MongoDB backend
+      const [uRes, pRes, cmsRes] = await Promise.allSettled([
         fetch('/api/admin/users').then(res => res.json()),
-        fetch('/api/admin/pending').then(res => res.json())
+        fetch('/api/admin/pending').then(res => res.json()),
+        fetch('/api/admin/cms/userProfiles').then(res => res.json()).catch(() => null)
       ]);
 
-      if (uRes.status === 'fulfilled' && uRes.value?.success && Array.isArray(uRes.value.data)) {
+      if (uRes.status === 'fulfilled' && uRes.value?.success && Array.isArray(uRes.value.data) && uRes.value.data.length > 0) {
         setUsers(uRes.value.data);
+      } else if (cmsRes.status === 'fulfilled' && cmsRes.value?.success && Array.isArray(cmsRes.value.data) && cmsRes.value.data.length > 0) {
+        setUsers(cmsRes.value.data);
       }
+
       if (pRes.status === 'fulfilled' && pRes.value?.success && Array.isArray(pRes.value.data)) {
         setPendingApprovals(pRes.value.data.filter((p: any) => p && p.id && p.id !== 'p1'));
       }
     } catch (err) {
-      console.warn('Admin Data Sync Notice:', err);
+      console.warn('MongoDB Admin Data Sync Notice:', err);
     } finally {
       setIsRefreshing(false);
     }
@@ -1680,7 +1635,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
         targetName: `@${editUsername}`,
         targetType: 'user',
         severity: fieldChanges.some(c => c.field === 'role' || c.field === 'status') ? 'CRITICAL' : 'MEDIUM',
-        details: `Staff modified profile fields and saved Firestore document for @${editUsername}.`,
+        details: `Staff modified profile fields and saved user profile for @${editUsername}.`,
         changes: fieldChanges
       }).catch(() => {});
 
@@ -1709,7 +1664,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       setEditingUserDoc(null);
     } catch (err: any) {
       console.error('Error saving user document:', err);
-      alert(`Failed to save Firestore document: ${err.message || String(err)}`);
+      alert(`Failed to save user profile: ${err.message || String(err)}`);
     } finally {
       setIsSavingUserDoc(false);
     }
