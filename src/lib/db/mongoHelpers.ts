@@ -109,43 +109,49 @@ export async function saveDocument(collectionName: string, id: string, data: any
     const conn = await connectToMongoDB();
     if (!conn) return false;
 
-    const Model = getModelForCollection(collectionName);
-    
-    // Determine a precise, non-ambiguous filter to prevent MongoDB upsert errors
-    let filter: any;
-    if (collectionName === 'userProfiles') {
-      const emailFilter = data?.email ? { email: new RegExp(`^${data.email}$`, 'i') } : null;
-      const uidRegex = typeof id === 'string' ? new RegExp(`^${id}$`, 'i') : null;
-      const orConditions: any[] = [{ uid: id }, { id }];
-      if (uidRegex) {
-        orConditions.push({ uid: uidRegex }, { id: uidRegex });
-      }
-      if (emailFilter) {
-        orConditions.push(emailFilter);
-      }
-
-      const existing = await (Model as any).findOne({ $or: orConditions });
-      if (existing) {
-        filter = { _id: existing._id };
-      } else {
-        filter = { uid: id };
-      }
-    } else {
-      const isObjectId = typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
-      if (isObjectId) {
-        filter = { $or: [{ id }, { _id: id }] };
-      } else {
-        filter = { id };
-      }
-    }
-    
+    const db = mongoose.connection.db;
     const updatePayload: any = {
       ...data,
       id,
+      uid: data.uid || id,
       docId: id,
       updatedAt: new Date(),
     };
     delete updatePayload._id;
+
+    if (collectionName === 'userProfiles' || collectionName === 'users') {
+      const filterConditions: any[] = [
+        { uid: id },
+        { id },
+        { docId: id }
+      ];
+      if (data?.email) {
+        filterConditions.push({ email: data.email });
+      }
+      if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+        filterConditions.push({ _id: new mongoose.Types.ObjectId(id) });
+      }
+
+      if (db) {
+        await Promise.all([
+          db.collection('userProfiles').updateOne(
+            { $or: filterConditions },
+            { $set: updatePayload },
+            { upsert: true }
+          ).catch(() => null),
+          db.collection('users').updateOne(
+            { $or: filterConditions },
+            { $set: updatePayload },
+            { upsert: true }
+          ).catch(() => null)
+        ]);
+      }
+      return true;
+    }
+
+    const Model = getModelForCollection(collectionName);
+    const isObjectId = typeof id === 'string' && mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id);
+    const filter = isObjectId ? { $or: [{ id }, { _id: id }, { docId: id }] } : { $or: [{ id }, { docId: id }] };
 
     // Use atomic $set operator to cleanly merge fields on update and avoid document replacement issues
     await (Model as any).findOneAndUpdate(filter, { $set: updatePayload }, {

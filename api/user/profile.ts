@@ -120,10 +120,11 @@ export default async function handler(req: any, res: any) {
         try {
           const db = mongooseInstance.connection.db;
           if (db) {
-            const collection = db.collection('userProfiles');
-            const found = await collection.findOne({
+            const queryFilter = {
               $or: [{ uid }, { id: uid }, { docId: uid }, ...(email ? [{ email }] : [])],
-            });
+            };
+            const found = await db.collection('userProfiles').findOne(queryFilter) ||
+                          await db.collection('users').findOne(queryFilter);
 
             if (found) {
               const normalized = normalizeProfile(found);
@@ -179,12 +180,27 @@ export default async function handler(req: any, res: any) {
         try {
           const db = mongooseInstance.connection.db;
           if (db) {
-            const collection = db.collection('userProfiles');
-            await collection.updateOne(
-              { $or: [{ uid: targetUid }, { id: targetUid }, { docId: targetUid }] },
-              { $set: cleanData },
-              { upsert: true }
-            );
+            const filterConditions: any[] = [
+              { uid: targetUid },
+              { id: targetUid },
+              { docId: targetUid }
+            ];
+            if (cleanData.email) {
+              filterConditions.push({ email: cleanData.email });
+            }
+
+            await Promise.all([
+              db.collection('userProfiles').updateOne(
+                { $or: filterConditions },
+                { $set: cleanData },
+                { upsert: true }
+              ).catch(() => null),
+              db.collection('users').updateOne(
+                { $or: filterConditions },
+                { $set: cleanData },
+                { upsert: true }
+              ).catch(() => null)
+            ]);
           }
         } catch (saveErr) {
           console.warn('MongoDB profile save notice:', saveErr);

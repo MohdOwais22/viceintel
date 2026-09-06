@@ -460,6 +460,7 @@ const state: {
   mapLocations: any[];
   weapons: any[];
   characters: any[];
+  blogPosts: any[];
   communityBuilds: any[];
   chatMessages: ChatMessageServerItem[];
   users: any[];
@@ -501,6 +502,7 @@ const state: {
   mapLocations: loadCmsCollectionFromDisk('mapLocations', MAP_LOCATIONS_DATA),
   weapons: loadCmsCollectionFromDisk('weapons', WEAPONS_DATA),
   characters: loadCmsCollectionFromDisk('characters', CHARACTERS_DATA),
+  blogPosts: loadCmsCollectionFromDisk('blogPosts', []),
   users: [
     {
       id: 'usr_admin_master',
@@ -4807,15 +4809,24 @@ Showing top entries for "${query || 'All'}":
   });
 
   // Generic Admin CMS & Document Management API (MongoDB Integrated)
-  app.post('/api/admin/cms/:collection/:id', async (req: Request, res: Response) => {
+  const handleSaveCmsDoc = async (req: Request, res: Response) => {
     try {
       const rawCol = req.params.collection;
-      const collection = (rawCol === 'rpServers' || rawCol === 'rp_servers') ? 'servers' : rawCol;
+      const collection = (rawCol === 'rpServers' || rawCol === 'rp_servers') ? 'servers'
+        : (rawCol === 'blogPosts' || rawCol === 'blogs') ? 'blogPosts'
+        : (rawCol === 'customChannels' || rawCol === 'chatChannels') ? 'customChannels'
+        : (rawCol === 'boats' || rawCol === 'boat_rentals') ? 'boat_rentals'
+        : rawCol;
       const { id } = req.params;
       const data = req.body;
       
-      // Save document to MongoDB
-      await saveDocument(collection, id, { ...data, id, updatedAt: new Date().toISOString() });
+      // Save document to MongoDB (and aliases)
+      if (collection === 'userProfiles' || collection === 'users') {
+        await saveDocument('userProfiles', id, { ...data, id, uid: data.uid || id, updatedAt: new Date().toISOString() });
+        await saveDocument('users', id, { ...data, id, uid: data.uid || id, updatedAt: new Date().toISOString() });
+      } else {
+        await saveDocument(collection, id, { ...data, id, updatedAt: new Date().toISOString() });
+      }
       
       // Update local memory states to keep them synced in memory if needed
       if (collection === 'vehicles') {
@@ -4866,8 +4877,16 @@ Showing top entries for "${query || 'All'}":
           state.characters.push({ id, ...data });
         }
         persistCmsCollectionToDisk('characters', state.characters);
-      } else if (collection === 'userProfiles') {
-        const idx = state.users.findIndex(u => u.id === id || u.uid === id);
+      } else if (collection === 'blogPosts') {
+        const idx = state.blogPosts.findIndex(b => b.id === id);
+        if (idx !== -1) {
+          state.blogPosts[idx] = { ...state.blogPosts[idx], ...data };
+        } else {
+          state.blogPosts.push({ id, ...data });
+        }
+        persistCmsCollectionToDisk('blogPosts', state.blogPosts);
+      } else if (collection === 'userProfiles' || collection === 'users') {
+        const idx = state.users.findIndex(u => u.id === id || u.uid === id || (data.email && u.email?.toLowerCase() === data.email.toLowerCase()));
         if (idx !== -1) {
           state.users[idx] = { ...state.users[idx], ...data };
         } else {
@@ -4887,7 +4906,11 @@ Showing top entries for "${query || 'All'}":
       console.error(`Error saving document in ${req.params.collection}:`, err);
       return res.status(500).json({ success: false, error: err.message || 'Failed to save document' });
     }
-  });
+  };
+
+  app.post('/api/admin/cms/:collection/:id', handleSaveCmsDoc);
+  app.put('/api/admin/cms/:collection/:id', handleSaveCmsDoc);
+  app.patch('/api/admin/cms/:collection/:id', handleSaveCmsDoc);
 
   app.delete('/api/admin/cms/:collection/:id', async (req: Request, res: Response) => {
     try {

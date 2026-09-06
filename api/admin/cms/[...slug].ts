@@ -42,6 +42,29 @@ async function parseBody(req: any): Promise<any> {
   });
 }
 
+function getCollectionAliases(name: string): string[] {
+  switch (name) {
+    case 'userProfiles':
+    case 'users':
+      return ['userProfiles', 'users'];
+    case 'rpServers':
+    case 'rp_servers':
+    case 'servers':
+      return ['servers', 'rpServers', 'rp_servers'];
+    case 'chatChannels':
+    case 'customChannels':
+      return ['customChannels', 'chatChannels'];
+    case 'blogPosts':
+    case 'blogs':
+      return ['blogPosts', 'blogs'];
+    case 'boats':
+    case 'boat_rentals':
+      return ['boat_rentals', 'boats'];
+    default:
+      return [name];
+  }
+}
+
 export default async function handler(req: any, res: any) {
   try {
     if (res.setHeader) {
@@ -73,6 +96,7 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
+    const targetCollections = getCollectionAliases(collectionName);
     const db = await getMongoDatabase();
 
     if (req.method === 'GET') {
@@ -80,18 +104,37 @@ export default async function handler(req: any, res: any) {
       if (db) {
         try {
           if (docId) {
-            const found = await db.collection(collectionName).findOne({
-              $or: [{ id: docId }, { uid: docId }, { docId }]
-            });
-            if (found) {
-              const payload = { success: true, data: { ...found, id: found.id || found._id?.toString() } };
-              if (typeof res.status === 'function') return res.status(200).json(payload);
-              res.statusCode = 200;
-              res.end(JSON.stringify(payload));
-              return;
+            for (const col of targetCollections) {
+              const found = await db.collection(col).findOne({
+                $or: [
+                  { id: docId },
+                  { uid: docId },
+                  { docId },
+                  { serverId: docId },
+                  { slug: docId }
+                ]
+              });
+              if (found) {
+                const payload = { success: true, data: { ...found, id: found.id || found.uid || found._id?.toString() } };
+                if (typeof res.status === 'function') return res.status(200).json(payload);
+                res.statusCode = 200;
+                res.end(JSON.stringify(payload));
+                return;
+              }
             }
           } else {
-            docs = await db.collection(collectionName).find({}).limit(500).toArray();
+            const results = await Promise.all(
+              targetCollections.map(col => db.collection(col).find({}).limit(500).toArray().catch(() => []))
+            );
+            const merged = new Map<string, any>();
+            results.flat().forEach((d: any) => {
+              if (!d) return;
+              const key = d.id || d.uid || d.serverId || d._id?.toString();
+              if (key && !merged.has(key)) {
+                merged.set(key, d);
+              }
+            });
+            docs = Array.from(merged.values());
           }
         } catch (queryErr) {
           console.warn(`[CMS API] Read error in ${collectionName}:`, queryErr);
@@ -102,7 +145,7 @@ export default async function handler(req: any, res: any) {
         success: true,
         collection: collectionName,
         count: docs.length,
-        data: docs.map((d: any) => ({ ...d, id: d.id || d._id?.toString() }))
+        data: docs.map((d: any) => ({ ...d, id: d.id || d.uid || d._id?.toString() }))
       };
       if (typeof res.status === 'function') return res.status(200).json(payload);
       res.statusCode = 200;
@@ -113,14 +156,39 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
       const body = await parseBody(req);
       const targetId = docId || body.id || body.uid || `${collectionName}_${Date.now()}`;
-      const cleanData = { ...body, id: targetId, docId: targetId, updatedAt: new Date() };
+      const cleanData = {
+        ...body,
+        id: targetId,
+        uid: body.uid || targetId,
+        docId: targetId,
+        updatedAt: new Date()
+      };
 
       if (db) {
         try {
-          await db.collection(collectionName).updateOne(
-            { $or: [{ id: targetId }, { uid: targetId }, { docId: targetId }] },
-            { $set: cleanData },
-            { upsert: true }
+          const filterConditions: any[] = [
+            { id: targetId },
+            { uid: targetId },
+            { docId: targetId }
+          ];
+          if (body.email) {
+            filterConditions.push({ email: body.email });
+          }
+          if (body.serverId) {
+            filterConditions.push({ serverId: body.serverId });
+          }
+          if (body.slug) {
+            filterConditions.push({ slug: body.slug });
+          }
+
+          await Promise.all(
+            targetCollections.map(col =>
+              db.collection(col).updateOne(
+                { $or: filterConditions },
+                { $set: cleanData },
+                { upsert: true }
+              ).catch((err: any) => console.warn(`[CMS API] Update notice for ${col}:`, err))
+            )
           );
         } catch (writeErr) {
           console.warn(`[CMS API] Write error in ${collectionName}:`, writeErr);
@@ -146,9 +214,13 @@ export default async function handler(req: any, res: any) {
 
       if (db) {
         try {
-          await db.collection(collectionName).deleteMany({
-            $or: [{ id: targetId }, { uid: targetId }, { docId: targetId }]
-          });
+          await Promise.all(
+            targetCollections.map(col =>
+              db.collection(col).deleteMany({
+                $or: [{ id: targetId }, { uid: targetId }, { docId: targetId }, { serverId: targetId }]
+              }).catch(() => null)
+            )
+          );
         } catch (delErr) {
           console.warn(`[CMS API] Delete error in ${collectionName}:`, delErr);
         }

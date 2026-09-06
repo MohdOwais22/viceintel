@@ -1175,7 +1175,10 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
     try {
       const payload = {
+        ...targetUser,
         uid: userId,
+        id: userId,
+        docId: userId,
         role: newRole,
         isVip,
         isAdmin,
@@ -1250,7 +1253,10 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
     try {
       const payload = {
+        ...targetUser,
         uid: userId,
+        id: userId,
+        docId: userId,
         isVip: newIsVip,
         role: newRole,
         vipExpires: newVipExpires,
@@ -1313,7 +1319,10 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
     try {
       const payload = {
+        ...targetUser,
         uid: userId,
+        id: userId,
+        docId: userId,
         status: newStatus,
         updatedAt: new Date().toISOString()
       };
