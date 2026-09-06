@@ -1,15 +1,31 @@
-import { sendJson } from '../lib/db';
-import { VEHICLES_DATA } from '../src/data/vehicles';
-import { WEAPONS_DATA } from '../src/data/weapons';
-
 export default async function handler(req: any, res: any) {
-  if (req.method === 'OPTIONS') {
-    return sendJson(res, 204, {});
-  }
-
   try {
-    const vehiclesCount = VEHICLES_DATA?.length || 120;
-    const weaponsCount = WEAPONS_DATA?.length || 45;
+    if (res.setHeader) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate');
+    }
+
+    if (req.method === 'OPTIONS') {
+      if (typeof res.status === 'function') return res.status(200).end();
+      res.statusCode = 200;
+      res.end();
+      return;
+    }
+
+    let vehiclesCount = 120;
+    let weaponsCount = 45;
+
+    try {
+      const vModule = await import('../src/data/vehicles');
+      if (vModule.VEHICLES_DATA) vehiclesCount = vModule.VEHICLES_DATA.length;
+    } catch {}
+
+    try {
+      const wModule = await import('../src/data/weapons');
+      if (wModule.WEAPONS_DATA) weaponsCount = wModule.WEAPONS_DATA.length;
+    } catch {}
 
     const payload = {
       status: 'ok',
@@ -22,8 +38,16 @@ export default async function handler(req: any, res: any) {
       timestamp: new Date().toISOString(),
     };
 
-    return sendJson(res, 200, payload);
+    if (typeof res.status === 'function' && typeof res.json === 'function') {
+      return res.status(200).json(payload);
+    }
+
+    res.statusCode = 200;
+    res.end(JSON.stringify(payload));
   } catch (err: any) {
-    return sendJson(res, 500, { success: false, error: err?.message || 'Serverless error' });
+    const errorPayload = { success: false, error: err?.message || 'Serverless error' };
+    if (typeof res.status === 'function') return res.status(500).json(errorPayload);
+    res.statusCode = 500;
+    res.end(JSON.stringify(errorPayload));
   }
 }

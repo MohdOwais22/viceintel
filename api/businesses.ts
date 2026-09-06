@@ -1,22 +1,5 @@
-import { getMongoDb, sendJson, parseBody } from '../lib/db';
+import { getMongoDb, sendJson, parseBody } from './_lib/db';
 import { BUSINESSES_DATA } from '../src/data/businesses';
-
-function getFilteredBusinesses(query: any) {
-  const { type, search } = query || {};
-  let list = [...BUSINESSES_DATA];
-  if (type && type !== 'all') {
-    list = list.filter(b => b.type?.toLowerCase() === type.toLowerCase());
-  }
-  if (search) {
-    const s = search.toLowerCase();
-    list = list.filter(b =>
-      b.name?.toLowerCase().includes(s) ||
-      b.description?.toLowerCase().includes(s) ||
-      b.location?.toLowerCase().includes(s)
-    );
-  }
-  return list;
-}
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
@@ -28,6 +11,12 @@ export default async function handler(req: any, res: any) {
   try {
     if (db) {
       const collection = db.collection('businesses');
+
+      // Auto-seed if empty
+      const count = await collection.countDocuments();
+      if (count === 0 && BUSINESSES_DATA && BUSINESSES_DATA.length > 0) {
+        await collection.insertMany(BUSINESSES_DATA.map(b => ({ ...b, id: b.id || `biz_${Date.now()}` })));
+      }
 
       if (req.method === 'GET') {
         const { type, search } = req.query || {};
@@ -44,22 +33,11 @@ export default async function handler(req: any, res: any) {
         }
 
         const businesses = await collection.find(filter).toArray();
-        if (businesses.length > 0) {
-          return sendJson(res, 200, {
-            success: true,
-            count: businesses.length,
-            source: 'MongoDB',
-            data: businesses
-          });
-        }
-
-        // Fallback to pre-seeded static businesses if database was not loaded/empty
-        const fallbackData = getFilteredBusinesses(req.query);
         return sendJson(res, 200, {
           success: true,
-          count: fallbackData.length,
-          source: 'PreSeededFallback',
-          data: fallbackData
+          count: businesses.length,
+          source: 'MongoDB',
+          data: businesses
         });
       }
 
@@ -86,19 +64,17 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'GET') {
-      const fallbackData = getFilteredBusinesses(req.query);
       return sendJson(res, 200, {
         success: true,
-        count: fallbackData.length,
-        source: 'PreSeededFallback',
-        data: fallbackData
+        count: BUSINESSES_DATA.length,
+        source: 'StaticFallback',
+        data: BUSINESSES_DATA
       });
     }
 
     return sendJson(res, 503, { success: false, error: 'MongoDB not available' });
   } catch (err: any) {
     console.error('Businesses API error:', err);
-    const fallbackData = getFilteredBusinesses(req.query);
-    return sendJson(res, 200, { success: true, count: fallbackData.length, source: 'PreSeededFallback', data: fallbackData });
+    return sendJson(res, 500, { success: false, error: err.message || 'Server error', data: BUSINESSES_DATA || [] });
   }
 }

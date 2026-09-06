@@ -1,26 +1,5 @@
-import { getMongoDb, sendJson, parseBody } from '../lib/db';
+import { getMongoDb, sendJson, parseBody } from './_lib/db';
 import { CHARACTERS_DATA } from '../src/data/characters';
-
-function getFilteredCharacters(query: any) {
-  const { role, faction, search } = query || {};
-  let list = [...CHARACTERS_DATA];
-  if (role && role !== 'all') {
-    list = list.filter(c => c.role?.toLowerCase() === role.toLowerCase());
-  }
-  if (faction && faction !== 'all') {
-    list = list.filter(c => c.faction?.toLowerCase() === faction.toLowerCase());
-  }
-  if (search) {
-    const s = search.toLowerCase();
-    list = list.filter(c =>
-      c.name?.toLowerCase().includes(s) ||
-      c.faction?.toLowerCase().includes(s) ||
-      c.description?.toLowerCase().includes(s) ||
-      c.location?.toLowerCase().includes(s)
-    );
-  }
-  return list;
-}
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
@@ -32,6 +11,12 @@ export default async function handler(req: any, res: any) {
   try {
     if (db) {
       const collection = db.collection('characters');
+
+      // Auto-seed if empty
+      const count = await collection.countDocuments();
+      if (count === 0 && CHARACTERS_DATA && CHARACTERS_DATA.length > 0) {
+        await collection.insertMany(CHARACTERS_DATA.map(c => ({ ...c, id: c.id || c.slug })));
+      }
 
       if (req.method === 'GET') {
         const { role, faction, search } = req.query || {};
@@ -52,22 +37,11 @@ export default async function handler(req: any, res: any) {
         }
 
         const characters = await collection.find(filter).toArray();
-        if (characters.length > 0) {
-          return sendJson(res, 200, {
-            success: true,
-            count: characters.length,
-            source: 'MongoDB',
-            data: characters
-          });
-        }
-
-        // Fallback to pre-seeded static characters if database was not loaded/empty
-        const fallbackData = getFilteredCharacters(req.query);
         return sendJson(res, 200, {
           success: true,
-          count: fallbackData.length,
-          source: 'PreSeededFallback',
-          data: fallbackData
+          count: characters.length,
+          source: 'MongoDB',
+          data: characters
         });
       }
 
@@ -94,19 +68,17 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'GET') {
-      const fallbackData = getFilteredCharacters(req.query);
       return sendJson(res, 200, {
         success: true,
-        count: fallbackData.length,
-        source: 'PreSeededFallback',
-        data: fallbackData
+        count: CHARACTERS_DATA.length,
+        source: 'StaticFallback',
+        data: CHARACTERS_DATA
       });
     }
 
     return sendJson(res, 503, { success: false, error: 'MongoDB not available' });
   } catch (err: any) {
     console.error('Characters API error:', err);
-    const fallbackData = getFilteredCharacters(req.query);
-    return sendJson(res, 200, { success: true, count: fallbackData.length, source: 'PreSeededFallback', data: fallbackData });
+    return sendJson(res, 500, { success: false, error: err.message || 'Server error', data: CHARACTERS_DATA || [] });
   }
 }

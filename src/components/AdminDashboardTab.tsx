@@ -172,7 +172,6 @@ export interface AdminDashboardTabProps {
 export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSubTab }) => {
   const [users, setUsers] = useState<UserProfile[]>(INITIAL_USERS);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>(INITIAL_PENDING);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [searchUser, setSearchUser] = useState('');
   const [roleFilter, setRoleFilter] = useState<'All' | UserRole>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Suspended'>('All');
@@ -1082,7 +1081,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       console.warn('Admin Data Sync Notice:', err);
     } finally {
       setIsRefreshing(false);
-      setIsInitialLoading(false);
     }
   };
 
@@ -1696,132 +1694,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
   const totalVipUsers = users.filter(u => u.isVip).length;
   const activeUsersCount = users.filter(u => u.status === 'Active').length;
-
-  if (isInitialLoading) {
-    return (
-      <div className="space-y-8 animate-pulse">
-        {/* Admin Top Banner Skeleton */}
-        <div className="bg-gradient-to-r from-zinc-950 via-rose-950/40 to-zinc-950 border border-rose-500/20 rounded-2xl p-6 sm:p-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="h-6 w-44 bg-zinc-800 rounded-full" />
-                <div className="h-6 w-52 bg-zinc-800/80 rounded-full" />
-              </div>
-              <div className="h-8 w-80 sm:w-96 bg-zinc-800 rounded-xl" />
-              <div className="h-4 w-full max-w-2xl bg-zinc-800/50 rounded" />
-            </div>
-            <div className="h-10 w-36 bg-zinc-800 rounded-xl shrink-0" />
-          </div>
-        </div>
-
-        {/* Executive KPI Stats Cards Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={`admin_kpi_skel_${i}`} className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="h-3.5 w-28 bg-zinc-800 rounded" />
-                <div className="w-8 h-8 rounded-xl bg-zinc-800/80" />
-              </div>
-              <div className="flex items-baseline gap-2">
-                <div className="h-8 w-16 bg-zinc-800 rounded-lg" />
-                <div className="h-5 w-14 bg-zinc-800/60 rounded-full" />
-              </div>
-              <div className="h-3 w-36 bg-zinc-800/50 rounded" />
-            </div>
-          ))}
-        </div>
-
-        {/* Two-Column Sidebar + Workspace Layout Skeleton */}
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
-          {/* Mobile Navigation Strip Skeleton */}
-          <div className="lg:hidden w-full p-2 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center gap-2 overflow-x-auto">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={`admin_m_tab_skel_${i}`} className="h-9 w-32 bg-zinc-800/70 rounded-xl shrink-0" />
-            ))}
-          </div>
-
-          {/* Desktop Left Sidebar Skeleton */}
-          <div className="hidden lg:block w-64 bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 space-y-4 shrink-0">
-            <div className="p-2 flex items-center justify-between border-b border-zinc-800">
-              <div className="h-3.5 w-32 bg-zinc-800 rounded" />
-              <div className="h-4 w-8 bg-zinc-800/60 rounded-full" />
-            </div>
-
-            {/* Sidebar Category Groups */}
-            {Array.from({ length: 5 }).map((_, g) => (
-              <div key={`admin_side_group_${g}`} className="space-y-1.5 pt-1">
-                <div className="h-2.5 w-24 bg-zinc-800/60 rounded px-2" />
-                <div className="space-y-1">
-                  <div className="h-9 w-full bg-zinc-800/70 rounded-xl" />
-                  <div className="h-9 w-full bg-zinc-800/40 rounded-xl" />
-                  {g === 2 && <div className="h-9 w-full bg-zinc-800/40 rounded-xl" />}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Right Main Content Workspace Skeleton */}
-          <div className="flex-1 w-full space-y-6">
-            {/* Search & Filters Bar Skeleton */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="h-10 w-full md:w-72 bg-zinc-800/80 rounded-xl" />
-              <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
-                <div className="h-10 w-28 bg-zinc-800/70 rounded-xl" />
-                <div className="h-10 w-28 bg-zinc-800/70 rounded-xl" />
-                <div className="h-10 w-32 bg-zinc-800/70 rounded-xl" />
-                <div className="h-10 w-20 bg-zinc-800/70 rounded-xl" />
-              </div>
-            </div>
-
-            {/* Accounts Table Skeleton */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-              <div className="p-4 bg-zinc-950/60 border-b border-zinc-800 flex items-center justify-between">
-                <div className="h-4 w-40 bg-zinc-800 rounded" />
-                <div className="h-4 w-24 bg-zinc-800/60 rounded" />
-              </div>
-
-              {/* Table Rows */}
-              <div className="divide-y divide-zinc-800/60">
-                {Array.from({ length: 6 }).map((_, r) => (
-                  <div key={`admin_user_row_${r}`} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-zinc-800 shrink-0" />
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <div className="h-4 w-28 bg-zinc-800 rounded" />
-                          <div className="h-3.5 w-16 bg-zinc-800/50 rounded-md" />
-                        </div>
-                        <div className="h-3 w-40 bg-zinc-800/40 rounded" />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
-                      <div className="h-6 w-24 bg-zinc-800/70 rounded-full" />
-                      <div className="h-6 w-20 bg-zinc-800/60 rounded-full" />
-                      <div className="h-4 w-20 bg-zinc-800/50 rounded" />
-                      <div className="h-8 w-24 bg-zinc-800/80 rounded-xl" />
-                      <div className="h-8 w-16 bg-zinc-800/60 rounded-xl" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Pagination Footer Skeleton */}
-              <div className="p-4 bg-zinc-950/40 border-t border-zinc-800 flex items-center justify-between">
-                <div className="h-3.5 w-36 bg-zinc-800/60 rounded" />
-                <div className="flex items-center gap-1.5">
-                  <div className="h-8 w-8 bg-zinc-800 rounded-lg" />
-                  <div className="h-8 w-8 bg-zinc-800 rounded-lg" />
-                  <div className="h-8 w-8 bg-zinc-800 rounded-lg" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-8">

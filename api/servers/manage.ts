@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson, parseBody } from '../../lib/db';
+import { getMongoDb, sendJson, parseBody } from '../_lib/db';
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {

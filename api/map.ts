@@ -1,23 +1,5 @@
-import { getMongoDb, sendJson, parseBody } from '../lib/db';
+import { getMongoDb, sendJson, parseBody } from './_lib/db';
 import { MAP_LOCATIONS_DATA } from '../src/data/mapLocations';
-
-function getFilteredMapLocations(query: any) {
-  const { category, search } = query || {};
-  let list = [...MAP_LOCATIONS_DATA];
-  if (category && category !== 'all' && category !== 'All') {
-    list = list.filter(l => l.category?.toLowerCase() === category.toLowerCase());
-  }
-  if (search) {
-    const s = search.toLowerCase();
-    list = list.filter(l =>
-      l.title?.toLowerCase().includes(s) ||
-      (l as any).name?.toLowerCase().includes(s) ||
-      l.description?.toLowerCase().includes(s) ||
-      l.district?.toLowerCase().includes(s)
-    );
-  }
-  return list;
-}
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
@@ -30,15 +12,20 @@ export default async function handler(req: any, res: any) {
     if (db) {
       const collection = db.collection('mapLocations');
 
+      // Auto-seed if empty
+      const count = await collection.countDocuments();
+      if (count === 0 && MAP_LOCATIONS_DATA && MAP_LOCATIONS_DATA.length > 0) {
+        await collection.insertMany(MAP_LOCATIONS_DATA.map(m => ({ ...m, id: m.id || `loc_${Date.now()}` })));
+      }
+
       if (req.method === 'GET') {
         const { category, search } = req.query || {};
         let filter: any = {};
-        if (category && category !== 'all' && category !== 'All') {
+        if (category && category !== 'all') {
           filter.category = new RegExp(`^${category}$`, 'i');
         }
         if (search) {
           filter.$or = [
-            { title: { $regex: search, $options: 'i' } },
             { name: { $regex: search, $options: 'i' } },
             { description: { $regex: search, $options: 'i' } },
             { district: { $regex: search, $options: 'i' } }
@@ -46,22 +33,11 @@ export default async function handler(req: any, res: any) {
         }
 
         const locations = await collection.find(filter).toArray();
-        if (locations.length > 0) {
-          return sendJson(res, 200, {
-            success: true,
-            count: locations.length,
-            source: 'MongoDB',
-            data: locations
-          });
-        }
-
-        // Fallback to pre-seeded static map locations if database was not loaded/empty
-        const fallbackData = getFilteredMapLocations(req.query);
         return sendJson(res, 200, {
           success: true,
-          count: fallbackData.length,
-          source: 'PreSeededFallback',
-          data: fallbackData
+          count: locations.length,
+          source: 'MongoDB',
+          data: locations
         });
       }
 
@@ -88,19 +64,17 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'GET') {
-      const fallbackData = getFilteredMapLocations(req.query);
       return sendJson(res, 200, {
         success: true,
-        count: fallbackData.length,
-        source: 'PreSeededFallback',
-        data: fallbackData
+        count: MAP_LOCATIONS_DATA.length,
+        source: 'StaticFallback',
+        data: MAP_LOCATIONS_DATA
       });
     }
 
     return sendJson(res, 503, { success: false, error: 'MongoDB not available' });
   } catch (err: any) {
     console.error('Map API error:', err);
-    const fallbackData = getFilteredMapLocations(req.query);
-    return sendJson(res, 200, { success: true, count: fallbackData.length, source: 'PreSeededFallback', data: fallbackData });
+    return sendJson(res, 500, { success: false, error: err.message || 'Server error', data: MAP_LOCATIONS_DATA || [] });
   }
 }

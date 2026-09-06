@@ -1,4 +1,4 @@
-import { getMongoDb, sendJson } from '../../lib/db';
+import { getMongoDb, sendJson } from '../_lib/db';
 import { RP_SERVERS_DATA } from '../../src/data/rpServers';
 
 export default async function handler(req: any, res: any) {

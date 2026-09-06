@@ -457,44 +457,9 @@ export const ServerManageFormTab: React.FC<ServerManageFormTabProps> = ({
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto space-y-6 pb-16 animate-pulse">
-        {/* Form Builder Header Skeleton */}
-        <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="h-6 w-32 bg-zinc-800 rounded-full" />
-                <div className="h-6 w-28 bg-zinc-800/80 rounded-full" />
-              </div>
-              <div className="h-7 w-72 bg-zinc-800 rounded-xl" />
-              <div className="h-4 w-96 bg-zinc-800/50 rounded" />
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-10 w-28 bg-zinc-800 rounded-xl" />
-              <div className="h-10 w-36 bg-zinc-800/80 rounded-xl" />
-            </div>
-          </div>
-        </div>
-
-        {/* Form Questions Canvas Skeleton */}
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={`form_q_skel_${i}`} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="h-4 w-48 bg-zinc-800 rounded" />
-                <div className="flex items-center gap-2">
-                  <div className="h-7 w-20 bg-zinc-800/70 rounded-lg" />
-                  <div className="h-7 w-8 bg-zinc-800/60 rounded-lg" />
-                </div>
-              </div>
-              <div className="h-10 w-full bg-zinc-950/80 border border-zinc-800/80 rounded-xl" />
-              <div className="flex items-center gap-4">
-                <div className="h-4 w-32 bg-zinc-800/60 rounded" />
-                <div className="h-4 w-28 bg-zinc-800/60 rounded" />
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="py-24 text-center">
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-zinc-400 text-sm">Loading Whitelist Portal Builder...</p>
       </div>
     );
   }

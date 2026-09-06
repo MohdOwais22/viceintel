@@ -406,53 +406,9 @@ export const ServerReviewTab: React.FC<ServerReviewTabProps> = ({
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto space-y-6 pb-16 animate-pulse">
-        {/* Top Review Header Skeleton */}
-        <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="h-6 w-36 bg-zinc-800 rounded-full" />
-                <div className="h-6 w-28 bg-zinc-800/80 rounded-full" />
-              </div>
-              <div className="h-7 w-80 bg-zinc-800 rounded-xl" />
-              <div className="h-4 w-96 bg-zinc-800/50 rounded" />
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-10 w-28 bg-zinc-800 rounded-xl" />
-              <div className="h-10 w-32 bg-zinc-800/80 rounded-xl" />
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={`rev_stat_skel_${i}`} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 space-y-2">
-              <div className="h-3 w-20 bg-zinc-800 rounded" />
-              <div className="h-7 w-16 bg-zinc-800/80 rounded-lg" />
-            </div>
-          ))}
-        </div>
-
-        {/* Application Queue Cards Skeleton */}
-        <div className="space-y-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={`rev_app_skel_${i}`} className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-zinc-800 shrink-0" />
-                <div className="space-y-1.5">
-                  <div className="h-4 w-36 bg-zinc-800 rounded" />
-                  <div className="h-3 w-48 bg-zinc-800/50 rounded" />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-6 w-20 bg-zinc-800/70 rounded-full" />
-                <div className="h-8 w-24 bg-zinc-800/80 rounded-xl" />
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="py-24 text-center">
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-zinc-400 text-sm">Verifying Server Ownership & Clearance...</p>
       </div>
     );
   }
