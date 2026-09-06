@@ -3079,11 +3079,19 @@ export async function createExpressApp() {
   });
 
   // Community Builds REST API
-  app.get('/api/builds', (req: Request, res: Response) => {
+  app.get('/api/builds', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('vehicle_tuning_builds', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        state.communityBuilds = mongoDocs;
+      }
+    } catch (err) {
+      console.warn('[Builds API] MongoDB query error:', err);
+    }
     res.json({ success: true, count: state.communityBuilds.length, data: state.communityBuilds });
   });
 
-  app.post('/api/builds', (req: Request, res: Response) => {
+  app.post('/api/builds', async (req: Request, res: Response) => {
     const { title, vehicleName, category, tags, cost } = req.body;
     if (!title || !vehicleName) {
       return res.status(400).json({ success: false, message: 'Title and Vehicle Name are required' });
@@ -3103,21 +3111,64 @@ export async function createExpressApp() {
       cost: cost || '$500,000'
     };
 
+    try {
+      await saveDocument('vehicle_tuning_builds', newBuild.id, newBuild);
+    } catch (e) {
+      console.warn('[Builds API] MongoDB save notice:', e);
+    }
+
     state.communityBuilds.unshift(newBuild);
     res.status(201).json({ success: true, message: 'Build published successfully', data: newBuild });
   });
 
-  app.post('/api/builds/:id/like', (req: Request, res: Response) => {
+  app.post('/api/builds/:id/like', async (req: Request, res: Response) => {
     const build = state.communityBuilds.find(b => b.id === req.params.id);
     if (!build) {
       return res.status(404).json({ success: false, message: 'Build not found' });
     }
     build.likes += 1;
+    try {
+      await saveDocument('vehicle_tuning_builds', req.params.id, { likes: build.likes });
+    } catch (e) {}
     res.json({ success: true, likes: build.likes });
   });
 
+  // Map Locations REST API
+  app.get('/api/map-locations', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('mapLocations', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        state.mapLocations = mongoDocs;
+      }
+    } catch (err) {
+      console.warn('[Map Locations API] MongoDB query error:', err);
+    }
+    res.json({ success: true, count: state.mapLocations.length, data: state.mapLocations });
+  });
+
+  // Blog Posts REST API
+  app.get('/api/blog', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('blogPosts', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        return res.json({ success: true, count: mongoDocs.length, source: 'MongoDB', data: mongoDocs });
+      }
+    } catch (err) {
+      console.warn('[Blog API] MongoDB query error:', err);
+    }
+    res.json({ success: true, count: (BLOG_POSTS || []).length, source: 'Static', data: BLOG_POSTS || [] });
+  });
+
   // RP Servers REST API
-  app.get('/api/rp-servers', (req: Request, res: Response) => {
+  app.get('/api/rp-servers', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('servers', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        state.rpServers = mongoDocs;
+      }
+    } catch (err) {
+      console.warn('[RP Servers API] MongoDB query error:', err);
+    }
     state.rpServers = dedupeRpServers(state.rpServers);
     res.json({
       success: true,
