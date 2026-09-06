@@ -59,10 +59,10 @@ export function applyCacheBusterToUrl(
 export function getCacheBustedImageUrl(
   url: string | undefined | null,
   versionToken?: number | string,
-  fallback: string = 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=800&q=80'
+  fallback: string = ''
 ): string {
   if (!url || typeof url !== 'string' || !url.trim()) {
-    return fallback;
+    return fallback && fallback.trim() ? applyCacheBusterToUrl(fallback, versionToken) : '';
   }
   return applyCacheBusterToUrl(url, versionToken);
 }

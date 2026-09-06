@@ -113,7 +113,7 @@ export const BusinessCatalogAdminCms: React.FC = () => {
       payoutFrequencyHours: 1,
       difficulty: 'Medium',
       description: 'High-earning commercial operation in Vice City.',
-      imageUrl: 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?auto=format&fit=crop&w=800&q=80'
+      imageUrl: ''
     });
     setIsEditorOpen(true);
   };
@@ -363,13 +363,24 @@ export const BusinessCatalogAdminCms: React.FC = () => {
             >
               <div>
                 {/* Image & Quick Upload Button */}
-                <div className="relative h-44 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 mb-3 group/img">
-                  <img
-                    src={getCacheBustedImageUrl(biz.imageUrl, (biz as any).imageVersion || (biz as any).updatedAt)}
-                    alt={biz.name}
-                    className="w-full h-full object-cover object-center group-hover/img:scale-105 transition-transform duration-300"
-                    referrerPolicy="no-referrer"
-                  />
+                <div className="relative h-44 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 mb-3 group/img flex items-center justify-center">
+                  {biz.imageUrl ? (
+                    <img
+                      src={getCacheBustedImageUrl(biz.imageUrl, (biz as any).imageVersion || (biz as any).updatedAt)}
+                      alt={biz.name}
+                      className="w-full h-full object-cover object-center group-hover/img:scale-105 transition-transform duration-300"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.dataset.failed) {
+                          target.dataset.failed = 'true';
+                          target.src = 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?auto=format&fit=crop&w=800&q=80';
+                        }
+                      }}
+                    />
+                  ) : (
+                    <DollarSign className="w-10 h-10 text-emerald-400/50" />
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent opacity-80" />
 
                   <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/90 text-zinc-950 shadow-md">
@@ -569,7 +580,7 @@ export const BusinessCatalogAdminCms: React.FC = () => {
                       required
                       value={formData.imageUrl || ''}
                       onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                      placeholder="https://images.unsplash.com/photo-..."
+                      placeholder=""
                       className="flex-1 px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-white text-xs focus:outline-none focus:border-emerald-500"
                     />
                     <input

@@ -21,6 +21,19 @@ export const BusinessRoiCalculator: React.FC<BusinessRoiCalculatorProps> = ({ on
   const [printReportData, setPrintReportData] = useState<PrintReportData | null>(null);
 
   useEffect(() => {
+    fetch('/api/businesses')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setBusinessesList(json.data);
+          setSelectedBusiness((prev) => {
+            const match = json.data.find((b: Business) => b.id === prev.id);
+            return match || json.data[0] || prev;
+          });
+        }
+      })
+      .catch(() => {});
+
     getCachedBusinesses().then((data) => {
       if (data && data.length > 0) {
         setBusinessesList(data);
@@ -182,12 +195,25 @@ export const BusinessRoiCalculator: React.FC<BusinessRoiCalculatorProps> = ({ on
                         : 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 text-zinc-300'
                     }`}
                   >
-                    <img
-                      src={getCacheBustedImageUrl(biz.imageUrl, (biz as any).imageVersion || (biz as any).updatedAt)}
-                      alt={biz.name}
-                      className="w-14 h-14 aspect-square rounded-lg object-cover object-center shrink-0 border border-zinc-800/80 bg-zinc-950"
-                      referrerPolicy="no-referrer"
-                    />
+                    <div className="w-14 h-14 aspect-square rounded-lg border border-zinc-800/80 bg-zinc-950 overflow-hidden shrink-0 flex items-center justify-center">
+                      {biz.imageUrl ? (
+                        <img
+                          src={getCacheBustedImageUrl(biz.imageUrl, (biz as any).imageVersion || (biz as any).updatedAt)}
+                          alt={biz.name}
+                          className="w-full h-full object-cover object-center"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            if (!target.dataset.failed) {
+                              target.dataset.failed = 'true';
+                              target.src = 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?auto=format&fit=crop&w=800&q=80';
+                            }
+                          }}
+                        />
+                      ) : (
+                        <DollarSign className="w-6 h-6 text-emerald-400/60" />
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-white truncate">{biz.name}</span>
@@ -243,13 +269,27 @@ export const BusinessRoiCalculator: React.FC<BusinessRoiCalculatorProps> = ({ on
         {/* Financial ROI Breakdown Panel */}
         <div className="lg:col-span-6 bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 space-y-5">
           {/* Business Hero Image Banner */}
-          <div className="relative h-44 md:h-48 w-full rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 group shrink-0">
-            <img
-              src={getCacheBustedImageUrl(selectedBusiness.imageUrl, (selectedBusiness as any).imageVersion || (selectedBusiness as any).updatedAt)}
-              alt={selectedBusiness.name}
-              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-              referrerPolicy="no-referrer"
-            />
+          <div className="relative h-44 md:h-48 w-full rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 group shrink-0 flex items-center justify-center">
+            {selectedBusiness.imageUrl ? (
+              <img
+                src={getCacheBustedImageUrl(selectedBusiness.imageUrl, (selectedBusiness as any).imageVersion || (selectedBusiness as any).updatedAt)}
+                alt={selectedBusiness.name}
+                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.dataset.failed) {
+                    target.dataset.failed = 'true';
+                    target.src = 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?auto=format&fit=crop&w=800&q=80';
+                  }
+                }}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center text-zinc-600 gap-2 p-6 text-center">
+                <DollarSign className="w-12 h-12 text-emerald-400/60" />
+                <span className="text-xs font-mono uppercase tracking-wider text-zinc-400">{selectedBusiness.name}</span>
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
             
             <div className="absolute top-3 left-3 flex items-center gap-2">

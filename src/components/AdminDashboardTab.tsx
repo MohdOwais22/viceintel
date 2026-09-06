@@ -3191,7 +3191,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                     {publishedBlogs.map((b) => (
                       <div key={b.id} className="bg-zinc-950 p-3.5 rounded-xl border border-zinc-800 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3 overflow-hidden">
-                          {b.imageUrl && <img src={b.imageUrl} alt="" className="w-12 h-10 object-cover rounded-lg border border-zinc-800 shrink-0" />}
+                          {Boolean(b.imageUrl) && <img src={b.imageUrl} alt="" className="w-12 h-10 object-cover rounded-lg border border-zinc-800 shrink-0" />}
                           <div className="truncate">
                             <span className="text-xs font-bold text-white block truncate">{b.title}</span>
                             <span className="text-[10px] text-zinc-500 font-mono">{b.category} • By {b.author} • {b.date}</span>
@@ -3375,7 +3375,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                     {publishedVehicles.map((v) => (
                       <div key={v.id} className="bg-zinc-950 p-3.5 rounded-xl border border-zinc-800 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3 overflow-hidden">
-                          {v.imageUrl && <img src={v.imageUrl} alt="" className="w-12 h-10 object-cover rounded-lg border border-zinc-800 shrink-0" />}
+                          {Boolean(v.imageUrl) && <img src={v.imageUrl} alt="" className="w-12 h-10 object-cover rounded-lg border border-zinc-800 shrink-0" />}
                           <div className="truncate">
                             <span className="text-xs font-bold text-white block truncate">{v.brand} {v.name}</span>
                             <span className="text-[10px] text-zinc-500 font-mono">{v.category} • ${v.price?.toLocaleString('en-US')} • {v.topSpeedMph} MPH</span>
@@ -3549,7 +3549,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
                     {publishedWeapons.map((w) => (
                       <div key={w.id} className="bg-zinc-950 p-3.5 rounded-xl border border-zinc-800 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3 overflow-hidden">
-                          {w.imageUrl && <img src={w.imageUrl} alt="" className="w-12 h-10 object-cover rounded-lg border border-zinc-800 shrink-0" />}
+                          {Boolean(w.imageUrl) && <img src={w.imageUrl} alt="" className="w-12 h-10 object-cover rounded-lg border border-zinc-800 shrink-0" />}
                           <div className="truncate">
                             <span className="text-xs font-bold text-white block truncate">{w.name}</span>
                             <span className="text-[10px] text-zinc-500 font-mono">{w.category} • ${w.price?.toLocaleString('en-US')} • Dmg: {w.damage}</span>

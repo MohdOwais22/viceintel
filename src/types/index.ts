@@ -21,9 +21,9 @@ export interface Vehicle {
   featuredInTrailer: boolean;
   isCustomizable: boolean;
   baseModdingBudget: number;
-  updatedAt?: number;
+  updatedAt?: number | string;
   version?: number;
-  imageVersion?: number;
+  imageVersion?: number | string;
 }
 
 export type WeaponCategory = 'Handguns' | 'Submachine Guns' | 'Assault Rifles' | 'Shotguns' | 'Sniper Rifles' | 'Heavy Weapons' | 'Melee';
@@ -52,9 +52,9 @@ export interface Weapon {
   description: string;
   imageUrl: string;
   attachments: WeaponAttachment[];
-  updatedAt?: number;
+  updatedAt?: number | string;
   version?: number;
-  imageVersion?: number;
+  imageVersion?: number | string;
 }
 
 export type CharacterRole = 'Protagonist' | 'Supporting' | 'Antagonist' | 'Faction Boss' | 'Law Enforcement';
@@ -66,6 +66,7 @@ export interface Character {
   role: CharacterRole;
   faction: string;
   description: string;
+  bio?: string;
   voiceActor?: string;
   specialAbility?: string;
   imageUrl: string;
@@ -83,9 +84,9 @@ export interface Character {
   leonidaMoment?: string;
   trailerFrameDesc?: string;
   realTrailerVisual?: string;
-  updatedAt?: number;
+  updatedAt?: number | string;
   version?: number;
-  imageVersion?: number;
+  imageVersion?: number | string;
 }
 
 export interface ModUpgradeOption {

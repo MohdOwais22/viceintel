@@ -212,7 +212,7 @@ export const WeaponCatalogAdminCms: React.FC = () => {
       unlockRank: 1,
       price: 19500,
       description: 'Standard issue Vice City Police Department carbine assault rifle.',
-      imageUrl: 'https://images.unsplash.com/photo-1595590424283-b8f17842773f?w=800&q=80',
+      imageUrl: '',
       attachments: [
         { id: 'att_1', name: 'Extended Magazine', cost: 2500, effect: '+15 Mag Capacity' },
         { id: 'att_2', name: 'Suppressor', cost: 4000, effect: '-10% Sound & Flash' }
@@ -282,9 +282,9 @@ export const WeaponCatalogAdminCms: React.FC = () => {
       description: formData.description || '',
       imageUrl:
         formData.imageUrl ||
-        'https://images.unsplash.com/photo-1595590424283-b8f17842773f?w=800&q=80',
+        '',
       attachments: formData.attachments || [],
-      imageVersion: editingWeapon?.imageVersion ? editingWeapon.imageVersion + 1 : Date.now(),
+      imageVersion: editingWeapon?.imageVersion ? Number(editingWeapon.imageVersion) + 1 : Date.now(),
       updatedAt: Date.now()
     };
 
@@ -480,6 +480,13 @@ export const WeaponCatalogAdminCms: React.FC = () => {
                       src={getCacheBustedImageUrl(wpn.imageUrl, wpn.imageVersion || wpn.updatedAt)}
                       alt={wpn.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.dataset.failed) {
+                          target.dataset.failed = 'true';
+                          target.src = 'https://images.unsplash.com/photo-1595590424283-b8f17842773f?auto=format&fit=crop&w=800&q=80';
+                        }
+                      }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-black/40" />
 
@@ -690,7 +697,7 @@ export const WeaponCatalogAdminCms: React.FC = () => {
                   <span className="text-[10px] text-zinc-500 font-mono block mb-1">Or paste direct image URL:</span>
                   <input
                     type="url"
-                    placeholder="https://images.unsplash.com/..."
+                    placeholder=""
                     value={formData.imageUrl || ''}
                     onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500"
@@ -992,8 +999,7 @@ export const WeaponCatalogAdminCms: React.FC = () => {
                   alt={quickImageModalWpn.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src =
-                      'https://images.unsplash.com/photo-1595590424283-b8f17842773f?w=800&q=80';
+                    (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
               </div>

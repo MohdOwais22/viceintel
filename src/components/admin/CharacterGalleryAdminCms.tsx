@@ -156,7 +156,7 @@ export const CharacterGalleryAdminCms: React.FC = () => {
       role: 'Supporting',
       faction: 'Vice City Independent',
       description: '',
-      imageUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1000&q=80',
+      imageUrl: '',
       status: 'Active',
       firstAppeared: 'GTA VI Reveal Trailer',
       keyTraits: ['Outlaw', 'Strategist'],
@@ -544,8 +544,11 @@ export const CharacterGalleryAdminCms: React.FC = () => {
                       alt={char.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1000&q=80';
+                        const target = e.currentTarget;
+                        if (!target.dataset.failed) {
+                          target.dataset.failed = 'true';
+                          target.src = char.avatarUrl || `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(char.name)}`;
+                        }
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-black/40" />
@@ -763,8 +766,7 @@ export const CharacterGalleryAdminCms: React.FC = () => {
                 alt="Preview"
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1000&q=80';
+                  (e.target as HTMLImageElement).style.display = 'none';
                 }}
               />
               <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold bg-black/80 text-white backdrop-blur-md">
@@ -868,8 +870,7 @@ export const CharacterGalleryAdminCms: React.FC = () => {
                       alt="Preview"
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1000&q=80';
+                        (e.target as HTMLImageElement).style.display = 'none';
                       }}
                     />
                   </div>

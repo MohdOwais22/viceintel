@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { connectToMongoDB } from './mongodb';
+import { connectToMongoDB, invalidateMongoConnection } from './mongodb';
 import { getDynamicModel } from './models/DynamicDoc';
 import { UserProfileModel } from './models/UserProfile';
 import { VehicleBuildModel } from './models/VehicleBuild';
@@ -8,6 +8,72 @@ import { PseoArticleModel } from './models/PseoArticle';
 import { CustomChannelModel } from './models/CustomChannel';
 import { ChatMessageModel } from './models/ChatMessage';
 import { StaffAuditLogModel } from './models/StaffAuditLog';
+import gtaviData from '../../data/gtavi_data.json';
+
+const localData = (gtaviData || {}) as Record<string, any[]>;
+let lastReportedAuthErrorTime = 0;
+
+/**
+ * Gracefully handles MongoDB errors, invalidates stale/broken connection pools, and throttles noisy logging.
+ */
+function handleMongoError(err: any, context: string, collectionName: string): void {
+  const msg = err?.message || String(err);
+  const codeName = err?.codeName || '';
+  const isAuthOrPermission =
+    codeName === 'AtlasError' ||
+    codeName === 'Unauthorized' ||
+    err?.code === 13 ||
+    err?.code === 18 ||
+    msg.includes('cannot find user account') ||
+    msg.includes('user is not allowed') ||
+    msg.includes('AuthenticationFailed') ||
+    msg.includes('not authorized');
+
+  if (isAuthOrPermission) {
+    invalidateMongoConnection(msg);
+    const now = Date.now();
+    if (now - lastReportedAuthErrorTime > 30000) {
+      lastReportedAuthErrorTime = now;
+      console.warn(`[MongoDB Storage] Atlas auth/permission constraint on collection "${collectionName}" (${msg}). Falling back to local catalog data.`);
+    }
+  } else {
+    console.warn(`[MongoDB Storage] Error in ${context} (${collectionName}):`, msg);
+  }
+}
+
+/**
+ * Searches in local bundled gtavi_data.json collection if MongoDB is unreachable or unauthorized.
+ */
+function findLocalDocuments(collectionName: string, filter: any = {}, limit: number = 100): any[] {
+  const collection = localData[collectionName];
+  if (!Array.isArray(collection)) return [];
+
+  let results = collection;
+  if (filter && typeof filter === 'object' && Object.keys(filter).length > 0) {
+    results = collection.filter((item) => {
+      if (!item) return false;
+      for (const [key, val] of Object.entries(filter)) {
+        if (key === '$or' && Array.isArray(val)) {
+          const matchesOr = val.some((subFilter) => {
+            return Object.entries(subFilter).every(([subK, subV]) => item[subK] === subV);
+          });
+          if (!matchesOr) return false;
+        } else if (item[key] !== val) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  return results.slice(0, limit);
+}
+
+function findLocalDocument(collectionName: string, filterOrId: any): any | null {
+  const normalized = normalizeFilter(filterOrId);
+  const docs = findLocalDocuments(collectionName, normalized, 1);
+  return docs.length > 0 ? docs[0] : null;
+}
 
 /**
  * Returns the appropriate Mongoose model for a given collection name.
@@ -90,7 +156,7 @@ export async function saveDocument(collectionName: string, id: string, data: any
     
     return true;
   } catch (err) {
-    console.warn(`[MongoDB Storage] Error saving to ${collectionName}:`, err);
+    handleMongoError(err, 'save', collectionName);
     return false;
   }
 }
@@ -143,38 +209,46 @@ export function normalizeUpdate(updateDataOrOp: any): any {
 }
 
 /**
- * Finds a single document in MongoDB for a given collection.
+ * Finds a single document in MongoDB for a given collection, with local fallback if database is inaccessible.
  */
 export async function findDocument(collectionName: string, filterOrId: any): Promise<any | null> {
   try {
     const conn = await connectToMongoDB();
-    if (!conn) return null;
+    if (!conn) {
+      return findLocalDocument(collectionName, filterOrId);
+    }
 
     const Model = getModelForCollection(collectionName);
     const filter = normalizeFilter(filterOrId);
     const doc = await (Model as any).findOne(filter).lean();
-    return doc;
+    if (doc) return doc;
+    return findLocalDocument(collectionName, filterOrId);
   } catch (err) {
-    console.warn(`[MongoDB Storage] Error finding in ${collectionName}:`, err);
-    return null;
+    handleMongoError(err, 'findOne', collectionName);
+    return findLocalDocument(collectionName, filterOrId);
   }
 }
 
 /**
- * Finds multiple documents in MongoDB for a given collection.
+ * Finds multiple documents in MongoDB for a given collection, with local fallback if database is inaccessible.
  */
 export async function findDocuments(collectionName: string, filter: any = {}, limit: number = 100): Promise<any[]> {
   try {
     const conn = await connectToMongoDB();
-    if (!conn) return [];
+    if (!conn) {
+      return findLocalDocuments(collectionName, filter, limit);
+    }
 
     const Model = getModelForCollection(collectionName);
     const normalized = typeof filter === 'object' && filter !== null ? filter : normalizeFilter(filter);
     const docs = await (Model as any).find(normalized).limit(limit).lean();
-    return docs || [];
+    if (Array.isArray(docs) && docs.length > 0) {
+      return docs;
+    }
+    return findLocalDocuments(collectionName, filter, limit);
   } catch (err) {
-    console.warn(`[MongoDB Storage] Error finding documents in ${collectionName}:`, err);
-    return [];
+    handleMongoError(err, 'find', collectionName);
+    return findLocalDocuments(collectionName, filter, limit);
   }
 }
 
@@ -192,7 +266,7 @@ export async function deleteDocument(collectionName: string, filterOrId: any): P
     const result = await (Model as any).deleteMany(filter);
     return (result && typeof result.deletedCount === 'number') ? result.deletedCount > 0 : true;
   } catch (err) {
-    console.warn(`[MongoDB Storage] Error deleting from ${collectionName}:`, err);
+    handleMongoError(err, 'delete', collectionName);
     return false;
   }
 }
@@ -210,7 +284,7 @@ export async function deleteWhereDocuments(collectionName: string, filter: any):
     await (Model as any).deleteMany(normalized);
     return true;
   } catch (err) {
-    console.warn(`[MongoDB Storage] Error deleteMany in ${collectionName}:`, err);
+    handleMongoError(err, 'deleteMany', collectionName);
     return false;
   }
 }
@@ -236,7 +310,7 @@ export async function addDocument(collectionName: string, data: any): Promise<an
     const newDoc = await (Model as any).create(payload);
     return newDoc.toObject ? newDoc.toObject() : newDoc;
   } catch (err) {
-    console.warn(`[MongoDB Storage] Error adding document to ${collectionName}:`, err);
+    handleMongoError(err, 'addDocument', collectionName);
     return null;
   }
 }
@@ -256,7 +330,7 @@ export async function updateDocument(collectionName: string, filterOrId: any, up
     await (Model as any).updateOne(filter, updateOp, { upsert: true });
     return true;
   } catch (err) {
-    console.warn(`[MongoDB Storage] Error updating ${collectionName}:`, err);
+    handleMongoError(err, 'updateDocument', collectionName);
     return false;
   }
 }

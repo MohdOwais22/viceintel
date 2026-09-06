@@ -94,6 +94,22 @@ export const CRITICAL_ENV_SPECS: EnvVariableSpec[] = [
 
   // 2. Payments & Monetization (Server)
   {
+    key: 'MONGODB_URI',
+    scope: 'SERVER',
+    category: 'Firebase & Database',
+    severity: 'HIGH',
+    description: 'MongoDB Atlas connection string powering persistent user profiles, vehicle tuning builds, and catalog data.',
+    examplePattern: 'mongodb+srv://username:password@cluster.mongodb.net/viceintel?retryWrites=true&w=majority',
+    isSecret: true,
+    validator: (val) => {
+      if (!val || val.trim() === '') return { valid: false, reason: 'MONGODB_URI is empty. Operating in offline local fallback mode.' };
+      if (!val.startsWith('mongodb://') && !val.startsWith('mongodb+srv://')) {
+        return { valid: false, reason: 'Invalid URI schema: Must begin with mongodb:// or mongodb+srv://' };
+      }
+      return { valid: true };
+    }
+  },
+  {
     key: 'STRIPE_SECRET_KEY',
     scope: 'SERVER',
     category: 'Payments & Monetization',

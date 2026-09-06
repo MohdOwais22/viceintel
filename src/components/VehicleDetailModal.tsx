@@ -78,14 +78,28 @@ export const VehicleDetailModal: React.FC<VehicleDetailModalProps> = ({
         {/* Scrollable Body Content */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
           {/* Main Hero Vehicle Image */}
-          <div className="relative aspect-[16/9] w-full rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-950 shadow-inner group shrink-0">
-            <img
-              key={`${vehicle.id}-${vehicle.imageVersion || vehicle.updatedAt || vehicle.imageUrl}`}
-              src={getCacheBustedImageUrl(vehicle.imageUrl, vehicle.imageVersion || vehicle.updatedAt)}
-              alt={vehicle.name}
-              className="w-full h-full object-cover object-center transition duration-500 group-hover:scale-105"
-              referrerPolicy="no-referrer"
-            />
+          <div className="relative aspect-[16/9] w-full rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-950 shadow-inner group shrink-0 flex items-center justify-center">
+            {vehicle.imageUrl ? (
+              <img
+                key={`${vehicle.id}-${vehicle.imageVersion || vehicle.updatedAt || vehicle.imageUrl}`}
+                src={getCacheBustedImageUrl(vehicle.imageUrl, vehicle.imageVersion || vehicle.updatedAt)}
+                alt={vehicle.name}
+                className="w-full h-full object-cover object-center transition duration-500 group-hover:scale-105"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.dataset.failed) {
+                    target.dataset.failed = 'true';
+                    target.src = 'https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=800&q=80';
+                  }
+                }}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center text-zinc-600 gap-2 p-6 text-center">
+                <Car className="w-16 h-16 text-rose-500/50" />
+                <span className="text-xs font-mono uppercase tracking-wider text-zinc-400">{vehicle.brand} • {vehicle.name}</span>
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-black/30" />
             
             <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between">

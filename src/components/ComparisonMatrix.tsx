@@ -9,7 +9,7 @@ import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
 import { getCachedVehicles, getCachedWeapons } from '../lib/offlineStorage';
 import { VEHICLES_UPDATED_EVENT } from '../lib/vehicleStore';
 import { WEAPONS_UPDATED_EVENT } from '../lib/weaponStore';
-import { Trophy, GitCompare, Gauge, Crosshair, Zap, DollarSign, ShieldAlert, Check, ShieldCheck, Flame } from 'lucide-react';
+import { Trophy, GitCompare, Gauge, Crosshair, Zap, DollarSign, ShieldAlert, Check, ShieldCheck, Flame, Car } from 'lucide-react';
 
 interface ComparisonMatrixProps {
   initialVehicleA?: Vehicle;
@@ -275,13 +275,29 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="absolute top-0 right-0 px-4 py-1 bg-rose-600 text-white font-bold text-[10px] uppercase rounded-bl-xl">
                 Contender 1
               </div>
-              <img
-                key={`${vehicleA.id}-${vehicleA.imageVersion || vehicleA.updatedAt || vehicleA.imageUrl}`}
-                src={getCacheBustedImageUrl(vehicleA.imageUrl, vehicleA.imageVersion || vehicleA.updatedAt)}
-                alt={vehicleA.name}
-                className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950"
-                referrerPolicy="no-referrer"
-              />
+              <div className="w-full h-44 md:h-48 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden flex items-center justify-center">
+                {vehicleA.imageUrl ? (
+                  <img
+                    key={`${vehicleA.id}-${vehicleA.imageVersion || vehicleA.updatedAt || vehicleA.imageUrl}`}
+                    src={getCacheBustedImageUrl(vehicleA.imageUrl, vehicleA.imageVersion || vehicleA.updatedAt)}
+                    alt={vehicleA.name}
+                    className="w-full h-full object-cover object-center"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.dataset.failed) {
+                        target.dataset.failed = 'true';
+                        target.src = 'https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=800&q=80';
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                    <Car className="w-12 h-12 text-rose-500/50" />
+                    <span className="text-xs font-mono text-zinc-500">{vehicleA.name}</span>
+                  </div>
+                )}
+              </div>
               <div>
                 <span className="text-xs font-semibold text-rose-400 uppercase">{vehicleA.brand}</span>
                 <h3 className="text-2xl font-black text-white">{vehicleA.name}</h3>
@@ -293,13 +309,29 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="absolute top-0 right-0 px-4 py-1 bg-cyan-600 text-white font-bold text-[10px] uppercase rounded-bl-xl">
                 Contender 2
               </div>
-              <img
-                key={`${vehicleB.id}-${vehicleB.imageVersion || vehicleB.updatedAt || vehicleB.imageUrl}`}
-                src={getCacheBustedImageUrl(vehicleB.imageUrl, vehicleB.imageVersion || vehicleB.updatedAt)}
-                alt={vehicleB.name}
-                className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950"
-                referrerPolicy="no-referrer"
-              />
+              <div className="w-full h-44 md:h-48 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden flex items-center justify-center">
+                {vehicleB.imageUrl ? (
+                  <img
+                    key={`${vehicleB.id}-${vehicleB.imageVersion || vehicleB.updatedAt || vehicleB.imageUrl}`}
+                    src={getCacheBustedImageUrl(vehicleB.imageUrl, vehicleB.imageVersion || vehicleB.updatedAt)}
+                    alt={vehicleB.name}
+                    className="w-full h-full object-cover object-center"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.dataset.failed) {
+                        target.dataset.failed = 'true';
+                        target.src = 'https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=800&q=80';
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                    <Car className="w-12 h-12 text-cyan-500/50" />
+                    <span className="text-xs font-mono text-zinc-500">{vehicleB.name}</span>
+                  </div>
+                )}
+              </div>
               <div>
                 <span className="text-xs font-semibold text-cyan-400 uppercase">{vehicleB.brand}</span>
                 <h3 className="text-2xl font-black text-white">{vehicleB.name}</h3>
@@ -402,13 +434,29 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="absolute top-0 right-0 px-4 py-1 bg-rose-600 text-white font-bold text-[10px] uppercase rounded-bl-xl">
                 Armament 1
               </div>
-              <img
-                key={`${weaponA.id}-${weaponA.imageVersion || weaponA.updatedAt || weaponA.imageUrl}`}
-                src={getCacheBustedImageUrl(weaponA.imageUrl, weaponA.imageVersion || weaponA.updatedAt)}
-                alt={weaponA.name}
-                className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950"
-                referrerPolicy="no-referrer"
-              />
+              <div className="w-full h-44 md:h-48 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden flex items-center justify-center">
+                {weaponA.imageUrl ? (
+                  <img
+                    key={`${weaponA.id}-${weaponA.imageVersion || weaponA.updatedAt || weaponA.imageUrl}`}
+                    src={getCacheBustedImageUrl(weaponA.imageUrl, weaponA.imageVersion || weaponA.updatedAt)}
+                    alt={weaponA.name}
+                    className="w-full h-full object-cover object-center"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.dataset.failed) {
+                        target.dataset.failed = 'true';
+                        target.src = 'https://images.unsplash.com/photo-1595590424283-b8f17842773f?auto=format&fit=crop&w=800&q=80';
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                    <Crosshair className="w-12 h-12 text-rose-500/50" />
+                    <span className="text-xs font-mono text-zinc-500">{weaponA.name}</span>
+                  </div>
+                )}
+              </div>
               <div>
                 <span className="text-xs font-semibold text-rose-400 uppercase">{weaponA.manufacturer} • {weaponA.category}</span>
                 <h3 className="text-2xl font-black text-white">{weaponA.name}</h3>
@@ -420,13 +468,29 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="absolute top-0 right-0 px-4 py-1 bg-cyan-600 text-white font-bold text-[10px] uppercase rounded-bl-xl">
                 Armament 2
               </div>
-              <img
-                key={`${weaponB.id}-${weaponB.imageVersion || weaponB.updatedAt || weaponB.imageUrl}`}
-                src={getCacheBustedImageUrl(weaponB.imageUrl, weaponB.imageVersion || weaponB.updatedAt)}
-                alt={weaponB.name}
-                className="w-full h-44 md:h-48 object-cover object-center rounded-xl border border-zinc-800 bg-zinc-950"
-                referrerPolicy="no-referrer"
-              />
+              <div className="w-full h-44 md:h-48 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden flex items-center justify-center">
+                {weaponB.imageUrl ? (
+                  <img
+                    key={`${weaponB.id}-${weaponB.imageVersion || weaponB.updatedAt || weaponB.imageUrl}`}
+                    src={getCacheBustedImageUrl(weaponB.imageUrl, weaponB.imageVersion || weaponB.updatedAt)}
+                    alt={weaponB.name}
+                    className="w-full h-full object-cover object-center"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.dataset.failed) {
+                        target.dataset.failed = 'true';
+                        target.src = 'https://images.unsplash.com/photo-1595590424283-b8f17842773f?auto=format&fit=crop&w=800&q=80';
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                    <Crosshair className="w-12 h-12 text-cyan-500/50" />
+                    <span className="text-xs font-mono text-zinc-500">{weaponB.name}</span>
+                  </div>
+                )}
+              </div>
               <div>
                 <span className="text-xs font-semibold text-cyan-400 uppercase">{weaponB.manufacturer} • {weaponB.category}</span>
                 <h3 className="text-2xl font-black text-white">{weaponB.name}</h3>

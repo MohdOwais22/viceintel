@@ -4,7 +4,7 @@ import { CHARACTERS_DATA } from '../data/characters';
 import { Character, CharacterRole } from '../types';
 import { getStoredCharacters, CHARACTERS_UPDATED_EVENT } from '../lib/characterStore';
 import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
-import { Users, Shield, Zap, Filter, Eye, ChevronLeft, ChevronRight, MapPin, Heart, X, Share2, Award, Film } from 'lucide-react';
+import { Users, Shield, Zap, Filter, Eye, ChevronLeft, ChevronRight, MapPin, Heart, X, Share2, Award, Film, UserCheck } from 'lucide-react';
 import { AdSlot } from './ads';
 
 interface CharactersTabProps {
@@ -58,6 +58,14 @@ export const CharactersTab: React.FC<CharactersTabProps> = ({ searchQuery, isLoa
   useEffect(() => {
     // Load characters from store (MongoDB / Firestore / defaults)
     const loadCharacters = async () => {
+      try {
+        const res = await fetch('/api/characters');
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setCharactersList(json.data);
+          return;
+        }
+      } catch (err) {}
       try {
         const stored = await getStoredCharacters();
         if (stored && stored.length > 0) {
@@ -212,14 +220,34 @@ export const CharactersTab: React.FC<CharactersTabProps> = ({ searchQuery, isLoa
               className="group bg-zinc-900/80 border border-zinc-800/90 hover:border-pink-500/50 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-pink-500/10 flex flex-col justify-between"
             >
               {/* Header Image & Avatar Banner */}
-              <div className="relative h-48 w-full bg-zinc-950 overflow-hidden shrink-0">
-                <img
-                  key={`${character.id}-${character.imageVersion || character.updatedAt || character.imageUrl}`}
-                  src={getCacheBustedImageUrl(character.imageUrl, character.imageVersion || character.updatedAt)}
-                  alt={character.name}
-                  className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 opacity-70"
-                  referrerPolicy="no-referrer"
-                />
+              <div className="relative h-48 w-full bg-zinc-950 overflow-hidden shrink-0 flex items-center justify-center">
+                {character.imageUrl ? (
+                  <img
+                    key={`${character.id}-${character.imageVersion || character.updatedAt || character.imageUrl}`}
+                    src={getCacheBustedImageUrl(character.imageUrl, character.imageVersion || character.updatedAt)}
+                    alt={character.name}
+                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 opacity-70"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.dataset.failed) {
+                        target.dataset.failed = 'true';
+                        target.src = character.avatarUrl || `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(character.name)}`;
+                      }
+                    }}
+                  />
+                ) : character.avatarUrl ? (
+                  <img
+                    src={character.avatarUrl}
+                    alt={character.name}
+                    className="w-28 h-28 rounded-full object-cover border-2 border-rose-500/40 shadow-lg"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-zinc-600 gap-1.5 p-4 text-center">
+                    <UserCheck className="w-10 h-10 text-rose-500/50" />
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">{character.name}</span>
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
 
                 {/* Role Badge */}
@@ -382,14 +410,34 @@ export const CharactersTab: React.FC<CharactersTabProps> = ({ searchQuery, isLoa
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md p-4 sm:p-6 flex items-center justify-center min-h-screen">
           <div className="relative bg-zinc-900 border border-zinc-800 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden my-auto max-h-[90vh] flex flex-col">
             {/* Modal Header Banner */}
-            <div className="relative h-48 sm:h-56 w-full bg-zinc-950 overflow-hidden shrink-0">
-              <img
-                key={`${activeModalCharacter.id}-${activeModalCharacter.imageVersion || activeModalCharacter.updatedAt || activeModalCharacter.imageUrl}`}
-                src={getCacheBustedImageUrl(activeModalCharacter.imageUrl, activeModalCharacter.imageVersion || activeModalCharacter.updatedAt)}
-                alt={activeModalCharacter.name}
-                className="w-full h-full object-cover opacity-60"
-                referrerPolicy="no-referrer"
-              />
+            <div className="relative h-48 sm:h-56 w-full bg-zinc-950 overflow-hidden shrink-0 flex items-center justify-center">
+              {activeModalCharacter.imageUrl ? (
+                <img
+                  key={`${activeModalCharacter.id}-${activeModalCharacter.imageVersion || activeModalCharacter.updatedAt || activeModalCharacter.imageUrl}`}
+                  src={getCacheBustedImageUrl(activeModalCharacter.imageUrl, activeModalCharacter.imageVersion || activeModalCharacter.updatedAt)}
+                  alt={activeModalCharacter.name}
+                  className="w-full h-full object-cover opacity-60"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.dataset.failed) {
+                      target.dataset.failed = 'true';
+                      target.src = activeModalCharacter.avatarUrl || `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(activeModalCharacter.name)}`;
+                    }
+                  }}
+                />
+              ) : activeModalCharacter.avatarUrl ? (
+                <img
+                  src={activeModalCharacter.avatarUrl}
+                  alt={activeModalCharacter.name}
+                  className="w-32 h-32 rounded-full object-cover border-2 border-rose-500/40 shadow-xl"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-zinc-600 gap-2 p-4 text-center">
+                  <UserCheck className="w-12 h-12 text-rose-500/50" />
+                  <span className="text-xs font-mono uppercase tracking-wider text-zinc-400">{activeModalCharacter.name}</span>
+                </div>
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-zinc-900/60 to-transparent" />
 
               <button

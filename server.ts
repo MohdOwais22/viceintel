@@ -1410,77 +1410,35 @@ async function initializeSystemPricing() {
  */
 async function initializeMongoCatalogs() {
   try {
-    const { findDocuments, saveDocument } = await import('./src/lib/db/mongoHelpers');
-    const { VEHICLES_DATA } = await import('./src/data/vehicles');
-    const { WEAPONS_DATA } = await import('./src/data/weapons');
-    const { CHARACTERS_DATA } = await import('./src/data/characters');
-    const { BUSINESSES_DATA } = await import('./src/data/businesses');
-    const { MAP_LOCATIONS_DATA } = await import('./src/data/mapLocations');
+    const { findDocuments } = await import('./src/lib/db/mongoHelpers');
+    const { isMongoDBConnected } = await import('./src/lib/db/mongodb');
 
     const vehicles = await findDocuments('vehicles', {}, 500);
-    if (vehicles.length === 0) {
-      console.log('[Mongo Catalogs] Seeding vehicles collection in MongoDB...');
-      for (const v of VEHICLES_DATA) {
-        const id = v.id || `veh_${v.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-        await saveDocument('vehicles', id, { ...v, id });
-      }
-      state.vehicles = await findDocuments('vehicles', {}, 500);
-      console.log(`[Mongo Catalogs] Seeded ${VEHICLES_DATA.length} vehicles into MongoDB.`);
-    } else {
+    if (Array.isArray(vehicles) && vehicles.length > 0) {
       state.vehicles = vehicles;
     }
 
     const weapons = await findDocuments('weapons', {}, 500);
-    if (weapons.length === 0) {
-      console.log('[Mongo Catalogs] Seeding weapons collection in MongoDB...');
-      for (const w of WEAPONS_DATA) {
-        const id = w.id || `weap_${w.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-        await saveDocument('weapons', id, { ...w, id });
-      }
-      state.weapons = await findDocuments('weapons', {}, 500);
-      console.log(`[Mongo Catalogs] Seeded ${WEAPONS_DATA.length} weapons into MongoDB.`);
-    } else {
+    if (Array.isArray(weapons) && weapons.length > 0) {
       state.weapons = weapons;
     }
 
     const characters = await findDocuments('characters', {}, 500);
-    if (characters.length === 0) {
-      console.log('[Mongo Catalogs] Seeding characters collection in MongoDB...');
-      for (const c of CHARACTERS_DATA) {
-        const id = c.id || `char_${c.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-        await saveDocument('characters', id, { ...c, id });
-      }
-      state.characters = await findDocuments('characters', {}, 500);
-      console.log(`[Mongo Catalogs] Seeded ${CHARACTERS_DATA.length} characters into MongoDB.`);
-    } else {
+    if (Array.isArray(characters) && characters.length > 0) {
       state.characters = characters;
     }
 
     const businesses = await findDocuments('businesses', {}, 500);
-    if (businesses.length === 0) {
-      console.log('[Mongo Catalogs] Seeding businesses collection in MongoDB...');
-      for (const b of (BUSINESSES_DATA || [])) {
-        const id = (b as any).id || `biz_${(b as any).name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-        await saveDocument('businesses', id, { ...b, id });
-      }
-      state.businesses = await findDocuments('businesses', {}, 500);
-    } else {
+    if (Array.isArray(businesses) && businesses.length > 0) {
       state.businesses = businesses;
     }
 
     const mapLocations = await findDocuments('mapLocations', {}, 500);
-    if (mapLocations.length === 0 && Array.isArray(MAP_LOCATIONS_DATA) && MAP_LOCATIONS_DATA.length > 0) {
-      console.log('[Mongo Catalogs] Seeding mapLocations collection in MongoDB...');
-      for (const m of MAP_LOCATIONS_DATA) {
-        const id = (m as any).id || `loc_${(m as any).title.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-        await saveDocument('mapLocations', id, { ...m, id });
-      }
-      state.mapLocations = await findDocuments('mapLocations', {}, 500);
-    } else if (mapLocations.length > 0) {
+    if (Array.isArray(mapLocations) && mapLocations.length > 0) {
       state.mapLocations = mapLocations;
     }
-  } catch (err) {
-    console.warn('[Mongo Catalogs] Notice during catalog init:', err);
+  } catch (err: any) {
+    console.warn('[Mongo Catalogs] Notice during catalog init:', err?.message || err);
   }
 }
 
@@ -3050,7 +3008,16 @@ export async function createExpressApp() {
   });
 
   // Vehicles REST API
-  app.get('/api/vehicles', (req: Request, res: Response) => {
+  app.get('/api/vehicles', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('vehicles', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        state.vehicles = mongoDocs;
+      }
+    } catch (err) {
+      console.warn('[Vehicles API] MongoDB query error:', err);
+    }
+
     const { category, search } = req.query;
     let results = state.vehicles;
 
@@ -3071,12 +3038,44 @@ export async function createExpressApp() {
     res.json({ success: true, count: results.length, data: results });
   });
 
-  app.get('/api/vehicles/:id', (req: Request, res: Response) => {
+  app.get('/api/vehicles/:id', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('vehicles', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        state.vehicles = mongoDocs;
+      }
+    } catch (err) {}
     const vehicle = state.vehicles.find(v => v.id === req.params.id);
     if (!vehicle) {
       return res.status(404).json({ success: false, message: 'Vehicle not found' });
     }
     res.json({ success: true, data: vehicle });
+  });
+
+  // Characters REST API
+  app.get('/api/characters', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('characters', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        state.characters = mongoDocs;
+      }
+    } catch (err) {
+      console.warn('[Characters API] MongoDB query error:', err);
+    }
+    res.json({ success: true, count: state.characters.length, data: state.characters });
+  });
+
+  // Weapons REST API
+  app.get('/api/weapons', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('weapons', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        state.weapons = mongoDocs;
+      }
+    } catch (err) {
+      console.warn('[Weapons API] MongoDB query error:', err);
+    }
+    res.json({ success: true, count: state.weapons.length, data: state.weapons });
   });
 
   // Community Builds REST API
@@ -3356,8 +3355,16 @@ export async function createExpressApp() {
   });
 
   // Business ROI REST API
-  app.get('/api/businesses', (req: Request, res: Response) => {
-    res.json({ success: true, data: state.businesses });
+  app.get('/api/businesses', async (req: Request, res: Response) => {
+    try {
+      const mongoDocs = await findDocuments('businesses', {}, 500);
+      if (Array.isArray(mongoDocs) && mongoDocs.length > 0) {
+        state.businesses = mongoDocs;
+      }
+    } catch (err) {
+      console.warn('[Businesses API] MongoDB query error:', err);
+    }
+    res.json({ success: true, count: state.businesses.length, data: state.businesses });
   });
 
   app.post('/api/roi/calculate', (req: Request, res: Response) => {
@@ -7917,7 +7924,8 @@ Showing top entries for "${query || 'All'}":
         'STAFF_PASSKEY',
         'APP_URL',
         'APP_NAME',
-        'DATABASE_URL'
+        'DATABASE_URL',
+        'MONGODB_URI'
       ];
 
       if (!secretKey || !allowedSecrets.includes(secretKey)) {
@@ -7937,6 +7945,18 @@ Showing top entries for "${query || 'All'}":
       if (secretKey === 'GEMINI_API_KEY') {
         aiClient = null; // Forces getGeminiClient() to lazily instantiate with the new key!
         console.log(`[ADMIN SECRET ROTATION] GEMINI_API_KEY rotated. aiClient instance reset.`);
+      }
+
+      // Special handling for MONGODB_URI rotation
+      if (secretKey === 'MONGODB_URI') {
+        try {
+          const { invalidateMongoConnection, connectToMongoDB } = await import('./src/lib/db/mongodb');
+          await invalidateMongoConnection('Admin secret rotation');
+          const conn = await connectToMongoDB();
+          console.log(`[ADMIN SECRET ROTATION] MONGODB_URI rotated. Connection attempt result: ${conn ? 'CONNECTED' : 'STANDBY'}`);
+        } catch (e: any) {
+          console.warn('[ADMIN SECRET ROTATION] Notice resetting Mongo connection:', e?.message);
+        }
       }
 
       const timestamp = new Date().toISOString();

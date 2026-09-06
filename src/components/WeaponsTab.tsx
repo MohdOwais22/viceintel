@@ -65,6 +65,20 @@ export const WeaponsTab: React.FC<WeaponsTabProps> = ({ searchQuery, isLoading =
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
+
+    fetch('/api/weapons')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setWeaponsList(json.data);
+          setSelectedWeapon((prev) => {
+            const match = json.data.find((w: Weapon) => w.id === prev.id);
+            return match || json.data[0] || prev;
+          });
+        }
+      })
+      .catch(() => {});
+
     getCachedWeapons().then((data) => {
       if (data && data.length > 0) {
         setWeaponsList(data);
@@ -175,8 +189,24 @@ export const WeaponsTab: React.FC<WeaponsTabProps> = ({ searchQuery, isLoading =
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 aspect-square rounded-lg bg-zinc-950 border border-zinc-800/80 overflow-hidden shrink-0">
-                    <img src={weapon.imageUrl} alt={weapon.name} className="w-full h-full object-cover object-center" referrerPolicy="no-referrer" />
+                  <div className="w-14 h-14 aspect-square rounded-lg bg-zinc-950 border border-zinc-800/80 overflow-hidden shrink-0 flex items-center justify-center">
+                    {weapon.imageUrl ? (
+                      <img
+                        src={weapon.imageUrl}
+                        alt={weapon.name}
+                        className="w-full h-full object-cover object-center"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.failed) {
+                            target.dataset.failed = 'true';
+                            target.src = 'https://images.unsplash.com/photo-1595590424283-b8f17842773f?auto=format&fit=crop&w=800&q=80';
+                          }
+                        }}
+                      />
+                    ) : (
+                      <Crosshair className="w-6 h-6 text-rose-500/50" />
+                    )}
                   </div>
                   <div>
                     <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider">

@@ -35,6 +35,7 @@ import { VEHICLES_DATA } from '../data/vehicles';
 import { WEAPONS_DATA } from '../data/weapons';
 import { getStoredUnitPreference, formatSpeed } from '../lib/unitConverter';
 import { BUSINESSES_DATA } from '../data/businesses';
+import { CHARACTERS_DATA } from '../data/characters';
 
 interface MasterPortalHomeProps {
   setActiveTab: (tab: ActiveTab) => void;
@@ -62,10 +63,47 @@ export const MasterPortalHome: React.FC<MasterPortalHomeProps> = ({
   isStaff = false
 }) => {
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [spotlightTab, setSpotlightTab] = useState<'vehicle' | 'weapon' | 'business'>('vehicle');
+  const [spotlightTab, setSpotlightTab] = useState<'character' | 'vehicle' | 'weapon' | 'business'>('vehicle');
 
-  // Global '/' keyboard shortcut listener
+  const [featuredCharacter, setFeaturedCharacter] = useState(CHARACTERS_DATA[0]);
+  const [featuredVehicle, setFeaturedVehicle] = useState(VEHICLES_DATA[0]);
+  const [featuredWeapon, setFeaturedWeapon] = useState(WEAPONS_DATA[0]);
+  const [featuredBusiness, setFeaturedBusiness] = useState(BUSINESSES_DATA[0]);
+
+  // Global '/' keyboard shortcut listener and live Mongo data fetch
   useEffect(() => {
+    fetch('/api/characters')
+      .then(res => res.json())
+      .then(json => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setFeaturedCharacter(json.data[0]);
+        }
+      }).catch(() => {});
+
+    fetch('/api/vehicles')
+      .then(res => res.json())
+      .then(json => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setFeaturedVehicle(json.data[0]);
+        }
+      }).catch(() => {});
+
+    fetch('/api/weapons')
+      .then(res => res.json())
+      .then(json => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setFeaturedWeapon(json.data[0]);
+        }
+      }).catch(() => {});
+
+    fetch('/api/businesses')
+      .then(res => res.json())
+      .then(json => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setFeaturedBusiness(json.data[0]);
+        }
+      }).catch(() => {});
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.key === '/' &&
@@ -78,10 +116,6 @@ export const MasterPortalHome: React.FC<MasterPortalHomeProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  const featuredVehicle = VEHICLES_DATA[0]; // Grotti Cheetah
-  const featuredWeapon = WEAPONS_DATA[0]; // Combat Pistol
-  const featuredBusiness = BUSINESSES_DATA[0]; // Vice City Nightclub
 
   // Utility Suite Grid Cards data - clean and streamlined
   const utilitySuiteCards = [
@@ -272,6 +306,16 @@ export const MasterPortalHome: React.FC<MasterPortalHomeProps> = ({
           {/* SPOTLIGHT TABS */}
           <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs font-mono">
             <button
+              onClick={() => setSpotlightTab('character')}
+              className={`px-3 py-1 rounded-lg transition cursor-pointer ${
+                spotlightTab === 'character'
+                  ? 'bg-pink-500 text-white font-bold'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              👥 Character
+            </button>
+            <button
               onClick={() => setSpotlightTab('vehicle')}
               className={`px-3 py-1 rounded-lg transition cursor-pointer ${
                 spotlightTab === 'vehicle'
@@ -305,14 +349,81 @@ export const MasterPortalHome: React.FC<MasterPortalHomeProps> = ({
         </div>
 
         {/* SPOTLIGHT CONTENT CARD */}
+        {spotlightTab === 'character' && (
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-zinc-950 p-4 sm:p-5 rounded-2xl border border-zinc-800">
+            <div className="md:col-span-4 rounded-xl overflow-hidden aspect-[16/9] border border-zinc-800 relative group flex items-center justify-center bg-zinc-900">
+              {featuredCharacter.imageUrl ? (
+                <img
+                  src={featuredCharacter.imageUrl}
+                  alt={featuredCharacter.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.dataset.failed) {
+                      target.dataset.failed = 'true';
+                      target.src = featuredCharacter.avatarUrl || `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(featuredCharacter.name)}`;
+                    }
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                  <Users className="w-10 h-10 text-pink-500/50" />
+                  <span className="text-[10px] font-mono text-zinc-500">{featuredCharacter.name}</span>
+                </div>
+              )}
+              <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-zinc-950/80 backdrop-blur-md text-[10px] font-mono text-pink-300 font-bold border border-pink-500/30">
+                {featuredCharacter.role}
+              </span>
+            </div>
+
+            <div className="md:col-span-8 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-extrabold text-white">{featuredCharacter.name}</h3>
+                  <span className="text-xs text-zinc-400 font-sans">{featuredCharacter.faction}</span>
+                </div>
+                <span className="text-xs font-mono font-bold text-pink-400 px-2.5 py-1 rounded-lg bg-pink-500/10 border border-pink-500/30">
+                  {featuredCharacter.voiceActor || 'Vice City Legend'}
+                </span>
+              </div>
+
+              <p className="text-xs text-zinc-300 line-clamp-2">{featuredCharacter.bio || featuredCharacter.description}</p>
+
+              <button
+                onClick={() => setActiveTab('characters')}
+                className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-pink-500/20"
+              >
+                <span>View Full Character Dossier</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {spotlightTab === 'vehicle' && (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-zinc-950 p-4 sm:p-5 rounded-2xl border border-zinc-800">
-            <div className="md:col-span-4 rounded-xl overflow-hidden aspect-[16/9] border border-zinc-800 relative group">
-              <img
-                src={featuredVehicle.imageUrl}
-                alt={featuredVehicle.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
+            <div className="md:col-span-4 rounded-xl overflow-hidden aspect-[16/9] border border-zinc-800 relative group flex items-center justify-center bg-zinc-900">
+              {featuredVehicle.imageUrl ? (
+                <img
+                  src={featuredVehicle.imageUrl}
+                  alt={featuredVehicle.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.dataset.failed) {
+                      target.dataset.failed = 'true';
+                      target.src = 'https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=800&q=80';
+                    }
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                  <Car className="w-10 h-10 text-rose-500/50" />
+                  <span className="text-[10px] font-mono text-zinc-500">{featuredVehicle.name}</span>
+                </div>
+              )}
               <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-zinc-950/80 backdrop-blur-md text-[10px] font-mono text-rose-300 font-bold border border-rose-500/30">
                 {featuredVehicle.category}
               </span>
@@ -357,12 +468,27 @@ export const MasterPortalHome: React.FC<MasterPortalHomeProps> = ({
 
         {spotlightTab === 'weapon' && (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-zinc-950 p-4 sm:p-5 rounded-2xl border border-zinc-800">
-            <div className="md:col-span-4 rounded-xl overflow-hidden aspect-[16/9] border border-zinc-800 relative group">
-              <img
-                src={featuredWeapon.imageUrl}
-                alt={featuredWeapon.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
+            <div className="md:col-span-4 rounded-xl overflow-hidden aspect-[16/9] border border-zinc-800 relative group flex items-center justify-center bg-zinc-900">
+              {featuredWeapon.imageUrl ? (
+                <img
+                  src={featuredWeapon.imageUrl}
+                  alt={featuredWeapon.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.dataset.failed) {
+                      target.dataset.failed = 'true';
+                      target.src = 'https://images.unsplash.com/photo-1595590424283-b8f17842773f?auto=format&fit=crop&w=800&q=80';
+                    }
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                  <Crosshair className="w-10 h-10 text-cyan-400/50" />
+                  <span className="text-[10px] font-mono text-zinc-500">{featuredWeapon.name}</span>
+                </div>
+              )}
               <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-zinc-950/80 backdrop-blur-md text-[10px] font-mono text-cyan-300 font-bold border border-cyan-500/30">
                 {featuredWeapon.category}
               </span>
@@ -407,12 +533,27 @@ export const MasterPortalHome: React.FC<MasterPortalHomeProps> = ({
 
         {spotlightTab === 'business' && (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-zinc-950 p-4 sm:p-5 rounded-2xl border border-zinc-800">
-            <div className="md:col-span-4 rounded-xl overflow-hidden aspect-[16/9] border border-zinc-800 relative group">
-              <img
-                src={featuredBusiness.imageUrl}
-                alt={featuredBusiness.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
+            <div className="md:col-span-4 rounded-xl overflow-hidden aspect-[16/9] border border-zinc-800 relative group flex items-center justify-center bg-zinc-900">
+              {featuredBusiness.imageUrl ? (
+                <img
+                  src={featuredBusiness.imageUrl}
+                  alt={featuredBusiness.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.dataset.failed) {
+                      target.dataset.failed = 'true';
+                      target.src = 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?auto=format&fit=crop&w=800&q=80';
+                    }
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                  <DollarSign className="w-10 h-10 text-emerald-400/50" />
+                  <span className="text-[10px] font-mono text-zinc-500">{featuredBusiness.name}</span>
+                </div>
+              )}
               <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-zinc-950/80 backdrop-blur-md text-[10px] font-mono text-emerald-300 font-bold border border-emerald-500/30">
                 {featuredBusiness.type}
               </span>

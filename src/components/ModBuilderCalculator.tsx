@@ -5,7 +5,7 @@ import { ModUpgradeOption, Vehicle, CommunityBuild } from '../types';
 import { getCachedVehicles } from '../lib/offlineStorage';
 import { VEHICLES_UPDATED_EVENT } from '../lib/vehicleStore';
 import { getCacheBustedImageUrl } from '../lib/imageCacheBuster';
-import { Wrench, DollarSign, Zap, Gauge, Shield, Plus, Check, RotateCcw, Share2, Printer, Sparkles, ThumbsUp, Search, Flame, ArrowUpDown, ChevronLeft, ChevronRight, Copy, Download, FileCode } from 'lucide-react';
+import { Wrench, DollarSign, Zap, Gauge, Shield, Plus, Check, RotateCcw, Share2, Printer, Sparkles, ThumbsUp, Search, Flame, ArrowUpDown, ChevronLeft, ChevronRight, Copy, Download, FileCode, Car } from 'lucide-react';
 import { PrintReportModal, PrintReportData } from './PrintReportModal';
 
 interface ModBuilderCalculatorProps {
@@ -598,13 +598,27 @@ export const ModBuilderCalculator: React.FC<ModBuilderCalculatorProps> = ({ onSw
 
         {/* Selected Vehicle Visual Hero Preview Card */}
         <div className="mt-4 bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col md:flex-row items-center gap-4 overflow-hidden">
-          <div className="relative w-full md:w-64 h-40 md:h-32 rounded-lg bg-zinc-900 border border-zinc-800/80 overflow-hidden shrink-0">
-            <img
-              src={selectedVehicle.imageUrl}
-              alt={selectedVehicle.name}
-              className="w-full h-full object-cover object-center"
-              referrerPolicy="no-referrer"
-            />
+          <div className="relative w-full md:w-64 h-40 md:h-32 rounded-lg bg-zinc-900 border border-zinc-800/80 overflow-hidden shrink-0 flex items-center justify-center">
+            {selectedVehicle.imageUrl ? (
+              <img
+                src={selectedVehicle.imageUrl}
+                alt={selectedVehicle.name}
+                className="w-full h-full object-cover object-center"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.dataset.failed) {
+                    target.dataset.failed = 'true';
+                    target.src = 'https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=800&q=80';
+                  }
+                }}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center text-zinc-600 gap-1 p-3 text-center">
+                <Car className="w-10 h-10 text-rose-500/50" />
+                <span className="text-[10px] font-mono text-zinc-500">{selectedVehicle.name}</span>
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/80 via-transparent to-transparent" />
             <div className="absolute top-2 left-2 flex items-center gap-1.5">
               <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-md">
@@ -681,7 +695,7 @@ export const ModBuilderCalculator: React.FC<ModBuilderCalculatorProps> = ({ onSw
                       {isApplied ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                     </div>
 
-                    {mod.imageUrl && (
+                    {Boolean(mod.imageUrl) && (
                       <img
                         src={mod.imageUrl}
                         alt={mod.name}
@@ -940,13 +954,17 @@ export const ModBuilderCalculator: React.FC<ModBuilderCalculatorProps> = ({ onSw
                 >
                   <div>
                     {/* Vehicle Card Image Banner */}
-                    <div className="relative aspect-[16/9] w-full overflow-hidden bg-zinc-900 shrink-0">
-                      <img
-                        src={cardImg}
-                        alt={build.vehicleName}
-                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-                        referrerPolicy="no-referrer"
-                      />
+                    <div className="relative aspect-[16/9] w-full overflow-hidden bg-zinc-900 shrink-0 flex items-center justify-center">
+                      {cardImg ? (
+                        <img
+                          src={cardImg}
+                          alt={build.vehicleName}
+                          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Car className="w-10 h-10 text-rose-500/50" />
+                      )}
                       <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent" />
 
                       <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between">

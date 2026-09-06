@@ -228,7 +228,7 @@ export const VehicleCatalogAdminCms: React.FC = () => {
       drivetrain: 'AWD',
       capacity: 2,
       description: 'High-performance Vice City hypercar with active aerodynamic spoiler.',
-      imageUrl: 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=800&q=80',
+      imageUrl: '',
       featuredInTrailer: true,
       isCustomizable: true,
       baseModdingBudget: 300000
@@ -275,7 +275,7 @@ export const VehicleCatalogAdminCms: React.FC = () => {
       description: formData.description || '',
       imageUrl:
         formData.imageUrl ||
-        'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=800&q=80',
+        '',
       featuredInTrailer: Boolean(formData.featuredInTrailer),
       isCustomizable: Boolean(formData.isCustomizable),
       baseModdingBudget: Number(formData.baseModdingBudget) || 200000
@@ -482,8 +482,11 @@ export const VehicleCatalogAdminCms: React.FC = () => {
                       alt={veh.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=800&q=80';
+                        const target = e.currentTarget;
+                        if (!target.dataset.failed) {
+                          target.dataset.failed = 'true';
+                          target.src = 'https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=800&q=80';
+                        }
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-black/40" />
@@ -677,7 +680,7 @@ export const VehicleCatalogAdminCms: React.FC = () => {
                   <span className="text-[10px] text-zinc-500 font-mono block mb-1">Or paste direct image URL:</span>
                   <input
                     type="url"
-                    placeholder="https://images.unsplash.com/..."
+                    placeholder=""
                     value={formData.imageUrl || ''}
                     onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
@@ -947,8 +950,7 @@ export const VehicleCatalogAdminCms: React.FC = () => {
                   alt={quickImageModalVeh.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src =
-                      'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=800&q=80';
+                    (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
               </div>

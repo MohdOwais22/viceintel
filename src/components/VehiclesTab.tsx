@@ -62,6 +62,15 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
   };
 
   useEffect(() => {
+    fetch('/api/vehicles')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setVehiclesList(json.data);
+        }
+      })
+      .catch(() => {});
+
     getCachedVehicles().then((data) => {
       if (data && data.length > 0) {
         setVehiclesList(data);
@@ -201,14 +210,28 @@ export const VehiclesTab: React.FC<VehiclesTabProps> = ({ searchQuery, onSelectF
               className="group bg-zinc-900/80 border border-zinc-800/90 hover:border-zinc-700 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-xl hover:shadow-rose-500/5 flex flex-col"
             >
               {/* Image & Badges */}
-              <div className="relative h-44 w-full bg-zinc-950 overflow-hidden shrink-0">
-                <img
-                  key={`${vehicle.id}-${vehicle.imageVersion || vehicle.updatedAt || vehicle.imageUrl}`}
-                  src={getCacheBustedImageUrl(vehicle.imageUrl, vehicle.imageVersion || vehicle.updatedAt)}
-                  alt={vehicle.name}
-                  className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300 opacity-90"
-                  referrerPolicy="no-referrer"
-                />
+              <div className="relative h-44 w-full bg-zinc-950 overflow-hidden shrink-0 flex items-center justify-center">
+                {vehicle.imageUrl ? (
+                  <img
+                    key={`${vehicle.id}-${vehicle.imageVersion || vehicle.updatedAt || vehicle.imageUrl}`}
+                    src={getCacheBustedImageUrl(vehicle.imageUrl, vehicle.imageVersion || vehicle.updatedAt)}
+                    alt={vehicle.name}
+                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300 opacity-90"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.dataset.failed) {
+                        target.dataset.failed = 'true';
+                        target.src = 'https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=800&q=80';
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-zinc-600 gap-1.5 p-4 text-center">
+                    <Car className="w-10 h-10 text-rose-500/50" />
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">{vehicle.brand} • {vehicle.name}</span>
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
 
                 <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap">
