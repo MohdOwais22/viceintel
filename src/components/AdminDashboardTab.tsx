@@ -59,8 +59,7 @@ import {
   Wand2
 } from 'lucide-react';
 import { ENV } from '../lib/envConfig';
-import { auth, db } from '../lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { auth } from '../lib/firebase';
 import { deleteRtdbChannel, deleteRtdbMessage, subscribeRtdbMessages } from '../lib/firebase/rtdbChatService';
 import { UserProfile, RpServer, CommunityBuild, UserRole } from '../types';
 import { RP_SERVERS_DATA } from '../data/rpServers';
@@ -1060,7 +1059,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const fetchAdminData = async () => {
     setIsRefreshing(true);
     try {
-      // Primary API check from MongoDB
+      // Supplementary/Primary API check from high-performance MongoDB
       const [uRes, pRes] = await Promise.allSettled([
         fetch('/api/admin/users').then(res => res.json()),
         fetch('/api/admin/pending').then(res => res.json())
@@ -1068,12 +1067,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
       if (uRes.status === 'fulfilled' && uRes.value?.success && Array.isArray(uRes.value.data)) {
         setUsers(uRes.value.data);
-      } else if (uRes.status === 'fulfilled' && Array.isArray(uRes.value)) {
-        setUsers(uRes.value);
-      } else {
-        setUsers([]);
       }
-
       if (pRes.status === 'fulfilled' && pRes.value?.success && Array.isArray(pRes.value.data)) {
         setPendingApprovals(pRes.value.data.filter((p: any) => p && p.id && p.id !== 'p1'));
       }

@@ -324,7 +324,6 @@ export interface UserProfile {
   id: string;
   uid?: string;
   username: string;
-  gamerTag?: string;
   displayName?: string;
   email: string;
   avatar: string;
@@ -337,7 +336,6 @@ export interface UserProfile {
   vipExpires?: string;
   vcBalance?: number;
   dailyStreak?: number;
-  rewardStreak?: number;
   moderationNote?: string;
   joinedDate: string;
   publishedBuildsCount: number;
