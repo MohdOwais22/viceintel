@@ -4598,7 +4598,10 @@ Showing top entries for "${query || 'All'}":
 
   app.get('/api/admin/users', async (req: Request, res: Response) => {
     try {
-      const mongoProfiles = await findDocuments('userProfiles', {}, 200);
+      let mongoProfiles = await findDocuments('userProfiles', {}, 500);
+      if (!mongoProfiles || mongoProfiles.length === 0) {
+        mongoProfiles = await findDocuments('users', {}, 500);
+      }
       if (mongoProfiles && mongoProfiles.length > 0) {
         // Map MongoDB user profiles to match the admin user list structure directly from stored values
         const mappedUsers = mongoProfiles.map((rawP: any) => {

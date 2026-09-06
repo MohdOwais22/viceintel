@@ -33,7 +33,6 @@ export default defineConfig(() => {
     },
     server: {
       hmr: false,
-      ws: false,
       watch: null,
     },
   };

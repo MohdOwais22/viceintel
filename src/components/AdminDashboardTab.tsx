@@ -1728,7 +1728,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
   const filteredUsers = users.filter(u => {
     if (!u) return false;
     const searchLower = searchUser.toLowerCase().trim();
-    const uname = String(u.username || u.gamerTag || u.displayName || '').toLowerCase();
+    const uname = String(u.username || (u as any).gamerTag || u.displayName || '').toLowerCase();
     const email = String(u.email || '').toLowerCase();
     const id = String(u.id || u.uid || '').toLowerCase();
     const note = String(u.moderationNote || '').toLowerCase();
@@ -1740,7 +1740,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       note.includes(searchLower);
 
     const userStatus = (u.status === 'Suspended' || (u as any).isSuspended) ? 'Suspended' : 'Active';
-    const matchesRole = roleFilter === 'All' || u.role === roleFilter || (roleFilter === 'VIP' && (u.isVip || u.role === 'VIP Member'));
+    const matchesRole = roleFilter === 'All' || u.role === roleFilter || ((roleFilter as string) === 'VIP' && (u.isVip || u.role === 'VIP Member'));
     const matchesStatus = statusFilter === 'All' || userStatus === statusFilter || u.status === statusFilter;
 
     return matchesSearch && matchesRole && matchesStatus;
@@ -1748,7 +1748,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
     if (!a || !b) return 0;
     if (sortBy === 'newest') return String(b.joinedDate || '').localeCompare(String(a.joinedDate || ''));
     if (sortBy === 'oldest') return String(a.joinedDate || '').localeCompare(String(b.joinedDate || ''));
-    if (sortBy === 'username') return String(a.username || a.gamerTag || '').localeCompare(String(b.username || b.gamerTag || ''));
+    if (sortBy === 'username') return String(a.username || (a as any).gamerTag || '').localeCompare(String(b.username || (b as any).gamerTag || ''));
     if (sortBy === 'vcBalance') return (Number(b.vcBalance) || 0) - (Number(a.vcBalance) || 0);
     if (sortBy === 'role') return getRoleLevel(b.role) - getRoleLevel(a.role);
     return 0;
