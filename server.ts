@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import http from 'http';
 import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
@@ -13938,6 +13939,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 
 async function startServer() {
   const app = await createExpressApp();
+  const server = http.createServer(app);
 
   // -------------------------------------------------------------
   // VITE DEV SERVER / STATIC SERVING
@@ -13945,7 +13947,11 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+        ws: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -13957,7 +13963,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[Server] Port ${PORT} already in use or reloading. Waiting for release...`);
+    } else {
+      console.error('[Server Error]', err);
+    }
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`GTA VI Central Express App running on http://0.0.0.0:${PORT}`);
 
     // Bootstrap data repositories safely after port is listening

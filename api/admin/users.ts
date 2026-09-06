@@ -1,5 +1,5 @@
 import { connectToMongoDB } from '../../src/lib/db/mongodb';
-import { findDocuments } from '../../src/lib/db/mongoHelpers';
+import { findDocuments, saveDocument, deleteDocument } from '../../src/lib/db/mongoHelpers';
 
 function normalizeUserProfile(raw: any) {
   const username = raw.username || raw.gamerTag || raw.displayName || 'ViceCityPlayer';
@@ -27,7 +27,7 @@ function normalizeUserProfile(raw: any) {
     isStaff,
     isVip,
     status: (raw.status === 'Suspended' || raw.isSuspended) ? 'Suspended' : 'Active',
-    vipExpires: raw.vipExpires || (isAdmin ? 'Lifetime' : isStaff ? 'Staff Account' : isVip ? '2027-08-01' : 'Expired'),
+    vipExpires: raw.vipExpires || (isAdmin ? 'Lifetime' : isStaff ? 'Staff Account' : isVip ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : 'Expired'),
     joinedDate: raw.createdAt ? new Date(raw.createdAt).toISOString().split('T')[0] : (raw.joinedDate || '2026-03-01'),
     avatar: raw.avatar || raw.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + encodeURIComponent(username),
     vcBalance: typeof raw.vcBalance === 'number' ? raw.vcBalance : (typeof raw.credits === 'number' ? raw.credits : 0),
@@ -47,7 +47,7 @@ export default async function handler(req: any, res: any) {
     if (res.setHeader) {
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       res.setHeader('Content-Type', 'application/json');
     }
@@ -60,6 +60,36 @@ export default async function handler(req: any, res: any) {
     }
 
     await connectToMongoDB().catch(() => null);
+
+    // Support updating/creating user profiles from admin panel
+    if (req.method === 'POST' || req.method === 'PUT') {
+      const body = typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
+      const targetId = body.uid || body.id || `usr_${Date.now()}`;
+      const success = await saveDocument('userProfiles', targetId, body);
+      const payload = { success, id: targetId, message: success ? 'User profile updated' : 'Failed to update user profile' };
+      if (typeof res.status === 'function') return res.status(200).json(payload);
+      res.statusCode = 200;
+      res.end(JSON.stringify(payload));
+      return;
+    }
+
+    // Support deleting user profiles
+    if (req.method === 'DELETE') {
+      const uid = req.query?.uid || req.query?.id || req.body?.uid || req.body?.id;
+      if (!uid) {
+        const errorPayload = { success: false, error: 'User ID is required for deletion' };
+        if (typeof res.status === 'function') return res.status(400).json(errorPayload);
+        res.statusCode = 400;
+        res.end(JSON.stringify(errorPayload));
+        return;
+      }
+      const success = await deleteDocument('userProfiles', uid);
+      const payload = { success, message: success ? 'User profile deleted' : 'Failed to delete user profile' };
+      if (typeof res.status === 'function') return res.status(200).json(payload);
+      res.statusCode = 200;
+      res.end(JSON.stringify(payload));
+      return;
+    }
 
     let mongoProfiles: any[] = [];
     try {
