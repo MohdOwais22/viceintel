@@ -17,8 +17,8 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const pathSegments = req.query.path || [];
-    const [colOrQuery, docIdOrAction] = pathSegments;
+    const pathSegments = req.query?.path || [];
+    const [colOrQuery, docIdOrAction] = Array.isArray(pathSegments) ? pathSegments : [pathSegments];
 
     await connectToMongoDB().catch(() => null);
 
@@ -37,7 +37,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const collectionName = colOrQuery;
-    const docId = docOrAction;
+    const docId = docIdOrAction;
 
     if (!collectionName) {
       const payload = { success: false, error: 'Missing collection name' };
