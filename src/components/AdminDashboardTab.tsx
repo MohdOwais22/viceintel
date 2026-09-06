@@ -58,8 +58,9 @@ import {
   Bot,
   Wand2
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { ENV } from '../lib/envConfig';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 import { deleteRtdbChannel, deleteRtdbMessage, subscribeRtdbMessages } from '../lib/firebase/rtdbChatService';
 import { UserProfile, RpServer, CommunityBuild, UserRole } from '../types';
 import { RP_SERVERS_DATA } from '../data/rpServers';
@@ -516,10 +517,63 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
 
   // Real-Time Bounded Firebase Synchronization for High Scalability
   useEffect(() => {
-    // Initial load from MongoDB (fully populates users & pending approvals)
+    // Initial load from API (fully populates users & pending approvals)
     fetchAdminData().catch(() => {});
 
-    // Subscribe to Realtime Database chat messages for Admin Live Chat Manager (0 Firestore cost)
+    // Subscribe to Firestore userProfiles collection for live player data
+    let unsubFirestoreUsers: () => void = () => {};
+    try {
+      unsubFirestoreUsers = onSnapshot(collection(db, 'userProfiles'), (snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const fsUsers: UserProfile[] = snapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            const id = docSnap.id || data.uid || data.id;
+            const role = data.role || (data.isAdmin ? 'Admin' : data.isStaff ? 'Staff' : data.isVip ? 'VIP Member' : 'User');
+            const isAdmin = Boolean(data.isAdmin === true || role === 'Admin' || data.userLevel === 'L4');
+            const isStaff = Boolean(data.isStaff === true || role === 'Staff' || isAdmin || data.userLevel === 'L3');
+            const isVip = Boolean(data.isVip === true || role === 'VIP Member' || isAdmin || isStaff);
+            return {
+              id,
+              uid: id,
+              username: data.username || data.gamerTag || `Player_${id.slice(0, 6)}`,
+              displayName: data.displayName || data.username || data.gamerTag,
+              email: data.email || 'player@viceintel.app',
+              avatar: data.avatar || data.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=ViceCity',
+              role,
+              userLevel: isAdmin ? 'L4' : isStaff ? 'L3' : isVip ? 'L2' : 'L1',
+              clearanceLevel: isAdmin ? 'L4' : isStaff ? 'L3' : isVip ? 'L2' : 'L1',
+              isAdmin,
+              isStaff,
+              isVip,
+              vipExpires: data.vipExpires || (isAdmin ? 'Lifetime' : isStaff ? 'Staff Account' : isVip ? '2027-08-01' : 'Expired'),
+              vcBalance: typeof data.vcBalance === 'number' ? data.vcBalance : (typeof data.credits === 'number' ? data.credits : 0),
+              dailyStreak: data.dailyStreak || 0,
+              moderationNote: data.moderationNote || '',
+              joinedDate: data.createdAt ? new Date(data.createdAt).toISOString().split('T')[0] : (data.joinedDate || '2026-03-01'),
+              publishedBuildsCount: data.publishedBuildsCount || 0,
+              status: data.status || 'Active',
+              discordConnected: Boolean(data.discordConnected),
+              discordId: data.discordId || undefined,
+              discordUsername: data.discordUsername || undefined,
+              rawFirestoreData: data
+            };
+          });
+
+          setUsers(prevUsers => {
+            const userMap = new Map<string, UserProfile>();
+            prevUsers.forEach(u => userMap.set(u.id, u));
+            fsUsers.forEach(u => userMap.set(u.id, u));
+            return Array.from(userMap.values());
+          });
+        }
+      }, (err) => {
+        console.warn('Firestore userProfiles snapshot notice:', err);
+      });
+    } catch (e) {
+      console.warn('Firestore userProfiles subscription error:', e);
+    }
+
+    // Subscribe to Realtime Database chat messages for Admin Live Chat Manager
     let unsubChatMsgs: () => void = () => {};
     try {
       unsubChatMsgs = subscribeRtdbMessages('global', (rtdbMsgs) => {
@@ -547,6 +601,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({ initialSub
       .catch(() => {});
 
     return () => {
+      unsubFirestoreUsers();
       unsubChatMsgs();
     };
   }, []);
